@@ -49,9 +49,11 @@ def phase_dir(tmp_project):
         "project": "TestProject",
         "phase": "mvp",
         "steps": [
-            {"step": 0, "name": "setup", "status": "completed", "summary": "프로젝트 초기화 완료"},
-            {"step": 1, "name": "core", "status": "completed", "summary": "핵심 로직 구현"},
-            {"step": 2, "name": "ui", "status": "pending"},
+            {"step": 0, "name": "setup", "commit": "chore: 프로젝트 초기 설정",
+             "status": "completed", "summary": "프로젝트 초기화 완료"},
+            {"step": 1, "name": "core", "commit": "feat: 핵심 도메인 로직 구현",
+             "status": "completed", "summary": "핵심 로직 구현"},
+            {"step": 2, "name": "ui", "commit": "feat: 대시보드 화면 구현", "status": "pending"},
         ],
     }
     (d / "index.json").write_text(json.dumps(index, indent=2, ensure_ascii=False))
@@ -232,43 +234,46 @@ class TestBuildStepContext:
 # ---------------------------------------------------------------------------
 
 class TestBuildPreamble:
+    COMMIT = "feat: 대시보드 화면 구현"
+
     def test_includes_project_name(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert "TestProject" in result
 
     def test_includes_guardrails(self, executor):
-        result = executor._build_preamble("GUARD_CONTENT", "")
+        result = executor._build_preamble("GUARD_CONTENT", "", self.COMMIT)
         assert "GUARD_CONTENT" in result
 
     def test_includes_step_context(self, executor):
         ctx = "## 이전 Step 산출물\n\n- Step 0: done"
-        result = executor._build_preamble("", ctx)
+        result = executor._build_preamble("", ctx, self.COMMIT)
         assert "이전 Step 산출물" in result
 
-    def test_includes_commit_example(self, executor):
-        result = executor._build_preamble("", "")
-        assert "feat(mvp):" in result
+    def test_includes_step_commit_message(self, executor):
+        """세션이 임의로 메시지를 지어내지 않도록 확정된 제목을 그대로 준다."""
+        result = executor._build_preamble("", "", self.COMMIT)
+        assert self.COMMIT in result
 
     def test_includes_rules(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert "작업 규칙" in result
         assert "AC" in result
 
     def test_no_retry_section_by_default(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert "이전 시도 실패" not in result
 
     def test_retry_section_with_prev_error(self, executor):
-        result = executor._build_preamble("", "", prev_error="타입 에러 발생")
+        result = executor._build_preamble("", "", self.COMMIT, prev_error="타입 에러 발생")
         assert "이전 시도 실패" in result
         assert "타입 에러 발생" in result
 
     def test_includes_max_retries(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert str(ex.StepExecutor.MAX_RETRIES) in result
 
     def test_includes_index_path(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert "/phases/0-mvp/index.json" in result
 
 
@@ -378,6 +383,8 @@ class TestAssertNotMain:
 # ---------------------------------------------------------------------------
 
 class TestCommitStep:
+    STEP = {"step": 2, "name": "ui", "commit": "feat: 대시보드 화면 구현"}
+
     def test_two_phase_commit(self, executor):
         calls = []
         def fake_git(*args):
@@ -387,14 +394,45 @@ class TestCommitStep:
             return MagicMock(returncode=0, stdout="", stderr="")
         executor._run_git = fake_git
 
-        executor._commit_step(2, "ui")
+        executor._commit_step(self.STEP)
 
-        commit_calls = [c for c in calls if c[0] == "commit"]
-        assert len(commit_calls) == 2
-        assert "feat(mvp):" in commit_calls[0][2]
-        assert "chore(mvp):" in commit_calls[1][2]
+        commit_msgs = [c[2] for c in calls if c[0] == "commit"]
+        assert len(commit_msgs) == 2
+        assert commit_msgs[0] == "feat: 대시보드 화면 구현"
+        assert commit_msgs[1].startswith("chore: ")
 
-    def test_no_code_changes_skips_feat_commit(self, executor):
+    def test_subject_has_no_scope_parens(self, executor):
+        """팀 컨벤션은 `{type}: {설명}`이다. `feat(scope):`는 Conventional Commits 형식."""
+        calls = []
+        def fake_git(*args):
+            calls.append(args)
+            if args[:2] == ("diff", "--cached"):
+                return MagicMock(returncode=1)
+            return MagicMock(returncode=0, stdout="", stderr="")
+        executor._run_git = fake_git
+
+        executor._commit_step(self.STEP)
+
+        for msg in [c[2] for c in calls if c[0] == "commit"]:
+            assert ex.StepExecutor.COMMIT_RE.match(msg), f"컨벤션 위반: {msg}"
+
+    def test_metadata_commit_describes_change(self, executor):
+        """`step 0 output` 같은 제목은 변경 내용을 알 수 없어 컨벤션 위반이다."""
+        calls = []
+        def fake_git(*args):
+            calls.append(args)
+            if args[:2] == ("diff", "--cached"):
+                return MagicMock(returncode=1)
+            return MagicMock(returncode=0, stdout="", stderr="")
+        executor._run_git = fake_git
+
+        executor._commit_step(self.STEP)
+
+        meta_msg = [c[2] for c in calls if c[0] == "commit"][1]
+        assert "output" not in meta_msg
+        assert "mvp" in meta_msg and "2" in meta_msg
+
+    def test_no_code_changes_skips_step_commit(self, executor):
         call_count = {"diff": 0}
         calls = []
         def fake_git(*args):
@@ -407,11 +445,59 @@ class TestCommitStep:
             return MagicMock(returncode=0, stdout="", stderr="")
         executor._run_git = fake_git
 
-        executor._commit_step(2, "ui")
+        executor._commit_step(self.STEP)
 
         commit_msgs = [c[2] for c in calls if c[0] == "commit"]
         assert len(commit_msgs) == 1
-        assert "chore" in commit_msgs[0]
+        assert commit_msgs[0].startswith("chore: ")
+
+
+# ---------------------------------------------------------------------------
+# 커밋 메시지 컨벤션 검증 (docs/TEAM_RULES.md 3.3)
+# ---------------------------------------------------------------------------
+
+class TestCommitConvention:
+    def _make_phase(self, tmp_project, steps, name="conv"):
+        d = tmp_project / "phases" / name
+        d.mkdir(exist_ok=True)
+        index = {"project": "T", "phase": name, "steps": steps}
+        (d / "index.json").write_text(json.dumps(index, ensure_ascii=False))
+        return d
+
+    def test_valid_types_accepted(self, tmp_project):
+        steps = [{"step": i, "name": f"s{i}", "commit": f"{t}: 설명", "status": "pending"}
+                 for i, t in enumerate(["feat", "fix", "docs", "style", "refactor", "test", "chore"])]
+        self._make_phase(tmp_project, steps)
+        with patch.object(ex, "ROOT", tmp_project):
+            ex.StepExecutor("conv")  # 예외 없이 생성돼야 한다
+
+    def test_missing_commit_field_exits(self, tmp_project):
+        self._make_phase(tmp_project, [{"step": 0, "name": "s0", "status": "pending"}])
+        with patch.object(ex, "ROOT", tmp_project):
+            with pytest.raises(SystemExit) as exc_info:
+                ex.StepExecutor("conv")
+            assert exc_info.value.code == 1
+
+    def test_unknown_type_exits(self, tmp_project):
+        self._make_phase(tmp_project, [{"step": 0, "name": "s0", "commit": "wip: 대충", "status": "pending"}])
+        with patch.object(ex, "ROOT", tmp_project):
+            with pytest.raises(SystemExit) as exc_info:
+                ex.StepExecutor("conv")
+            assert exc_info.value.code == 1
+
+    def test_scope_parens_exits(self, tmp_project):
+        self._make_phase(tmp_project, [{"step": 0, "name": "s0", "commit": "feat(ui): 추가", "status": "pending"}])
+        with patch.object(ex, "ROOT", tmp_project):
+            with pytest.raises(SystemExit) as exc_info:
+                ex.StepExecutor("conv")
+            assert exc_info.value.code == 1
+
+    def test_missing_colon_space_exits(self, tmp_project):
+        self._make_phase(tmp_project, [{"step": 0, "name": "s0", "commit": "feat:설명없음", "status": "pending"}])
+        with patch.object(ex, "ROOT", tmp_project):
+            with pytest.raises(SystemExit) as exc_info:
+                ex.StepExecutor("conv")
+            assert exc_info.value.code == 1
 
 
 # ---------------------------------------------------------------------------

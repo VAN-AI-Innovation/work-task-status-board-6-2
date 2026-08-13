@@ -56,9 +56,9 @@
   "project": "<프로젝트명>",
   "phase": "<task-name>",
   "steps": [
-    { "step": 0, "name": "project-setup", "status": "pending" },
-    { "step": 1, "name": "core-types", "status": "pending" },
-    { "step": 2, "name": "api-layer", "status": "pending" }
+    { "step": 0, "name": "project-setup", "commit": "chore: 프로젝트 초기 설정", "status": "pending" },
+    { "step": 1, "name": "core-types", "commit": "feat: 도메인 타입 정의", "status": "pending" },
+    { "step": 2, "name": "api-layer", "commit": "feat: 업무 조회 API 라우트 구현", "status": "pending" }
   ]
 }
 ```
@@ -69,6 +69,11 @@
 - `phase`: task 이름. 디렉토리명과 일치시킨다.
 - `steps[].step`: 0부터 시작하는 순번.
 - `steps[].name`: kebab-case slug.
+- `steps[].commit`: **필수.** 이 step이 만들 커밋의 제목. `{type}: {설명}` 형식이며
+  type은 `feat|fix|docs|style|refactor|test|chore` 중 하나다 (`docs/TEAM_RULES.md` 3.3).
+  execute.py가 실행 **전에** 전 step을 검증하고, 하나라도 어긋나면 시작하지 않는다.
+  step 이름 slug가 아니라 **제목만 읽고 변경 내용을 알 수 있는 한국어 문장**으로 쓴다.
+  type은 step마다 다를 수 있다 — 설정 작업은 `chore`, 테스트 추가는 `test`.
 - `steps[].status`: 초기값은 모두 `"pending"`.
 
 상태 전이와 자동 기록 필드:
@@ -144,7 +149,7 @@ execute.py가 자동으로 처리하는 것:
 - 가드레일 주입 — CLAUDE.md + docs/*.md 내용을 매 step 프롬프트에 포함
 - 컨텍스트 누적 — 완료된 step의 summary를 다음 step 프롬프트에 전달
 - 자가 교정 — 실패 시 최대 3회 재시도하며, 이전 에러 메시지를 프롬프트에 피드백
-- 2단계 커밋 — 코드 변경(`feat`)과 메타데이터(`chore`)를 분리 커밋
+- 2단계 커밋 — 코드 변경은 `steps[].commit` 제목으로, 메타데이터는 별도 `chore:` 커밋으로 분리
 - 타임스탬프 — started_at, completed_at, failed_at, blocked_at 자동 기록
 
 에러 복구:

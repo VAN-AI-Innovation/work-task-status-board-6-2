@@ -10,6 +10,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -64,9 +65,13 @@ class StepExecutor:
     """Phase 디렉토리 안의 step들을 순차 실행하는 하네스."""
 
     MAX_RETRIES = 3
-    FEAT_MSG = "feat({phase}): step {num} — {name}"
-    CHORE_MSG = "chore({phase}): step {num} output"
     TZ = timezone(timedelta(hours=9))
+
+    # 커밋 메시지 컨벤션 `{type}: {설명}` (docs/TEAM_RULES.md 3.3).
+    # scope 괄호(`feat(ui):`)는 Conventional Commits 형식이라 허용하지 않는다.
+    COMMIT_RE = re.compile(r"^(feat|fix|docs|style|refactor|test|chore): \S.*$")
+    META_MSG = "chore: {phase} step {num} 진행 상태 갱신"
+    DONE_MSG = "chore: {phase} 단계 완료 표시"
 
     def __init__(self, phase_dir_name: str):
         self._root = str(ROOT)
@@ -88,6 +93,21 @@ class StepExecutor:
         self._project = idx.get("project", "project")
         self._phase_name = idx.get("phase", phase_dir_name)
         self._total = len(idx["steps"])
+        self._validate_commit_messages(idx["steps"])
+
+    def _validate_commit_messages(self, steps: list):
+        """모든 step이 컨벤션에 맞는 커밋 제목을 갖고 있는지 실행 전에 확인한다.
+
+        실행 도중 발견하면 이미 규칙을 어긴 커밋이 쌓인 뒤라 되돌리기 어렵다.
+        """
+        bad = [s for s in steps if not self.COMMIT_RE.match(s.get("commit", ""))]
+        if not bad:
+            return
+        print(f"ERROR: step의 'commit' 제목이 컨벤션에 맞지 않습니다 (docs/TEAM_RULES.md 3.3).")
+        print(f"  형식: {{type}}: {{설명}}  —  type은 feat|fix|docs|style|refactor|test|chore")
+        for s in bad:
+            print(f"  step {s.get('step')} ({s.get('name')}): {s.get('commit', '<없음>')!r}")
+        sys.exit(1)
 
     def run(self):
         self._print_header()
@@ -139,7 +159,8 @@ class StepExecutor:
 
         print(f"  Branch: {branch}")
 
-    def _commit_step(self, step_num: int, step_name: str):
+    def _commit_step(self, step: dict):
+        step_num = step["step"]
         output_rel = f"phases/{self._phase_dir_name}/step{step_num}-output.json"
         index_rel = f"phases/{self._phase_dir_name}/index.json"
 
@@ -148,7 +169,7 @@ class StepExecutor:
         self._run_git("reset", "HEAD", "--", index_rel)
 
         if self._run_git("diff", "--cached", "--quiet").returncode != 0:
-            msg = self.FEAT_MSG.format(phase=self._phase_name, num=step_num, name=step_name)
+            msg = step["commit"]
             r = self._run_git("commit", "-m", msg)
             if r.returncode == 0:
                 print(f"  Commit: {msg}")
@@ -157,10 +178,10 @@ class StepExecutor:
 
         self._run_git("add", "-A")
         if self._run_git("diff", "--cached", "--quiet").returncode != 0:
-            msg = self.CHORE_MSG.format(phase=self._phase_name, num=step_num)
+            msg = self.META_MSG.format(phase=self._phase_name, num=step_num)
             r = self._run_git("commit", "-m", msg)
             if r.returncode != 0:
-                print(f"  WARN: housekeeping 커밋 실패: {r.stderr.strip()}")
+                print(f"  WARN: 메타데이터 커밋 실패: {r.stderr.strip()}")
 
     # --- top-level index ---
 
@@ -202,11 +223,8 @@ class StepExecutor:
             return ""
         return "## 이전 Step 산출물\n\n" + "\n".join(lines) + "\n\n"
 
-    def _build_preamble(self, guardrails: str, step_context: str,
+    def _build_preamble(self, guardrails: str, step_context: str, commit_msg: str,
                         prev_error: Optional[str] = None) -> str:
-        commit_example = self.FEAT_MSG.format(
-            phase=self._phase_name, num="N", name="<step-name>"
-        )
         retry_section = ""
         if prev_error:
             retry_section = (
@@ -226,8 +244,8 @@ class StepExecutor:
             f"   - AC 통과 → \"completed\" + \"summary\" 필드에 이 step의 산출물을 한 줄로 요약\n"
             f"   - {self.MAX_RETRIES}회 수정 시도 후에도 실패 → \"error\" + \"error_message\" 기록\n"
             f"   - 사용자 개입이 필요한 경우 (API 키, 인증, 수동 설정 등) → \"blocked\" + \"blocked_reason\" 기록 후 즉시 중단\n"
-            f"6. 모든 변경사항을 커밋하라:\n"
-            f"   {commit_example}\n\n---\n\n"
+            f"6. 커밋은 하네스가 한다. 직접 `git commit`을 실행하지 마라.\n"
+            f"   이 step의 커밋 제목은 다음으로 확정돼 있다: {commit_msg}\n\n---\n\n"
         )
 
     # --- Claude 호출 ---
@@ -314,7 +332,7 @@ class StepExecutor:
         for attempt in range(1, self.MAX_RETRIES + 1):
             index = self._read_json(self._index_file)
             step_context = self._build_step_context(index)
-            preamble = self._build_preamble(guardrails, step_context, prev_error)
+            preamble = self._build_preamble(guardrails, step_context, step["commit"], prev_error)
 
             tag = f"Step {step_num}/{self._total - 1} ({done} done): {step_name}"
             if attempt > 1:
@@ -333,7 +351,7 @@ class StepExecutor:
                     if s["step"] == step_num:
                         s["completed_at"] = ts
                 self._write_json(self._index_file, index)
-                self._commit_step(step_num, step_name)
+                self._commit_step(step)
                 print(f"  ✓ Step {step_num}: {step_name} [{elapsed}s]")
                 return True
 
@@ -368,7 +386,7 @@ class StepExecutor:
                         s["error_message"] = f"[{self.MAX_RETRIES}회 시도 후 실패] {err_msg}"
                         s["failed_at"] = ts
                 self._write_json(self._index_file, index)
-                self._commit_step(step_num, step_name)
+                self._commit_step(step)
                 print(f"  ✗ Step {step_num}: {step_name} failed after {self.MAX_RETRIES} attempts [{elapsed}s]")
                 print(f"    Error: {err_msg}")
                 self._update_top_index("error")
@@ -401,7 +419,7 @@ class StepExecutor:
 
         self._run_git("add", "-A")
         if self._run_git("diff", "--cached", "--quiet").returncode != 0:
-            msg = f"chore({self._phase_name}): mark phase completed"
+            msg = self.DONE_MSG.format(phase=self._phase_name)
             r = self._run_git("commit", "-m", msg)
             if r.returncode == 0:
                 print(f"  ✓ {msg}")
