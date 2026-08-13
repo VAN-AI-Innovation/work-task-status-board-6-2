@@ -24,7 +24,10 @@
       "step": 2,
       "name": "deps-pinning",
       "commit": "chore: 파싱·차트 의존성 설치 및 exceljs 버전 고정",
-      "status": "pending"
+      "status": "completed",
+      "summary": "exceljs를 4.4.0으로 정확히 고정(캐럿 없음), mammoth·zod(v4, 4.4.3)·chart.js·react-chartjs-2·node-html-parser를 직접 의존성으로 설치, next.config.ts에 serverExternalPackages: ['exceljs'] 추가",
+      "started_at": "2026-08-13T21:01:04+0900",
+      "completed_at": "2026-08-13T21:03:08+0900"
     },
     {
       "step": 3,
