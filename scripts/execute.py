@@ -21,6 +21,16 @@ from typing import Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# 구독(OAuth) 인증으로만 돌리기 위해 자식 프로세스에서 제거하는 환경변수.
+# 이 값이 남아 있으면 claude CLI가 종량 과금 경로(API 키 · Bedrock · Vertex)로 붙는다.
+BILLED_AUTH_ENV = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+)
+
 
 @contextlib.contextmanager
 def progress_indicator(label: str):
@@ -176,9 +186,9 @@ class StepExecutor:
 
     def _load_guardrails(self) -> str:
         sections = []
-        agents_md = ROOT / "AGENTS.md"
-        if agents_md.exists():
-            sections.append(f"## 프로젝트 규칙 (AGENTS.md)\n\n{agents_md.read_text()}")
+        claude_md = ROOT / "CLAUDE.md"
+        if claude_md.exists():
+            sections.append(f"## 프로젝트 규칙 (CLAUDE.md)\n\n{claude_md.read_text()}")
         docs_dir = ROOT / "docs"
         if docs_dir.is_dir():
             for doc in sorted(docs_dir.glob("*.md")):
@@ -224,9 +234,17 @@ class StepExecutor:
             f"   {commit_example}\n\n---\n\n"
         )
 
-    # --- Codex 호출 ---
+    # --- Claude 호출 ---
 
-    def _invoke_codex(self, step: dict, preamble: str) -> dict:
+    @staticmethod
+    def _subscription_env() -> dict:
+        """구독 인증(OAuth)으로만 붙도록 종량 과금 환경변수를 걷어낸 env."""
+        env = os.environ.copy()
+        for key in BILLED_AUTH_ENV:
+            env.pop(key, None)
+        return env
+
+    def _invoke_claude(self, step: dict, preamble: str) -> dict:
         step_num, step_name = step["step"], step["name"]
         step_file = self._phase_dir / f"step{step_num}.md"
 
@@ -234,14 +252,17 @@ class StepExecutor:
             print(f"  ERROR: {step_file} not found")
             sys.exit(1)
 
+        # 프롬프트는 stdin으로 넣는다 — 가드레일(docs 전량)이 붙어 수십 KB가 되므로
+        # argv에 실으면 길이 제한에 걸릴 수 있다.
         prompt = preamble + step_file.read_text()
         result = subprocess.run(
-            ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--json", prompt],
+            ["claude", "-p", "--permission-mode", "bypassPermissions", "--output-format", "json"],
             cwd=self._root, capture_output=True, text=True, timeout=1800,
+            input=prompt, env=self._subscription_env(),
         )
 
         if result.returncode != 0:
-            print(f"\n  WARN: Codex가 비정상 종료됨 (code {result.returncode})")
+            print(f"\n  WARN: Claude가 비정상 종료됨 (code {result.returncode})")
             if result.stderr:
                 print(f"  stderr: {result.stderr[:500]}")
 
@@ -306,7 +327,7 @@ class StepExecutor:
                 tag += f" [retry {attempt}/{self.MAX_RETRIES}]"
 
             with progress_indicator(tag) as pi:
-                self._invoke_codex(step, preamble)
+                self._invoke_claude(step, preamble)
                 elapsed = int(pi.elapsed)
 
             index = self._read_json(self._index_file)

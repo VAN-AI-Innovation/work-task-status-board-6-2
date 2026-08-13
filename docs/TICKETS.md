@@ -103,14 +103,14 @@ PLAN.md가 "T1 착수 전 스모크 테스트"를 **티켓이 아닌 메모로**
 4. **`@/`로 import한 테스트가 통과한다** (`A6` — Vitest는 tsconfig paths를 자동으로 읽지 않는다)
 5. `zod`가 `package.json` 직접 의존성에 있고, `exceljs`는 `4.4.0`으로 정확히 고정돼 있다 (`A4`·`A5`)
 6. `docs/` 파일에 `{중괄호}` 플레이스홀더가 0개다
-7. `CLAUDE.md`·`AGENTS.md`에 `A3`의 계층 경계 규칙이 반영돼 있다
+7. `CLAUDE.md`에 `A3`의 계층 경계 규칙이 반영돼 있다
 8. **`NEXT_PUBLIC_.*SERVICE_ROLE` 패턴이 빌드를 실패시키는 가드가 있다** (`S5` — 가장 흔한 Supabase 사고)
 
 **이미 충족된 항목** (2026-08-13 기준)
 
-- 완료 기준 6·7 — `docs/` 7종과 `CLAUDE.md`·`AGENTS.md` CRITICAL 규칙이 이미 확정본이다
+- 완료 기준 6·7 — `docs/` 7종과 `CLAUDE.md` CRITICAL 규칙이 이미 확정본이다
 - `.gitignore`의 `.pytest_cache/`·`__pycache__/`·`*.pyc`·`*.xlsx`·`*.docx` + 픽스처 예외
-- 하네스 정합성 — `AGENTS.md`에 `scripts/execute.py --push` 금지가 기록됨. 하네스가 브랜치를
+- 하네스 정합성 — `CLAUDE.md`에 `scripts/execute.py --push` 금지가 기록됨. 하네스가 브랜치를
   `feat-{phase}`로 만들어 팀 규칙 `feat/#번호`(`TEAM_RULES.md` 2.1)와 충돌한다
 
 **리스크·미결**

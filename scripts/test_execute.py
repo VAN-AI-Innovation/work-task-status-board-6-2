@@ -24,12 +24,12 @@ import execute as ex
 
 @pytest.fixture
 def tmp_project(tmp_path):
-    """phases/, AGENTS.md, docs/ 를 갖춘 임시 프로젝트 구조."""
+    """phases/, CLAUDE.md, docs/ 를 갖춘 임시 프로젝트 구조."""
     phases_dir = tmp_path / "phases"
     phases_dir.mkdir()
 
-    agents_md = tmp_path / "AGENTS.md"
-    agents_md.write_text("# Rules\n- rule one\n- rule two")
+    claude_md = tmp_path / "CLAUDE.md"
+    claude_md.write_text("# Rules\n- rule one\n- rule two")
 
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
@@ -146,7 +146,7 @@ class TestJsonHelpers:
 # ---------------------------------------------------------------------------
 
 class TestLoadGuardrails:
-    def test_loads_agents_md_and_docs(self, executor, tmp_project):
+    def test_loads_claude_md_and_docs(self, executor, tmp_project):
         with patch.object(ex, "ROOT", tmp_project):
             result = executor._load_guardrails()
         assert "# Rules" in result
@@ -166,11 +166,11 @@ class TestLoadGuardrails:
         guide_pos = result.index("guide")
         assert arch_pos < guide_pos
 
-    def test_no_agents_md(self, executor, tmp_project):
-        (tmp_project / "AGENTS.md").unlink()
+    def test_no_claude_md(self, executor, tmp_project):
+        (tmp_project / "CLAUDE.md").unlink()
         with patch.object(ex, "ROOT", tmp_project):
             result = executor._load_guardrails()
-        assert "AGENTS.md" not in result
+        assert "CLAUDE.md" not in result
         assert "Architecture" in result
 
     def test_no_docs_dir(self, executor, tmp_project):
@@ -420,32 +420,59 @@ class TestCommitStep:
 
 
 # ---------------------------------------------------------------------------
-# _invoke_codex (mocked)
+# _invoke_claude (mocked)
 # ---------------------------------------------------------------------------
 
-class TestInvokeCodex:
-    def test_invokes_codex_with_correct_args(self, executor):
+class TestInvokeClaude:
+    def test_invokes_claude_with_correct_args(self, executor):
         mock_result = MagicMock(returncode=0, stdout='{"result": "ok"}', stderr="")
         step = {"step": 2, "name": "ui"}
         preamble = "PREAMBLE\n"
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
-            output = executor._invoke_codex(step, preamble)
+            executor._invoke_claude(step, preamble)
 
         cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "codex"
-        assert "exec" in cmd
-        assert "--dangerously-bypass-approvals-and-sandbox" in cmd
-        assert "--json" in cmd
-        assert "PREAMBLE" in cmd[-1]
-        assert "UI를 구현하세요" in cmd[-1]
+        assert cmd[0] == "claude"
+        assert "-p" in cmd
+        assert cmd[cmd.index("--permission-mode") + 1] == "bypassPermissions"
+        assert cmd[cmd.index("--output-format") + 1] == "json"
+
+    def test_prompt_goes_through_stdin(self, executor):
+        """프롬프트는 argv가 아니라 stdin으로 넘어간다 (가드레일이 수십 KB)."""
+        mock_result = MagicMock(returncode=0, stdout="{}", stderr="")
+        step = {"step": 2, "name": "ui"}
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            executor._invoke_claude(step, "PREAMBLE\n")
+
+        stdin = mock_run.call_args[1]["input"]
+        assert "PREAMBLE" in stdin
+        assert "UI를 구현하세요" in stdin
+        assert not any("PREAMBLE" in arg for arg in mock_run.call_args[0][0])
+
+    def test_strips_billed_auth_env(self, executor):
+        """구독 인증으로만 붙도록 종량 과금 환경변수를 제거한다."""
+        mock_result = MagicMock(returncode=0, stdout="{}", stderr="")
+        step = {"step": 2, "name": "ui"}
+        polluted = {key: "x" for key in ex.BILLED_AUTH_ENV}
+        polluted["PATH"] = os.environ.get("PATH", "")
+
+        with patch.dict(os.environ, polluted, clear=True):
+            with patch("subprocess.run", return_value=mock_result) as mock_run:
+                executor._invoke_claude(step, "preamble")
+
+        env = mock_run.call_args[1]["env"]
+        for key in ex.BILLED_AUTH_ENV:
+            assert key not in env
+        assert "PATH" in env
 
     def test_saves_output_json(self, executor):
         mock_result = MagicMock(returncode=0, stdout='{"ok": true}', stderr="")
         step = {"step": 2, "name": "ui"}
 
         with patch("subprocess.run", return_value=mock_result):
-            executor._invoke_codex(step, "preamble")
+            executor._invoke_claude(step, "preamble")
 
         output_file = executor._phase_dir / "step2-output.json"
         assert output_file.exists()
@@ -457,7 +484,7 @@ class TestInvokeCodex:
     def test_nonexistent_step_file_exits(self, executor):
         step = {"step": 99, "name": "nonexistent"}
         with pytest.raises(SystemExit) as exc_info:
-            executor._invoke_codex(step, "preamble")
+            executor._invoke_claude(step, "preamble")
         assert exc_info.value.code == 1
 
     def test_timeout_is_1800(self, executor):
@@ -465,7 +492,7 @@ class TestInvokeCodex:
         step = {"step": 2, "name": "ui"}
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
-            executor._invoke_codex(step, "preamble")
+            executor._invoke_claude(step, "preamble")
 
         assert mock_run.call_args[1]["timeout"] == 1800
 

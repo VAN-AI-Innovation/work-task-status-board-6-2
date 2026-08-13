@@ -57,8 +57,30 @@ Google Docs 워크로드 문서를 **업무 배정표 xlsx로 뽑는** 웹. 이 
 - 머지 후 브랜치 삭제. 리뷰는 셀프 리뷰 (갠플이라 승인자 없음)
 - 커밋·PR·이슈는 사용자가 요청할 때만 생성할 것.
 
+## 하네스 실행 규칙
+`scripts/execute.py`가 각 step마다 이 파일과 `docs/*.md`를 가드레일로 주입한다.
+
+- 각 step은 지시된 작업만 수행하고, 요청되지 않은 기능/파일을 만들지 말 것.
+- AC(Acceptance Criteria)를 직접 실행해 검증한 뒤 `phases/<phase>/index.json`의 step status를 갱신할 것.
+- 사용자 개입(API 키, 인증, 수동 설정 등)이 필요하면 즉시 `blocked` 처리하고 중단할 것.
+- `--push`를 쓰지 말 것. 브랜치를 `feat-{phase}`로 만들어 팀 규칙 `feat/#번호`
+  (`docs/TEAM_RULES.md` 2.1)와 충돌한다.
+
+## 가드레일 (`.claude/settings.json`)
+- `PreToolUse[Bash]` → 위험 명령(`rm -rf`, force push, `reset --hard`, `DROP TABLE`) 차단.
+- `PreToolUse[Edit|Write]` → `.claude/hooks/tdd-guard.sh`. 소스 파일에 대응 테스트가 없으면 편집 차단.
+  `components/`·`types/`·설정/스타일 파일은 예외.
+- `Stop` → 턴 종료 시 `lint`/`build`/`test` 실행.
+
 ## 명령어
 npm run dev      # 개발 서버
 npm run build    # 프로덕션 빌드
 npm run lint     # ESLint
 npm run test     # Vitest
+
+## 하네스
+python3 scripts/execute.py <phase-dir>      # phase의 step을 순차 실행 (claude -p 호출)
+python3 -m pytest scripts/test_execute.py   # 하네스 테스트
+
+하네스는 `claude` CLI를 **구독 인증(OAuth)** 으로만 호출한다. `ANTHROPIC_API_KEY` 등
+종량 과금 환경변수는 자식 프로세스에서 제거된다 (`scripts/execute.py`의 `BILLED_AUTH_ENV`).
