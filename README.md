@@ -47,7 +47,6 @@ step 실행은 `claude -p`(Claude Code CLI)로 한다. **구독 인증(OAuth)만
 
 ## GitHub Actions
 
-`.github/workflows/`의 두 워크플로우는 데모 저장소에서 가져온 **문법 참고용 기본 틀**이다:
-
-- `auto-assign.yml` — 이슈/PR 생성 시 담당자 자동 배정
-- `proof-html.yml` — HTML 유효성·링크 검사
+`.github/workflows/ci.yml` 하나뿐이다. push·pull_request에서 `npm ci` 후
+로컬과 동일한 세 커맨드(`npm run lint` → `npm run build` → `npm test`)를 순서대로 돌린다.
+`npm run build`는 `prebuild` 훅으로 `service_role` 키 노출 가드를 함께 실행한다.
