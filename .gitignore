@@ -1,12 +1,14 @@
 node_modules/
 .next/
 out/
+.turbo
 next-env.d.ts
 tsconfig.tsbuildinfo
 
 # secrets / local
 .env*
 .vercel
+.claude/settings.local.json
 
 # test / build artifacts
 coverage/
