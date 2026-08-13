@@ -15,7 +15,10 @@
       "step": 1,
       "name": "test-gate",
       "commit": "test: vitest @/ 별칭 설정과 env-guard 단위 테스트 추가",
-      "status": "pending"
+      "status": "completed",
+      "summary": "vitest.config.ts 신설(의존성 추가 없이 resolve.alias로 @/→src/), src/lib/env-guard.ts 순수 탐지 함수 + 테스트 7개, package.json의 --passWithNoTests 제거",
+      "started_at": "2026-08-13T20:58:25+0900",
+      "completed_at": "2026-08-13T21:01:04+0900"
     },
     {
       "step": 2,
