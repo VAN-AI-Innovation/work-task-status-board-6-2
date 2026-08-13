@@ -29,8 +29,10 @@ VAN AI Innovation 학회 과제 **6-2. 전사 업무 현황판 고도화 (中上
 
 | 항목 | 값 | 근거 |
 |---|---|---|
-| 초안 마감 | **2026-08-31** | 사용자 확정. 학회 기준 "90% 진행 + 프로그램 실행 가능" |
-| 데이터 저장 | **Supabase/Postgres** | 사용자 확정 (권한별 열람·수정 요구) |
+| 초안 마감 | **2026-08-31** | 학회 기준 "90% 진행 + 프로그램 실행 가능" |
+| 데이터 저장 | **Supabase/Postgres — 처음부터 붙인다** | 사용자 확정. 미루지 않는다 |
+| 권한별 열람·수정 | **초안 범위에 포함** | 과제 원문 요구사항 6번 |
+| 알림 발송 | **화면 알림 패널까지만.** 디스코드·메일 발송은 시간 남으면 | 사용자 확정 |
 | 독스 추출 | **규칙 기반 파싱, LLM은 옵션** | API 키 없이 동작해야 함 |
 | UI 톤 | **라이트 + 무채색**, 시맨틱 2색(빨강=지연, 앰버=주의) | 사용자 확정 |
 | **입력 방식** | **Google Sheets에 입력 → 시트를 웹에 업로드** | 사용자 확정 (H1) |
@@ -41,13 +43,33 @@ VAN AI Innovation 학회 과제 **6-2. 전사 업무 현황판 고도화 (中上
 
 **PC 우선의 구체적 의미**: 기준 폭 **1280px**로 설계하고 1024px까지 레이아웃을 유지한다. 그 아래(태블릿·모바일)는 **깨지지 않고 읽히는 수준**까지만 대응하고, 별도 모바일 레이아웃은 만들지 않는다. 촬영·기획팀 70컬럼을 다루려면 넓은 화면이 전제이므로 이 결정이 표 설계 전체를 단순하게 만든다.
 
-### ⚠ 명시적으로 밝히는 가정
+### Supabase를 처음부터 붙인다
 
-**8/31 초안 시점에 Supabase는 붙지 않는다.** 오늘(8/13)부터 18일인데 크리티컬 패스(T0~T6)만으로 18.5일이다. Supabase 이관·인증·RLS는 9월 첫 주로 미룬다.
+메모리로 만들었다가 옮기는 2단계를 쓰지 않는다. **T3에서 바로 Supabase 스키마를 잡고 붙인다.** 부수 효과로 "이관" 티켓이 통째로 사라진다.
 
-대신 **`TaskRepository` 인터페이스 + 메모리 드라이버**로 전 기능을 먼저 완성한다. 이건 타협이 아니라 리스크 대응이다 — 일정이 밀려도 잘라내는 것이 Supabase지 기능이 아니게 된다. 또한 Supabase 무료 티어는 7일 미접속 시 프로젝트를 일시중지하므로, 발표장에서 조용히 죽는 것을 막는 안전망이기도 하다.
+`TaskRepository` 인터페이스와 메모리 드라이버는 **그대로 유지한다.** 다만 역할이 바뀐다 — 마이그레이션 경로가 아니라 **시연 안전망**이다:
 
-이 판단이 마음에 안 들면 T5(대시보드 UI)를 축소하고 T7을 당기는 방법이 있으나, 그러면 "빠르게 조회·파악"이라는 담당자 지시 ①이 약해진다. 권장하지 않는다.
+- Supabase 무료 티어는 7일 미접속 시 프로젝트를 일시중지한다. 발표장에서 조용히 죽는 것을 막아야 한다.
+- 심사자가 클론해서 **`.env` 없이 바로 실행**할 수 있어야 한다 (`STORAGE_DRIVER=memory`).
+- 두 구현이 같은 계약 테스트를 통과하므로 도메인 로직 검증이 저장소와 분리된다.
+
+메모리 드라이버 자체는 배열 몇 개라 비용이 거의 없다. 값어치는 위 세 가지다.
+
+### 과제 원문 7개 요구사항 대조
+
+| # | 요구사항 | 어디서 |
+|---|---|---|
+| 1 | 부서·팀·담당자·업무·기한·진행률·지연 사유 통합 관리 | 데이터 모델 (T2·T3) |
+| 2 | 예정·진행·검토·완료·지연 상태 시각적 구분 | semantic 5색 파생 + 배지 (T5) |
+| 3 | 마감 임박·장기 미갱신·담당자 미지정 자동 알림 | 알림 패널 4종 (T5). **발송은 추후** |
+| 4 | **부서별 목표와 실제 성과 비교** | `goal_metrics` + 성과 화면 (T2·T5) |
+| 5 | 회의 전 자동 요약 및 대표·실장용 주간 보고서 | `weekly-report` + 브리핑 카드 (T3·T5) |
+| 6 | 권한별 열람·수정 범위 구분 | Supabase Auth + RLS (T8) |
+| 7 | 향후 출결·평가·경고·활동인증서 연계 | `members`를 신원 단일 소스로 (T3) |
+
+3번의 "자동 알림"은 **대시보드 알림 패널까지**를 초안 범위로 본다. 디스코드 웹훅 발송은 여유가 생기면 붙인다 (T10, 반나절).
+
+7개 요구를 모두 다루되, **담당자 지시 2건(엑셀→조회 / 독스→엑셀)이 여전히 최우선**이다. 무언가를 잘라야 하는 상황이 오면 T10 → T9 → T8 순으로 밀고, T4·T5·T6은 사수한다.
 
 ---
 
@@ -248,7 +270,7 @@ T8 이전(초안 시점)에는 로그인이 없으므로 **`?as=admin|lead|membe
 | UC-07 | 회의 직전 전사 현황 파악 | `/` | 스크롤 없이 KPI 10종 + 팀별 완료율 확인 |
 | UC-08 | 주간 브리핑 생성·복사 | `/` 카드 → `/report` | 마크다운 복사 → 회의록에 붙여넣기 |
 | UC-09 | 승인 대기 건 확인 | `/` 승인 대기함 | 대기 건과 대기 일수 표시 |
-| UC-10 | 부서별 목표 대비 성과 비교 | `/` 팀 요약 + 바 차트 | 팀별 완료율·지연율 나란히 비교 |
+| UC-10 | **부서별 목표 대비 성과 비교** | `/` 목표 대비 성과 섹션 | 목표 수치 대 실제 성과, 달성률, 직전 주 대비 변화 |
 
 **팀장 (lead)**
 
@@ -376,7 +398,26 @@ sla_rules     team_id(null=공통), stage_key, label, days
 uploads       kind, filename, parse_result jsonb, status, summary
 doc_extractions  upload_id, order_index, category, task_no, title,
                  difficulty, deadline_raw, deadline_date, priority, details jsonb
+
+goal_metrics     team_id, period_label            -- "2026-07 4주차"
+                 title                            -- 마케팅 과제명
+                 goal_text, kpi_name              -- 목표 / 목표 KPI
+                 target_value numeric, actual_value numeric
+                 achievement_rate numeric         -- 달성률 (시트 값도 보존)
+                 prev_period_delta text           -- 직전 주 대비 변화
+                 channel, owner_member_id, exec_status
+                 analysis, went_well, needs_improvement
+                 started_at date, due_at date
+                 extras jsonb, source_upload_id
+                 UNIQUE (team_id, period_label, title)
+
+team_period_goals  team_id, period_label, goal_text, risk_text
+                 -- 촬영·기획팀 헤더 블록의 "이번 주 핵심 목표 / 주요 리스크"
 ```
+
+**`goal_metrics`가 과제 요구 4번("부서별 목표와 실제 성과 비교")의 실체다.** 이 데이터는 새로 만드는 게 아니라 **시트에 이미 있다** — `03_마케팅·관리팀`의 B섹션(주간 마케팅 실행·성과 관리)에 `목표 | 목표 KPI | 목표 수치 | 실제 성과 | 달성률 | 직전 주 대비 변화 | 성과 분석 | 잘된 점 | 개선 필요사항` 컬럼이 그대로 있다. `02_촬영·기획팀` 헤더에도 `이번 주 핵심 목표: [목표 입력]`이 있다.
+
+`tasks`와 별도 테이블인 이유: **업무가 아니라 성과 지표다.** 진행 상태·마감·담당자 축이 아니라 목표값 대 실적값 축으로 움직인다. `tasks`에 억지로 넣으면 `extras`가 비대해지고 집계가 꼬인다.
 
 **`enum_options.semantic`이 설계의 급소.** 판정 로직이 한글 상태 문자열을 직접 알면 시트에서 이름이 바뀔 때 코드가 깨진다. 매핑층을 둔다:
 
@@ -401,22 +442,24 @@ src/
 │   ├── extract/page.tsx              # 독스 → 배정표
 │   └── api/  uploads/sheet · uploads/[id]/commit · uploads/doc
 │             export/assignment · tasks · tasks/[id] · stats · alerts
-│             report/weekly · health
-├── components/   dashboard/ charts/ tasks/ upload/ ui/    # 계산 금지
+│             goals · report/weekly · health
+├── components/   dashboard/ charts/ tasks/ goals/ upload/ ui/   # 계산 금지
 ├── lib/
 │   ├── sheet/   workbook-reader · header-resolver · tab-detector
 │   │            section-splitter · cell-normalizer
 │   │            adapter-edit-team · adapter-shoot-team
-│   │            adapter-marketing-team · adapter-settings-tab · sheet-pipeline
+│   │            adapter-marketing-team · adapter-goal-metrics
+│   │            adapter-settings-tab · sheet-pipeline
 │   ├── doc/     docx-reader · markdown-reader · outline-builder
 │   │            assignment-mapper · workload-parser
 │   ├── xlsx/    assignment-writer
-│   ├── domain/  task-semantic · task-derive · progress-stats
-│   │            alert-rules · weekly-report
+│   ├── domain/  task-semantic · display-status · task-derive
+│   │            progress-stats · goal-stats · alert-rules · weekly-report
 │   ├── store/   task-repository · memory-task-store
 │   │            supabase-task-store · store-factory
 │   └── fixtures/  sample-workbook.xlsx · sample-workload.md · seed-tasks.json
-└── types/  task.ts · sheet.ts · doc.ts · api.ts
+├── supabase/migrations/   *.sql        # T3부터. 스키마 단일 소스
+└── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts
 ```
 
 **⚠ TDD 가드 함정 2개** — 파일명 규칙에 반영했다:
@@ -444,6 +487,7 @@ src/
   ↓ tab-detector        탭 이름 정규식 + 헤더 시그니처(필수 컬럼 3개 이상 일치) 이중 판별
   ↓ [설정 탭 먼저]       enum/SLA 레지스트리 확보
   ↓ section-splitter    마케팅 탭 A/B/C 분할 (빈 행 2개 이상 + "A." 헤더 패턴)
+                        A → tasks(문의)   B → goal_metrics(성과)   C → 브리핑 텍스트
   ↓ 팀별 어댑터          선언적 FIELD_MAP + STAGE_GROUPS
   ↓ zod 검증            실패는 warnings[]에 담고 값은 보존 (하드 실패 금지)
   ↓ 미리보기 반환        { 신규 N / 변경 M / 유지 K / 경고 }
@@ -504,12 +548,29 @@ STAGE_GROUPS : { key:'concept', label:'컨셉·레퍼런스', slaDays:2,
 
 ```
 toSemantic(statusRaw, registry)              → semantic
+toDisplayStatus(semantic, flags)             → 예정 | 진행 | 검토 | 완료 | 지연   ← 요구 2번
 deriveTaskFlags(task, ctx)                   → { isOverdue, isDueSoon, dday, isStale, hasNoOwner }
 summarizeTeam(tasks, ctx)                    → { total, active, done, overdue, completionRate, delayRate, ... }
 buildKpiStrip(tasks, ctx)                    → KPI 10종
 collectAlerts(tasks, stages, ctx)            → Alert[]
-buildWeeklyReport(tasks, events, ctx)        → 마크다운
+summarizeGoals(metrics, ctx)                 → 팀별 목표 대비 달성률          ← 요구 4번
+buildWeeklyReport(tasks, metrics, events, ctx) → 마크다운
 ```
+
+**`toDisplayStatus`가 요구 2번("예정·진행·검토·완료·지연 5색 구분")의 실체다.** 시트의 진행 상태는 10단계인데 화면은 5색이므로 매핑층이 하나 더 필요하다:
+
+```
+planned                        → 예정
+in_progress · rework           → 진행
+review · approval              → 검토
+done · pending_release         → 완료
+(semantic 무관) isOverdue      → 지연     ← 파생 판정이 다른 색을 덮어쓴다
+hold · cancelled               → 무채색 (5색에 속하지 않음)
+```
+
+**「지연」은 상태값이 아니라 파생이므로 최우선 적용**된다. 진행 중이면서 마감이 지난 업무는 "진행"이 아니라 "지연"으로 보여야 한다.
+
+**`summarizeGoals`가 요구 4번의 계산부다.** 시트의 `달성률`을 그대로 쓰지 않고 `actual/target`으로 재계산한 뒤, 시트 값과 다르면 `warnings`에 남긴다 — 시트 수식이 깨져 있을 수 있고 이 불일치가 파서 정확성의 실측 지표가 된다.
 
 판정 규칙 중 **틀리기 쉬운 것들** — 테스트를 명시적으로 쓴다:
 
@@ -527,6 +588,7 @@ buildWeeklyReport(tasks, events, ctx)        → 마크다운
 ```
 KPI 스트립 (10 타일)      ← 시트 KPI 행
 팀별 요약 테이블 + 도넛/바  ← 시트 팀별 요약표
+목표 대비 성과 섹션        ← goal_metrics. 목표 수치 대 실제 성과 + 달성률 (요구 4번)
 이번 주 확인 필요 업무      ← 시트 동명 섹션 (D-DAY, 다음 조치 포함)
 이번 주 마감 일정 · 승인 대기함
 알림 패널                 ← 마감 임박 / 장기 미갱신 / 담당자 미지정
@@ -538,7 +600,7 @@ KPI 스트립 (10 타일)      ← 시트 KPI 행
 
 **시각화** — Chart.js(도넛=팀별 상태 분포, 가로 바=팀별 완료율). Overdue는 행 좌측 3px 붉은 보더 + 배지. `docs/UI_GUIDE.md` 안티패턴 준수: **글로우 애니메이션·gradient-text·보라/인디고·backdrop-filter blur 금지.** 사이드 패널은 `translate-x` 200ms + Esc 닫기. 리프레시는 `router.refresh()` + `isPending` 스켈레톤 + "마지막 갱신 HH:mm".
 
-### 8. 권한 (9월, T8)
+### 8. 권한 — 초안 범위 (T8)
 
 `profiles.role`: `admin`(대표·실장) / `lead`(팀장) / `member`(부원). RLS 정책 5개 남짓.
 
@@ -549,7 +611,7 @@ KPI 스트립 (10 타일)      ← 시트 KPI 행
 ### 9. 시연 리스크 완화
 
 1. **`TaskRepository` 인터페이스 + 구현 2개**(memory/supabase)가 **같은 계약 테스트**를 통과. `src/lib/store/`라 TDD 가드가 강제한다.
-2. **자동 폴백** — Supabase 연결 실패 시 memory 전환 + 상단 "데모 데이터 모드" 배너. 발표 중 조용히 실패하지 않는다.
+2. **자동 폴백 (읽기 전용)** — Supabase 연결 실패 시 memory 전환 + "읽기 전용 — 저장소 연결 실패" 배너. 쓰기는 `503`. 의도된 데모 모드와 문구를 구분한다 (A2).
 3. **실동작 시드** — `seed-tasks.json`은 실제 시트를 **파서로 돌려 만든** 익명화 결과물. 가짜 UI가 아니라 파싱 로직이 실제로 돈다.
 4. **`STORAGE_DRIVER=memory npm run dev`로 키 없이 즉시 실행** + `.env.example`. 심사자가 클론해서 바로 돌릴 수 있는지가 평가에 직결된다.
 5. **Vercel 배포 URL을 초안 마감 전 확보** — 로컬이 죽어도 URL, URL이 죽어도 로컬.
@@ -578,7 +640,7 @@ KPI 스트립 (10 타일)      ← 시트 KPI 행
 
 #### 🔴 A1. 집계를 SQL로 할지 앱에서 할지가 모순돼 있다
 
-6장은 `summarizeTeam(tasks[], ctx)`를 **순수 함수**로 두는데, 예시 이슈 BE4는 "집계 쿼리 로직"이고 Supabase 선택지 설명에도 "집계 SQL"이 있었다. T7에서 SQL 집계를 짜면 **메모리 구현과 결과가 갈라지고 "같은 계약 테스트 통과"가 깨진다.**
+6장은 `summarizeTeam(tasks[], ctx)`를 **순수 함수**로 두는데, 예시 이슈 BE4는 "집계 쿼리 로직"이고 Supabase 선택지 설명에도 "집계 SQL"이 있었다. T3에서 SQL 집계를 짜면 **메모리 구현과 결과가 갈라지고 "같은 계약 테스트 통과"가 깨진다.**
 
 **확정**: 집계는 **전부 `src/lib/domain/`의 JS 순수 함수**로 한다. 리포지토리는 CRUD와 필터링된 조회만 담당한다.
 
@@ -666,7 +728,7 @@ Next.js 공식 문서 확인 결과: **Route Handler는 프레임워크 차원�
 
 ### 검증 결론
 
-**스택 셋업은 문제없고, 아키텍처의 뼈대(계층 분리·리포지토리 추상화·어댑터 격리)도 방향이 맞다.** 다만 **인터페이스 경계 3곳이 모호했다** — 집계의 소재지(A1), 폴백의 쓰기 정책(A2), 서버/클라이언트 데이터 경로(A3). 셋 다 지금 못박지 않으면 T7·T8에서 되돌리기 비싼 결정이 된다. 위에서 확정했다.
+**스택 셋업은 문제없고, 아키텍처의 뼈대(계층 분리·리포지토리 추상화·어댑터 격리)도 방향이 맞다.** 다만 **인터페이스 경계 3곳이 모호했다** — 집계의 소재지(A1), 폴백의 쓰기 정책(A2), 서버/클라이언트 데이터 경로(A3). 셋 다 지금 못박지 않으면 T3·T8에서 되돌리기 비싼 결정이 된다. 위에서 확정했다.
 
 나머지 5건은 착수 전 설정으로 해소되며 대부분 T0에 흡수된다.
 
@@ -857,37 +919,48 @@ E1은 **실제 데이터에서 확인된 버그**다. 이걸 모르고 T2를 짰
 
 ## 티켓 / GitHub 이슈 리스트업
 
-노션 스프린트 매니저 + GitHub 이슈에 1:1로 등록할 목록. **초안 구간 7개(T0~T6) + 후속 3개(T7~T9) = 10개.** 학회 기준(1인 최소 5개, 마감 3일 주기) 충족. 예상시간에 XL이 없어 쪼갤 필요 없다.
+노션 스프린트 매니저 + GitHub 이슈에 1:1로 등록할 목록. **총 10개.** 학회 기준(1인 최소 5개) 충족.
 
 `docs/TEAM_RULES.md` 3.3 템플릿(목적 / 범위 In·Out / 산출물 / 완료 기준 / 리스크·미결)을 따른다.
 
-### 초안 구간 (~8/31)
+날짜는 넣지 않는다 — **의존 관계만 확정하고 실제 일정 배분은 사용자가 정한다.** 아래 순서는 의존 관계상 지켜야 하는 순서다.
 
-| # | 티켓 | 마감 | 예상 | 선행 | 브랜치 |
+### 의존 그래프
+
+```
+T0 ── T1 ─┬─ T6                          (독스→엑셀, 독립)
+          │
+          └─ T2 ── T3 ── T4 ── T5 ── T8   (엑셀→조회 본류)
+                                    │
+                          T9 ───────┘     (배포·문서)
+                          T10              (알림 발송, 여유 시)
+```
+
+| # | 티켓 | 예상 | 선행 | 브랜치 | 충족 요구 |
 |---|---|---|---|---|---|
-| T0 | 저장소 위생 정리 및 테스트 게이트 복구 | 8/14 | XS | — | `chore/#1` |
-| T1 | 엑셀 파싱 코어 I — 병합셀·2단 헤더·탭 판별·설정 탭 | 8/17 | L | T0 | `feat/#2` |
-| T6 | 독스 → 업무 배정표 xlsx 추출 | 8/20 | L | T1 | `feat/#3` |
-| T2 | 엑셀 파싱 코어 II — 팀 어댑터 3종 + stage 언피벗 | 8/23 | L | T1 | `feat/#4` |
-| T3 | 도메인 판정 로직 + 메모리 저장소 + 시드 | 8/26 | L | T2 | `feat/#5` |
-| T4 | API 라우트 + 업로드 화면 + 파싱 미리보기 | 8/28 | M | T3 | `feat/#6` |
-| T5 | 통합 대시보드 + 부서별 탭 + 차트 + 조회 UX | 8/31 | L | T4 | `feat/#7` |
+| T0 | 저장소 위생 정리 및 테스트 게이트 복구 | XS | — | `chore/#N` | — |
+| T1 | 엑셀 파싱 코어 I — 병합셀·2단 헤더·탭 판별·설정 탭 | L | T0 | `feat/#N` | — |
+| T6 | 독스 → 업무 배정표 xlsx 추출 | L | T1 | `feat/#N` | **담당자 지시 ②** |
+| T2 | 엑셀 파싱 코어 II — 팀 어댑터 3종 + stage 언피벗 + **목표 지표** | L | T1 | `feat/#N` | 1, **4** |
+| T3 | **Supabase 스키마 + 스토어** + 도메인 판정 로직 | L | T2 | `feat/#N` | 1, 5, 7 |
+| T4 | API 라우트 + 업로드 화면 + 파싱 미리보기 | M | T3 | `feat/#N` | **담당자 지시 ①** |
+| T5 | 통합 대시보드 + 부서별 탭 + 차트 + 조회 UX + **목표 대비 성과** | L | T4 | `feat/#N` | 2, 3, **4**, 5 |
+| T8 | 인증 + RLS + 권한별 UI 게이팅 | L | T5 | `feat/#N` | **6** |
+| T9 | 배포 + README + 주간 보고 전용 화면 | M | T5, T6 | `feat/#N` | 5 |
+| T10 | 알림 발송 (디스코드 웹훅) — **여유 있을 때만** | S | T5 | `feat/#N` | 3 보강 |
 
-**T6을 T2 앞에 배치한 이유**: 독스 파이프라인은 T1 직후 완전히 독립적이고, **T1+T6만으로 "독스 넣으면 배정표 나온다"는 데모가 성립**한다. 성과물을 조기 확보해 일정 리스크를 줄인다.
+**바뀐 점 두 가지**
 
-### 후속 (9월)
+1. **T7(Supabase 이관)이 사라졌다.** 메모리로 만들었다가 옮기는 게 아니라 T3에서 바로 Supabase를 붙이므로 이관 단계 자체가 없다.
+2. **T8(인증·RLS)이 초안 범위로 들어왔다.** 과제 요구 6번(권한별 열람·수정)이 초안에 포함된다.
 
-| # | 티켓 | 예상 | 선행 | 브랜치 |
-|---|---|---|---|---|
-| T7 | Supabase 이관 — 마이그레이션 + 스토어 구현 | L | T3 | `feat/#8` |
-| T8 | 인증 + RLS + 권한별 UI 게이팅 | L | T7 | `feat/#9` |
+**T6을 T2 앞에 둔 이유**: 독스 파이프라인은 T1 직후 완전히 독립적이라, **T1+T6만으로 "독스 넣으면 배정표 나온다"는 데모가 성립**한다. 본류가 막혀도 보여줄 게 남는다.
 
-**T7·T8의 보안 필수 항목** (초안 이후지만 지금 못박는다)
+**T8의 보안 필수 항목**
 - `security definer` 함수(`my_role()`·`my_team()`)에 **`set search_path = ''`** 고정 + 스키마 명시 (S5)
 - **`?as=` 역할 전환이 프로덕션 빌드 + Supabase 연결 상태에서 무시되는지** 검증. 남아 있으면 완전한 인증 우회다 (S4)
 - `service_role` 키는 서버 쓰기 경로에만. 조회는 사용자 JWT로 해서 RLS가 실제로 걸리게 (A3)
 - PATCH 권한은 **서버에서 검증**한다. UI 숨김은 방어가 아니다
-| T9 | 배포 + README + 주간 보고 화면 | M | T5, T6 | `feat/#10` |
 
 ---
 
@@ -942,7 +1015,7 @@ E1은 **실제 데이터에서 확인된 버그**다. 이걸 모르고 T2를 짰
 
 #### T2 · 엑셀 파싱 코어 II — 팀 어댑터 3종 + stage 언피벗
 - **목적**: 16/70/20 컬럼을 공통 Task 모델로 정규화한다. **이 프로젝트 최대 리스크 구간.**
-- **범위 In**: `adapter-edit-team` / `adapter-shoot-team` / `adapter-marketing-team` / `section-splitter` / 공용 stage 언피벗 함수 / `sheet-pipeline`
+- **범위 In**: `adapter-edit-team` / `adapter-shoot-team` / `adapter-marketing-team` / `adapter-goal-metrics` / `section-splitter` / 공용 stage 언피벗 함수 / `sheet-pipeline`
 - **범위 Out**: 저장, API, 화면
 - **산출물**: `src/lib/sheet/` 어댑터 3종 + 파이프라인 + 테스트
 - **완료 기준**:
@@ -950,29 +1023,35 @@ E1은 **실제 데이터에서 확인된 버그**다. 이걸 모르고 T2를 짰
   2. **촬영팀 유령 행 25건이 태스크로 생성되지 않는다** — 행 판정은 신원 컬럼(업무명·담당자)으로만 (E1, **최우선**)
   3. 매핑되지 않은 컬럼이 **누락 없이** `extras`에 보존된다 (촬영팀 컬럼 수 검증)
   4. 편집팀 3개 컬럼 그룹이 `task_stages` 3행으로 언피벗된다
-  5. 마케팅 탭의 A/B/C 섹션이 올바르게 분할된다
-  6. **`source_key` 중복이 "중복 키 N건" 경고로 검출된다** — 조용히 덮어쓰지 않는다 (E5)
-  7. zod 검증 실패가 하드 실패가 아니라 `warnings[]`로 수집된다
-  8. **숨김 행은 건너뛴다** (E6)
+  5. 마케팅 탭의 A/B/C 섹션이 올바르게 분할되고 **A→tasks, B→goal_metrics, C→브리핑 텍스트**로 각각 흘러간다
+  6. **B섹션에서 `목표 | 목표 KPI | 목표 수치 | 실제 성과 | 달성률 | 직전 주 대비 변화`가 `goal_metrics`로 추출된다** (요구 4번)
+  7. **촬영·기획팀 헤더의 `이번 주 핵심 목표`가 `team_period_goals`로 추출된다**
+  8. **`source_key` 중복이 "중복 키 N건" 경고로 검출된다** — 조용히 덮어쓰지 않는다 (E5)
+  9. zod 검증 실패가 하드 실패가 아니라 `warnings[]`로 수집된다
+  10. **숨김 행은 건너뛴다** (E6)
 - **리스크·미결**: 70컬럼. **완화 — 촬영팀은 1차에 "공통 필드 + extras 전량 보존"만 하고 stage 언피벗은 편집팀만 먼저 한다.** 어댑터가 선언적 맵이라 나중에 `STAGE_GROUPS` 상수만 채우면 된다.
 
-#### T3 · 도메인 판정 로직 + 메모리 저장소 + 시드
-- **목적**: 완료율·지연·알림 판정을 순수 함수로 확정하고, 키 없이 실행되는 안전망을 만든다.
-- **범위 In**: `task-semantic` / `task-derive` / `progress-stats` / `alert-rules` / `weekly-report` / `task-repository` 인터페이스 + 계약 테스트 / `memory-task-store` / `store-factory` / `seed-tasks.json`
-- **범위 Out**: Supabase 구현, 화면
-- **산출물**: `src/lib/domain/` 5개 + `src/lib/store/` 4개 + 시드
+#### T3 · Supabase 스키마 + 스토어 + 도메인 판정 로직
+- **목적**: **Supabase를 처음부터 붙이고**, 완료율·지연·알림·목표 판정을 순수 함수로 확정한다. 이관 단계가 없으므로 여기서 저장소가 완성된다.
+- **범위 In**: `supabase/migrations/*.sql` (전체 스키마) / `supabase-task-store` / `memory-task-store` / `task-repository` 인터페이스 + 계약 테스트 / `store-factory`(읽기 전용 폴백) / `task-semantic` / `display-status` / `task-derive` / `progress-stats` / `goal-stats` / `alert-rules` / `weekly-report` / `seed-tasks.json`
+- **범위 Out**: 인증·RLS(T8), 화면
+- **산출물**: `supabase/migrations/` + `src/lib/store/` 4개 + `src/lib/domain/` 7개 + 시드
 - **완료 기준**:
-  1. 모든 도메인 함수가 `now`를 인자로 받아 날짜 고정 테스트가 통과한다
-  2. 완료율 모수에서 `cancelled`가 제외된다
-  3. `progress`가 null인 행이 평균 진행률에서 제외된다
-  4. 알림 4종이 산출된다 — 마감 임박 / 장기 미갱신 / 담당자 미지정 / **기한 미설정**
-  5. `STORAGE_DRIVER=memory`로 시드 데이터가 로드된다
-  6. 계약 테스트가 메모리 구현에서 통과한다 (나중에 supabase 구현이 같은 테스트를 통과해야 함)
+  1. 마이그레이션 SQL로 전체 스키마가 생성된다 (`tasks`·`task_stages`·`task_events`·`goal_metrics`·`team_period_goals`·`enum_options`·`sla_rules`·`uploads`·`doc_extractions`·`members`·`teams`·`departments`)
+  2. 모든 도메인 함수가 `now`를 인자로 받아 날짜 고정 테스트가 통과한다
+  3. 완료율 모수에서 `cancelled`가 제외된다
+  4. `progress`가 null인 행이 평균 진행률에서 제외된다
+  5. **`toDisplayStatus`가 10단계 semantic을 5색(예정·진행·검토·완료·지연)으로 매핑하고, `isOverdue`가 다른 색을 덮어쓴다** (요구 2번)
+  6. 알림 4종이 산출된다 — 마감 임박 / 장기 미갱신 / 담당자 미지정 / **기한 미설정**
+  7. **`summarizeGoals`가 목표 대비 달성률을 `actual/target`으로 재계산하고, 시트의 `달성률`과 다르면 warning을 남긴다** (요구 4번)
+  8. **계약 테스트를 supabase·memory 두 구현이 모두 통과한다**
+  9. `STORAGE_DRIVER=memory`로 키 없이 시드 데이터가 로드된다
 - **리스크·미결**: `last_progress_at` 갱신 조건. 같은 파일 재업로드로 갱신되면 장기 미갱신 판정이 무의미해지므로 `task_events`의 실제 변경 감지에 연동한다.
 - **인터페이스 경계 (A1·A2 확정)**: `TaskRepository`는 **저장·조회만** 한다. 집계·판정은 전부 `lib/domain/`의 JS 순수 함수이며 **SQL 집계를 쓰지 않는다** — 두 구현의 결과 일치가 성능보다 중요하다.
   ```
   listTasks(filter) → Task[]        upsertTasks(tasks) → { created, updated, unchanged }
   getTask(id) → Task | null         listStages(taskIds) → Stage[]
+  listGoalMetrics(filter) → GoalMetric[]              upsertGoalMetrics(metrics)
   recordEvents(events)              getLastSyncedAt() → timestamp
   ```
   폴백은 **읽기 전용**이다. 폴백 중 쓰기는 `503`을 반환하고, 배너는 "읽기 전용 — 저장소 연결 실패"로 의도된 데모 모드(`STORAGE_DRIVER=memory`)와 문구를 구분한다.
@@ -1001,12 +1080,13 @@ E1은 **실제 데이터에서 확인된 버그**다. 이걸 모르고 T2를 짰
 
 #### T5 · 통합 대시보드 + 부서별 탭 + 차트 + 조회 UX
 - **목적**: 담당자 지시 ①의 "빠르게 조회·파악"을 완성한다. **세 역할(admin·lead·member)의 여정이 모두 여기서 끝난다. 초안 마감의 마지막 티켓.**
-- **범위 In**: `/` 통합 대시보드(시트 `00_통합 대시보드` 1:1 대응) / `/teams/[teamSlug]` / Chart.js 도넛·바 / Overdue 조건부 강조 / 사이드 패널 / 필터·정렬·검색(URL 쿼리 유지) / 리프레시 + 로딩 / **"마지막 반영" 상시 표시** / **`?as=` 역할 전환** / **주간 브리핑 카드**
-- **범위 Out**: 인증(T8), 주간 보고 전용 화면(T9)
+- **범위 In**: `/` 통합 대시보드(시트 `00_통합 대시보드` 1:1 대응) / `/teams/[teamSlug]` / Chart.js 도넛·바 / **5색 상태 구분** / Overdue 조건부 강조 / **목표 대비 성과 섹션** / 알림 패널 4종 / 사이드 패널 / 필터·정렬·검색(URL 쿼리 유지) / 리프레시 + 로딩 / **"마지막 반영" 상시 표시** / **`?as=` 역할 전환** / **주간 브리핑 카드**
+- **범위 Out**: 인증(T8), 주간 보고 전용 화면(T9), 알림 발송(T10)
 - **산출물**: `src/app/page.tsx`, `src/app/teams/[teamSlug]/page.tsx`, `src/components/dashboard|charts|tasks/`
 - **완료 기준**:
   1. 시트 KPI 10종이 모두 화면에 대응 표시된다 (UC-07)
-  2. Overdue 행이 붉은 좌측 보더 + 배지로 구분되고, 알림 패널에 4종이 뜬다 (UC-12·13)
+  2. **모든 태스크가 예정·진행·검토·완료·지연 5색으로 구분되고**, Overdue 행은 붉은 좌측 보더 + 배지. 알림 패널에 4종이 뜬다 (요구 2·3번, UC-12·13)
+  2-1. **목표 대비 성과 섹션에 팀별 `목표 수치 → 실제 성과 → 달성률`과 직전 주 대비 변화가 표시된다** (요구 4번, UC-10)
   3. 태스크 클릭 시 우측 패널이 슬라이딩하고 Esc·오버레이로 닫힌다. **`extras` 전량 + stage 타임라인이 보인다** (UC-15)
   4. 필터 상태가 URL에 유지되어 **링크 복사 → 다른 탭에서 동일 화면 재현**된다 (UC-11)
   5. **`?owner=` 프리셋과 `?task=` 딥링크가 동작한다** (UC-14)
@@ -1046,7 +1126,7 @@ E1은 **실제 데이터에서 확인된 버그**다. 이걸 모르고 T2를 짰
 *대표·실장 여정 (UC-07~10)*
 8. `?as=admin`으로 `/` 진입 → 스크롤 없이 KPI 10종 확인. 값이 시트 `00_통합 대시보드`와 대조 일치
 9. 주간 브리핑 카드 → 마크다운 복사 → 텍스트 편집기에 붙여넣어 형식 확인 (UC-08)
-10. 팀별 바 차트에서 완료율·지연율이 나란히 비교됨 (UC-10)
+10. 목표 대비 성과 섹션에서 팀별 `목표 수치 → 실제 성과 → 달성률`이 비교됨 (UC-10, 요구 4번)
 
 *팀장 여정 (UC-11~13)*
 11. `?as=lead`로 `/teams/편집팀` 진입 → `지연만` 필터 → URL 복사 → 새 탭에서 동일 화면 재현 (UC-11)
