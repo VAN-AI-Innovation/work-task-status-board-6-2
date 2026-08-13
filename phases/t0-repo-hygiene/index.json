@@ -1,0 +1,36 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t0-repo-hygiene",
+  "steps": [
+    {
+      "step": 0,
+      "name": "repo-cleanup",
+      "commit": "chore: 데모 잔재 삭제 및 .gitignore 보강",
+      "status": "pending"
+    },
+    {
+      "step": 1,
+      "name": "test-gate",
+      "commit": "test: vitest @/ 별칭 설정과 env-guard 단위 테스트 추가",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "deps-pinning",
+      "commit": "chore: 파싱·차트 의존성 설치 및 exceljs 버전 고정",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "secret-guard",
+      "commit": "feat: service_role 키 노출을 빌드 실패로 막는 가드 연결",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "ci-workflow",
+      "commit": "chore: GitHub Actions 워크플로우를 lint·build·test로 교체",
+      "status": "pending"
+    }
+  ]
+}
