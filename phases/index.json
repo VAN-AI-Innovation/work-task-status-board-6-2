@@ -2,7 +2,8 @@
   "phases": [
     {
       "dir": "t0-repo-hygiene",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-08-13T21:07:02+0900"
     }
   ]
 }
