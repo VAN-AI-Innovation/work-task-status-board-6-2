@@ -42,7 +42,10 @@
       "step": 4,
       "name": "ci-workflow",
       "commit": "chore: GitHub Actions 워크플로우를 lint·build·test로 교체",
-      "status": "pending"
+      "status": "completed",
+      "summary": "proof-html.yml(검사 대상 index.html이 step 0에서 삭제돼 깨진 상태)·auto-assign.yml(무관한 조직 계정 하드코딩) 삭제, ci.yml 신설(push·pull_request 트리거, checkout@v4·setup-node@v4 Node 24 + npm 캐시, npm ci 후 로컬과 동일한 lint→build→test 순차 실행), README의 GitHub Actions 절을 현재 상태로 갱신",
+      "started_at": "2026-08-13T21:05:28+0900",
+      "completed_at": "2026-08-13T21:07:02+0900"
     }
   ],
   "created_at": "2026-08-13T20:56:32+0900"
