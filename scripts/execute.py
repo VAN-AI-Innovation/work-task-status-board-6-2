@@ -68,13 +68,12 @@ class StepExecutor:
     CHORE_MSG = "chore({phase}): step {num} output"
     TZ = timezone(timedelta(hours=9))
 
-    def __init__(self, phase_dir_name: str, *, auto_push: bool = False):
+    def __init__(self, phase_dir_name: str):
         self._root = str(ROOT)
         self._phases_dir = ROOT / "phases"
         self._phase_dir = self._phases_dir / phase_dir_name
         self._phase_dir_name = phase_dir_name
         self._top_index_file = self._phases_dir / "index.json"
-        self._auto_push = auto_push
 
         if not self._phase_dir.is_dir():
             print(f"ERROR: {self._phase_dir} not found")
@@ -93,7 +92,7 @@ class StepExecutor:
     def run(self):
         self._print_header()
         self._check_blockers()
-        self._checkout_branch()
+        self._assert_not_main()
         guardrails = self._load_guardrails()
         self._ensure_created_at()
         self._execute_all_steps(guardrails)
@@ -120,25 +119,22 @@ class StepExecutor:
         cmd = ["git"] + list(args)
         return subprocess.run(cmd, cwd=self._root, capture_output=True, text=True)
 
-    def _checkout_branch(self):
-        branch = f"feat-{self._phase_name}"
+    def _assert_not_main(self):
+        """현재 브랜치가 main/master가 아닌지만 확인한다.
 
+        브랜치 생성·전환은 하지 않는다. 팀 규칙의 브랜치명은 `type/#이슈번호`
+        (docs/TEAM_RULES.md 2.1)라서 phase 이름으로 추론할 수 없다.
+        """
         r = self._run_git("rev-parse", "--abbrev-ref", "HEAD")
         if r.returncode != 0:
             print(f"  ERROR: git을 사용할 수 없거나 git repo가 아닙니다.")
             print(f"  {r.stderr.strip()}")
             sys.exit(1)
 
-        if r.stdout.strip() == branch:
-            return
-
-        r = self._run_git("rev-parse", "--verify", branch)
-        r = self._run_git("checkout", branch) if r.returncode == 0 else self._run_git("checkout", "-b", branch)
-
-        if r.returncode != 0:
-            print(f"  ERROR: 브랜치 '{branch}' checkout 실패.")
-            print(f"  {r.stderr.strip()}")
-            print(f"  Hint: 변경사항을 stash하거나 commit한 후 다시 시도하세요.")
+        branch = r.stdout.strip()
+        if branch in ("main", "master"):
+            print(f"  ERROR: '{branch}'에서는 실행할 수 없습니다. 하네스는 커밋을 만듭니다.")
+            print(f"  Hint: 이슈 번호로 브랜치를 먼저 만드세요 — git checkout -b 'chore/#3'")
             sys.exit(1)
 
         print(f"  Branch: {branch}")
@@ -283,8 +279,6 @@ class StepExecutor:
         print(f"\n{'='*60}")
         print(f"  Harness Step Executor")
         print(f"  Phase: {self._phase_name} | Steps: {self._total}")
-        if self._auto_push:
-            print(f"  Auto-push: enabled")
         print(f"{'='*60}")
 
     def _check_blockers(self):
@@ -412,14 +406,6 @@ class StepExecutor:
             if r.returncode == 0:
                 print(f"  ✓ {msg}")
 
-        if self._auto_push:
-            branch = f"feat-{self._phase_name}"
-            r = self._run_git("push", "-u", "origin", branch)
-            if r.returncode != 0:
-                print(f"\n  ERROR: git push 실패: {r.stderr.strip()}")
-                sys.exit(1)
-            print(f"  ✓ Pushed to origin/{branch}")
-
         print(f"\n{'='*60}")
         print(f"  Phase '{self._phase_name}' completed!")
         print(f"{'='*60}")
@@ -428,10 +414,9 @@ class StepExecutor:
 def main():
     parser = argparse.ArgumentParser(description="Harness Step Executor")
     parser.add_argument("phase_dir", help="Phase directory name (e.g. 0-mvp)")
-    parser.add_argument("--push", action="store_true", help="Push branch after completion")
     args = parser.parse_args()
 
-    StepExecutor(args.phase_dir, auto_push=args.push).run()
+    StepExecutor(args.phase_dir).run()
 
 
 if __name__ == "__main__":

@@ -323,59 +323,54 @@ class TestUpdateTopIndex:
 
 
 # ---------------------------------------------------------------------------
-# _checkout_branch (mocked)
+# _assert_not_main (mocked)
+#
+# 하네스는 브랜치를 만들지 않는다. 브랜치명은 팀 규칙상 `type/#이슈번호`라서
+# phase 이름으로 추론할 수 없다 (TEAM_RULES.md 2.1). 사람이 먼저 브랜치를
+# 만들고, 하네스는 main/master 위에서 도는 것만 막는다.
 # ---------------------------------------------------------------------------
 
-class TestCheckoutBranch:
-    def _mock_git(self, executor, responses):
-        call_idx = {"i": 0}
+class TestAssertNotMain:
+    def _mock_git(self, executor, response):
+        calls = []
         def fake_git(*args):
-            idx = call_idx["i"]
-            call_idx["i"] += 1
-            if idx < len(responses):
-                return responses[idx]
-            return MagicMock(returncode=0, stdout="", stderr="")
+            calls.append(args)
+            return response
         executor._run_git = fake_git
+        return calls
 
-    def test_already_on_branch(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=0, stdout="feat-mvp\n", stderr=""),
-        ])
-        executor._checkout_branch()  # should return without checkout
+    def test_feature_branch_passes(self, executor):
+        calls = self._mock_git(executor, MagicMock(returncode=0, stdout="chore/#3\n", stderr=""))
+        executor._assert_not_main()
+        assert calls == [("rev-parse", "--abbrev-ref", "HEAD")]
 
-    def test_branch_exists_checkout(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=0, stdout="main\n", stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),
-        ])
-        executor._checkout_branch()
+    def test_does_not_checkout(self, executor):
+        """브랜치를 생성하거나 갈아타지 않는다."""
+        calls = self._mock_git(executor, MagicMock(returncode=0, stdout="feat/#12\n", stderr=""))
+        executor._assert_not_main()
+        assert not any("checkout" in c for c in calls)
 
-    def test_branch_not_exists_create(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=0, stdout="main\n", stderr=""),
-            MagicMock(returncode=1, stdout="", stderr="not found"),
-            MagicMock(returncode=0, stdout="", stderr=""),
-        ])
-        executor._checkout_branch()
-
-    def test_checkout_fails_exits(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=0, stdout="main\n", stderr=""),
-            MagicMock(returncode=1, stdout="", stderr=""),
-            MagicMock(returncode=1, stdout="", stderr="dirty tree"),
-        ])
+    def test_main_exits(self, executor):
+        self._mock_git(executor, MagicMock(returncode=0, stdout="main\n", stderr=""))
         with pytest.raises(SystemExit) as exc_info:
-            executor._checkout_branch()
+            executor._assert_not_main()
+        assert exc_info.value.code == 1
+
+    def test_master_exits(self, executor):
+        self._mock_git(executor, MagicMock(returncode=0, stdout="master\n", stderr=""))
+        with pytest.raises(SystemExit) as exc_info:
+            executor._assert_not_main()
         assert exc_info.value.code == 1
 
     def test_no_git_exits(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=1, stdout="", stderr="not a git repo"),
-        ])
+        self._mock_git(executor, MagicMock(returncode=1, stdout="", stderr="not a git repo"))
         with pytest.raises(SystemExit) as exc_info:
-            executor._checkout_branch()
+            executor._assert_not_main()
         assert exc_info.value.code == 1
+
+    def test_checkout_branch_is_gone(self, executor):
+        """구 API가 남아 있으면 브랜치를 갈아타는 사고가 재발한다."""
+        assert not hasattr(executor, "_checkout_branch")
 
 
 # ---------------------------------------------------------------------------
@@ -540,6 +535,14 @@ class TestMainCli:
                 with pytest.raises(SystemExit) as exc_info:
                     ex.main()
                 assert exc_info.value.code == 1
+
+    def test_push_flag_rejected(self, phase_dir, tmp_project):
+        """--push는 제거됐다. 브랜치명을 추론할 수 없어 push 대상을 알 수 없다."""
+        with patch("sys.argv", ["execute.py", "0-mvp", "--push"]):
+            with patch.object(ex, "ROOT", tmp_project):
+                with pytest.raises(SystemExit) as exc_info:
+                    ex.main()
+                assert exc_info.value.code == 2  # argparse: unrecognized argument
 
 
 # ---------------------------------------------------------------------------

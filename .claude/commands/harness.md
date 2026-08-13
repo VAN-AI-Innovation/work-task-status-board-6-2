@@ -132,13 +132,15 @@ npm test        # 테스트 통과
 ### E. 실행
 
 ```bash
-python3 scripts/execute.py {task-name}        # 순차 실행
-python3 scripts/execute.py {task-name} --push  # 실행 후 push
+git checkout -b 'chore/#3'              # 브랜치는 사람이 먼저 만든다 (type/#이슈번호)
+python3 scripts/execute.py {task-name}  # 순차 실행
 ```
+
+execute.py는 **브랜치를 만들지 않는다.** 팀 규칙의 브랜치명이 `type/#이슈번호`라서 task 이름으로
+추론할 수 없다. `main`·`master`에서 실행하면 즉시 중단한다.
 
 execute.py가 자동으로 처리하는 것:
 
-- `feat-{task-name}` 브랜치 생성/checkout
 - 가드레일 주입 — CLAUDE.md + docs/*.md 내용을 매 step 프롬프트에 포함
 - 컨텍스트 누적 — 완료된 step의 summary를 다음 step 프롬프트에 전달
 - 자가 교정 — 실패 시 최대 3회 재시도하며, 이전 에러 메시지를 프롬프트에 피드백

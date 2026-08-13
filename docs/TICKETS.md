@@ -110,8 +110,9 @@ PLAN.md가 "T1 착수 전 스모크 테스트"를 **티켓이 아닌 메모로**
 
 - 완료 기준 6·7 — `docs/` 7종과 `CLAUDE.md` CRITICAL 규칙이 이미 확정본이다
 - `.gitignore`의 `.pytest_cache/`·`__pycache__/`·`*.pyc`·`*.xlsx`·`*.docx` + 픽스처 예외
-- 하네스 정합성 — `CLAUDE.md`에 `scripts/execute.py --push` 금지가 기록됨. 하네스가 브랜치를
-  `feat-{phase}`로 만들어 팀 규칙 `feat/#번호`(`TEAM_RULES.md` 2.1)와 충돌한다
+- 하네스 정합성 — `scripts/execute.py`에서 브랜치 관리와 `--push`를 제거했다. 브랜치를
+  `feat-{phase}`로 만들어 팀 규칙 `feat/#번호`(`TEAM_RULES.md` 2.1)와 충돌했기 때문이다.
+  이제 사람이 `type/#번호` 브랜치를 만든 뒤 실행하며, `main`에서 실행하면 중단된다
 
 **리스크·미결**
 

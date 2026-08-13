@@ -63,8 +63,10 @@ Google Docs 워크로드 문서를 **업무 배정표 xlsx로 뽑는** 웹. 이 
 - 각 step은 지시된 작업만 수행하고, 요청되지 않은 기능/파일을 만들지 말 것.
 - AC(Acceptance Criteria)를 직접 실행해 검증한 뒤 `phases/<phase>/index.json`의 step status를 갱신할 것.
 - 사용자 개입(API 키, 인증, 수동 설정 등)이 필요하면 즉시 `blocked` 처리하고 중단할 것.
-- `--push`를 쓰지 말 것. 브랜치를 `feat-{phase}`로 만들어 팀 규칙 `feat/#번호`
-  (`docs/TEAM_RULES.md` 2.1)와 충돌한다.
+- 하네스는 브랜치를 만들거나 push하지 않는다. 팀 규칙의 브랜치명이 `type/#이슈번호`
+  (`docs/TEAM_RULES.md` 2.1)라서 phase 이름으로 추론할 수 없기 때문이다.
+  실행 전에 `git checkout -b 'chore/#3'`처럼 직접 브랜치를 만들 것.
+  `main`·`master`에서 실행하면 하네스가 즉시 중단한다.
 
 ## 가드레일 (`.claude/settings.json`)
 - `PreToolUse[Bash]` → 위험 명령(`rm -rf`, force push, `reset --hard`, `DROP TABLE`) 차단.
