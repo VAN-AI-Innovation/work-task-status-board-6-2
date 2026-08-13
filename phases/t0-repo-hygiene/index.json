@@ -33,7 +33,10 @@
       "step": 3,
       "name": "secret-guard",
       "commit": "feat: service_role 키 노출을 빌드 실패로 막는 가드 연결",
-      "status": "pending"
+      "status": "completed",
+      "summary": "env-guard.test.ts에 저장소 스캔 케이스 추가(git ls-files + 루트 .env*, node_modules·.next·phases·가드 자신 제외), package.json에 guard:env·prebuild 연결로 npm run build가 위반 시 중단됨을 .env.guard-check 더미로 실증",
+      "started_at": "2026-08-13T21:03:08+0900",
+      "completed_at": "2026-08-13T21:05:27+0900"
     },
     {
       "step": 4,
