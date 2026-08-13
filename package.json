@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "guard:env": "vitest run src/lib/env-guard.test.ts",
+    "prebuild": "npm run guard:env",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
