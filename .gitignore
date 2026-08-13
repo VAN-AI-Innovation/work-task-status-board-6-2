@@ -1,0 +1,28 @@
+node_modules/
+.next/
+out/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# secrets / local
+.env*
+.vercel
+
+# test / build artifacts
+coverage/
+npm-debug.log*
+.pytest_cache/
+__pycache__/
+*.pyc
+
+.DS_Store
+
+# 실업무 데이터 (실명·연락처 포함) 커밋 방지. 픽스처만 예외.
+*.xlsx
+*.docx
+!src/lib/fixtures/*.xlsx
+!src/lib/fixtures/*.docx
+
+# phase execution outputs
+phases/**/phase*-output.json
+phases/**/step*-output.json
