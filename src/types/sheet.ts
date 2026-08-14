@@ -117,6 +117,35 @@ export interface TabDetection {
   matches: TabMatch[];
 }
 
+/**
+ * 설정 탭의 enum 값 하나. **시트 문자열을 원문 그대로** 싣는다 —
+ * `semantic` 코드로 바꾸는 매핑은 도메인 계층(T4)의 일이다 (ADR-009).
+ */
+export interface EnumOptionEntry {
+  /** 예: `공통_진행 상태` */
+  groupKey: string;
+  /** 예: `진행 중` */
+  value: string;
+  /** 시트에 나온 순서, 0부터. `공통_진행 상태`는 순서가 곧 진행 흐름이다 */
+  sortOrder: number;
+}
+
+/**
+ * SLA 규칙 한 줄. `stageKey`를 두지 않는다 — 시트에는 사람이 읽는 라벨뿐이고,
+ * 단계 키와 잇는 근거는 T3의 `STAGE_GROUPS`에 가서야 생긴다.
+ */
+export interface SlaRuleEntry {
+  /** 예: `촬영팀 섭외` */
+  label: string;
+  days: number;
+}
+
+export interface SettingsRegistry {
+  enums: EnumOptionEntry[];
+  slaRules: SlaRuleEntry[];
+  warnings: ParseWarning[];
+}
+
 /** 그룹·하위 헤더를 결합한 컬럼 하나 */
 export interface HeaderColumn {
   /** 0-based 컬럼 인덱스. 배열 위치가 아니라 **이 값**이 컬럼 좌표다 */
