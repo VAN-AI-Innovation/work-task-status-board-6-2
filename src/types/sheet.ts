@@ -75,3 +75,25 @@ export interface WorkbookGrid {
   sheets: SheetGrid[];
   warnings: ParseWarning[];
 }
+
+/**
+ * 헤더로 보이는 행 묶음. **후보일 뿐 확정이 아니다** — 어느 밴드가 진짜인지는
+ * 탭 판별(시그니처 매칭)이 정한다. 한 탭에 여러 개가 나오는 것이 정상이다
+ * (마케팅 탭은 A·B 섹션에 헤더가 하나씩 있다).
+ */
+export interface HeaderBand {
+  /** 0-based. 상위 그룹 행이 없으면 null */
+  groupRow: number | null;
+  /** 0-based */
+  labelRow: number;
+}
+
+/** 그룹·하위 헤더를 결합한 컬럼 하나 */
+export interface HeaderColumn {
+  /** 0-based 컬럼 인덱스. 배열 위치가 아니라 **이 값**이 컬럼 좌표다 */
+  index: number;
+  /** 예: `['컨셉·레퍼런스 (+2일)', '예정일']`. 원문을 자르지 않는다 */
+  path: string[];
+  /** `path.join(' / ')` */
+  label: string;
+}
