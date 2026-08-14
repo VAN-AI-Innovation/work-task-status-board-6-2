@@ -27,3 +27,51 @@ export type NormalizeWarning =
   | 'DATE_UNPARSABLE'
   | 'DATE_OUT_OF_RANGE'
   | 'PROGRESS_OUT_OF_RANGE';
+
+/**
+ * 워크북을 좌표 붙은 격자로 옮긴 것. 해석은 하지 않는다.
+ *
+ * **좌표 규칙 — 여기서 흔들리면 off-by-one이 파이프라인 끝까지 간다.**
+ * `cells`·`merges`·`hiddenRows`·`hiddenColumns`는 전부 **0-based**이고 `cells[0][0]`이 A1이다.
+ * 예외는 `ParseWarning`의 `row`·`column` 둘뿐이며 **1-based**다 (사람이 읽는 좌표).
+ */
+export interface SheetCell {
+  value: SheetCellValue;
+  /** `0%` 같은 엑셀 표시 서식. 없으면 null. `toProgress`가 퍼센트 판별에 쓴다 */
+  numFmt: string | null;
+}
+
+/** 병합 범위. 0-based, 양끝 포함 */
+export interface MergeRange {
+  top: number;
+  left: number;
+  bottom: number;
+  right: number;
+}
+
+export interface SheetGrid {
+  name: string;
+  /** `dimensions` 기준. 엑셀 라이브러리의 `rowCount`가 아니다 (서식만 있는 패딩 행까지 센다) */
+  rowCount: number;
+  columnCount: number;
+  /** `[row][col]`, 0-based. 빈 셀도 자리를 채우고 모든 행 길이가 `columnCount`다 */
+  cells: SheetCell[][];
+  merges: MergeRange[];
+  hiddenRows: number[];
+  hiddenColumns: number[];
+}
+
+/** 파싱 중 발생한 경고. 셀 값을 담지 않는다 — 코드와 위치만 남긴다 */
+export interface ParseWarning {
+  code: string;
+  sheet: string;
+  /** 1-based (사람이 읽는 좌표) */
+  row?: number;
+  /** 1-based (사람이 읽는 좌표) */
+  column?: number;
+}
+
+export interface WorkbookGrid {
+  sheets: SheetGrid[];
+  warnings: ParseWarning[];
+}
