@@ -1,0 +1,44 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t1-smoke-tests",
+  "steps": [
+    {
+      "step": 0,
+      "name": "smoke-input-guard",
+      "commit": "docs: 스모크 입력 파일 배치 규약과 커밋 차단 확인 문서화",
+      "status": "completed",
+      "started_at": "2026-08-14T16:20:32+0900",
+      "summary": "smoke-input/(.docx 1개·.xlsx 1개 확인)을 .gitignore에 디렉토리째 추가하고 git check-ignore로 차단 실증, scripts/smoke/README.md에 배치 규약·기록 금지 항목·import 예외를 명시, CLAUDE.md의 exceljs 규칙에 적용 범위 문구 추가",
+      "completed_at": "2026-08-14T16:22:38+0900"
+    },
+    {
+      "step": 1,
+      "name": "docx-heading-smoke",
+      "commit": "chore: mammoth heading 인식 스모크 스크립트 추가",
+      "status": "completed",
+      "started_at": "2026-08-14T16:22:38+0900",
+      "summary": "H8 판정 PASS (기본 옵션, styleMap 불필요) — 실제 워크로드 .docx에서 h2 12건(N. 접두사 9건)·h3 50건(N-M. 접두사 20건) 인식, p 강등 번호 문단 6건, mammoth 경고는 'Title' 스타일 1건뿐. scripts/smoke/docx-headings.mjs + RESULT.md 작성, T7 예상 L 유지",
+      "completed_at": "2026-08-14T16:25:34+0900"
+    },
+    {
+      "step": 2,
+      "name": "sheet-metrics-smoke",
+      "commit": "chore: 실제 시트 크기·셀 수 실측 스크립트 추가",
+      "status": "completed",
+      "started_at": "2026-08-14T16:25:34+0900",
+      "summary": "A7 PASS · S2 FAIL — 실제 시트 100,618 bytes(0.10MB, 4MB 한도의 2.4%), 워크시트 5개(00_통합 대시보드·01_편집팀·02_촬영·기획팀·03_마케팅·관리팀·99_설정), 전체 셀 값 있는 셀 2,730 / row×col 36,436. exceljs@4.4.0 열기 성공(T2 착수 가능). S2 셀 한도는 00_통합 대시보드의 rowCount×columnCount 26,026이 시트당 20,000을 넘어 정상 파일이 오탐된다 — Google Sheets가 1000행 그리드를 패딩한 탓이며 같은 시트의 dimensions(A1:J60) 기준은 600셀·최대 시트도 4,260셀로 한도 안. T5 착수 전 세는 기준(dimensions/값 있는 셀)이나 한도 숫자 상향 필요. 설정 탭 실제 이름은 '99_설정'이라 tab-detector는 부분 일치를 써야 한다. scripts/smoke/sheet-metrics.mjs + RESULT.md A7 절 작성",
+      "completed_at": "2026-08-14T16:28:38+0900"
+    },
+    {
+      "step": 3,
+      "name": "plan-reflect",
+      "commit": "docs: mammoth·시트 실측 결과를 PLAN.md H8·A7에 반영",
+      "status": "completed",
+      "started_at": "2026-08-14T16:28:38+0900",
+      "summary": "H8을 PLAN.md 「남은 가설」→「해소된 가설」로 이동(PASS, 기본 옵션·styleMap 불필요, h2 12/h3 50, N.9·N-M.20) 하고 5절 「T2 착수 전 선행 작업」 문단을 결과 문장으로 교체·「확인 필요」 1·2번을 취소선+해소 처리. A7 절에 실측(100,618 bytes=0.10MB·4MB의 2.4%, 시트 5개, 값 있는 셀 2,730/row×col 36,436, exceljs 열기 성공, 설정 탭 실명 99_설정) 추가하고 단일 업로드가 기본 경로·분할은 UC-04 예외임을 명시. S2 절에 셀 한도 FAIL 판정(00_통합 대시보드 row×col 26,026>20,000으로 정상 파일 오탐, 세 기준 비교와 (a)+(b) 대안) 기록하고 코드블록의 '행 × 열 ≤ 20,000'을 기준 미확정 표기로 바꿔 TICKETS.md T5 완료 기준 6과 함께 수정. TICKETS.md T1에 「실측 결과」 소절 추가, T7 리스크를 판정 결과로 교체 — T7 예상 L 유지(재산정 없음)이라 의존 그래프·예상 시간 표는 변경 없음. src/·ADR.md 무변경, lint/build/test 통과",
+      "completed_at": "2026-08-14T16:32:25+0900"
+    }
+  ],
+  "created_at": "2026-08-14T16:20:32+0900",
+  "completed_at": "2026-08-14T16:32:25+0900"
+}
