@@ -51,7 +51,10 @@
       "step": 5,
       "name": "adapter-settings-tab",
       "commit": "feat: 설정 탭 enum·SLA 레지스트리 어댑터 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-15T01:16:15+0900",
+      "summary": "src/lib/sheet/adapter-settings-tab.ts 신설(exceljs 미import·semantic 문자열 미포함 — AC grep 2개 통과)과 src/types/sheet.ts에 EnumOptionEntry{groupKey,value,sortOrder}·SlaRuleEntry{label,days}·SettingsRegistry{enums,slaRules,warnings} 추가. 내보낸 것: parseSettingsTab(sheet: SheetGrid, band: HeaderBand): SettingsRegistry 하나 — 탭을 스스로 찾지 않고 밴드는 detectTab의 matches에서 받는다(픽스처 밴드는 {groupRow:null,labelRow:2}). 값 수집 범위는 resolveHeaders의 컬럼들에 대해 labelRow+1부터 '밴드 컬럼 전체가 빈 행'까지 — 픽스처에서 행 index 3~12에서 멈춘다(함정: 끝까지 긁으면 index 21~28의 SLA 항목명이 '편집팀 구성원'으로 들어온다). 추출 결과: enum 그룹 26개(구성원·부서 5 + 공통_ 4 + 편집_ 4 + 촬영_ 7 + 마케팅_ 6), 공통_우선순위 4·리스크 상태 5·진행 상태 10(업무 배정→…→취소 시트 순서 그대로 sortOrder 0~9)·승인 상태 6. SLA는 두 곳에서 모아 합친다 — 밴드 안 컬럼 쌍('기본 SLA 설정_항목'/'_일수', r4~r11)과 시트 전역에서 두 라벨이 가로로 인접한 행을 찾는 스캔(r21 헤더 + r22~r29). 같은 표를 두 번 가리키는 블록은 (itemColumn,startRow)로 접고, 라벨 기준 중복은 일수가 같으면 조용히 합쳐 8건이 된다(16건 아님). 일수가 다르면 SLA_CONFLICT 경고 + 먼저 나온 값 유지, 숫자가 아니면 그 행을 버리고 SLA_DAYS_INVALID — 경고는 code·sheet·row·column(1-based)만 담고 셀 값을 담지 않는다. 하지 않은 것 3가지를 코드 주석에 명시: semantic 매핑(T4)·팀/부서 레코드 생성(T4)·미등록 값 검사(T3). T2 완료 기준 8개 대조 — 전부 충족: 1 탭 판별(tab-detector.test.ts 픽스처 6+이름 변경 3) · 2 2단 헤더 결합(header-resolver.test.ts 픽스처 통합) · 3 날짜 수렴(cell-normalizer.test.ts toDateString 12개) · 4 셀 형태 8종(unwrapCellValue 13개 + workbook-reader 실측) · 5 1900 이전 null(시리얼 0/1·Date·수식 result 3개) · 6 퍼센트 0.66→66(toProgress 7개 + 픽스처 C10 0.33→33) · 7 설정 탭 공통 enum 4종·SLA 8행(이번 step) · 8 세로 병합 값 채움(workbook-reader.test.ts A14:A15). src/lib/sheet/에 T2 범위 5개 모듈 외 파일 없음. 테스트 15개(픽스처 통합 9 — 공통 4종·10단계 순서·개수·SLA 8건과 촬영팀 섭외 5일·두 블록 중복 제거(위/아래 한쪽씩 지워도 동일 결과)·구성원에 SLA 라벨 미혼입·SLA 컬럼 enum 제외·팀 전용 그룹 26개·수식 셀 값 정규화·semantic 미매핑, 작은 격자 6 — SLA_CONFLICT·SLA_DAYS_INVALID·경고에 셀 값 없음·빈 행에서 수집 중단·빈 칸 건너뛴 sortOrder 연번). 게이트 lint·build·test 통과(총 103 테스트).",
+      "completed_at": "2026-08-15T01:22:30+0900"
     }
   ],
   "created_at": "2026-08-15T00:38:41+0900"
