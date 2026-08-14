@@ -1,0 +1,46 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t2-parsing-core",
+  "steps": [
+    {
+      "step": 0,
+      "name": "sample-workbook-fixture",
+      "commit": "chore: 익명화 샘플 워크북 픽스처와 생성 스크립트 추가",
+      "status": "completed",
+      "started_at": "2026-08-15T00:38:41+0900",
+      "summary": "scripts/fixtures/build-sample-workbook.mjs로 src/lib/fixtures/sample-workbook.xlsx 생성(--verify 22항목 자체 점검 통과, jszip 기본 날짜 고정으로 재생성 바이트 동일). 탭 5개(00_통합 대시보드 10컬럼·01_편집팀 16컬럼 A~P·02_촬영·기획팀 71컬럼 A~BS·03_마케팅·관리팀 30컬럼·99_설정 28컬럼), 모든 팀 탭에 장식 행 r1~r6(촬영팀은 r7 목표 블록)과 r8 그룹 병합 헤더·r9 하위 헤더. 02 유령 행 정확히 25건(r11~r35, 신원 4컬럼 전부 빈칸 + 1900-01-01/1899-12-31 수식 날짜·0% 진행률·false 7컬럼). 셀 형태 7종 모두 포함 — Date 33 / {formula,result} 73 / result 없는 {formula} 30 / {sharedFormula} 2(C11→C10·E11→E10) / {text,hyperlink} 9 / {richText} 1 / {error:'#REF!'} 1, 추가로 문자열 날짜 '2026.07.22'·'9/1'·'-'·엑셀 시리얼 46000·불리언. numFmt 0% 34셀·yyyy 계열 84셀. 01 r8 가로 병합 4건·A14:A15 세로 병합·숨김 행 r13 1건. 03은 C(r8)→A(r16)→B(r23) 순에 섹션 간 빈 행 2행, B섹션 3행 중 1건은 달성률(0.95)이 목표 40/실적 12와 불일치. 99_설정은 r3 그룹명 28개·r4부터 값(공통_ 4종, 공통_진행 상태 10단계), SLA 8행을 두 블록(AA/AB r4~r11, A/B r21 헤더+r22~r29)에 중복 배치. 00_통합 대시보드는 r41~r200을 값 없이 행 높이·테두리만 주어 rowCount 200 > dimensions.bottom 19 팽창 재현. CLAUDE.md의 exceljs import 예외를 scripts/smoke/ → scripts/ 로 확대(한 줄).",
+      "completed_at": "2026-08-15T00:49:38+0900"
+    },
+    {
+      "step": 1,
+      "name": "cell-normalizer",
+      "commit": "feat: 엑셀 셀 값 정규화 모듈 cell-normalizer 추가",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "workbook-reader",
+      "commit": "feat: 워크북을 시트 그리드로 읽는 workbook-reader 추가",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "header-resolver",
+      "commit": "feat: 병합 2단 헤더를 경로로 결합하는 header-resolver 추가",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "tab-detector",
+      "commit": "feat: 이름·헤더 시그니처 이중 탭 판별기 tab-detector 추가",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "adapter-settings-tab",
+      "commit": "feat: 설정 탭 enum·SLA 레지스트리 어댑터 추가",
+      "status": "pending"
+    }
+  ],
+  "created_at": "2026-08-15T00:38:41+0900"
+}
