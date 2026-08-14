@@ -15,7 +15,10 @@
       "step": 1,
       "name": "cell-normalizer",
       "commit": "feat: 엑셀 셀 값 정규화 모듈 cell-normalizer 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-15T00:49:38+0900",
+      "summary": "src/types/sheet.ts(SheetCellPrimitive·SheetCellValue·NormalizeWarning 6종)와 src/lib/sheet/cell-normalizer.ts 신설. 내보낸 것: 타입 NormalizeResult<T>={value:T|null,warning:NormalizeWarning|null}·UnwrapResult=NormalizeResult<SheetCellPrimitive>&{hyperlink:string|null}, 함수 unwrapCellValue(v)·toText(v)·toNumber(v)·toDateString(v,{baseYear})·toProgress(v,numFmt?) — 모두 첫 인자는 SheetCellValue|undefined. unwrapCellValue가 셀 형태 8종을 푼다(원시값/Date/{formula,result}(재귀)/{formula}(result 없음→FORMULA_WITHOUT_RESULT)/{sharedFormula,result?}/{text,hyperlink}(hyperlink는 원문 그대로, 스킴 검사 없음)/{richText}(조각 이어붙임)/{error}→CELL_ERROR), 미지 객체는 String() 없이 UNSUPPORTED_CELL_SHAPE. 날짜는 UTC 게터로만 포맷하고 시리얼은 기준점 1899-12-30(Date.UTC(1899,11,30)+serial*86400000). 1900 경계 판단: 티켓 문구는 '1900-01-01 이전'이지만 죽여야 할 값이 시리얼 0·1이라 경계를 포함해 iso<='1900-01-01'을 전부 DATE_OUT_OF_RANGE로 자른다(1900 윤년 버그 구간 시리얼 2~59는 실제·픽스처에 없어 미대응, 코드 주석에 명시). 빈칸·공백·'-'·'—'·불리언은 경고 없이 null(유령 행 false 잡음 방지), 문자열은 YYYY[-./]M[-./]D와 M[-./]D(baseYear 주입)만 받고 나머지·달력 부재 날짜는 DATE_UNPARSABLE. toProgress는 numFmt의 %를 숫자 값에만 적용해 ×100 후 Math.round, '66%'/'66'은 자체로 퍼센트, 빈칸=null과 0을 구분, 0~100 밖은 값 보존+PROGRESS_OUT_OF_RANGE. 문서 선반영: PLAN.md E2 표를 6가지→8가지로 넓히고 {formula}(result 없음)·{sharedFormula} 두 행 추가, TICKETS.md T2 완료 기준 4도 8가지로 갱신. 테스트 38개(cell-normalizer.test.ts, xlsx 파일을 열지 않는 순수 단위 테스트)로 완료 기준 3·4·5·6 각각 커버. 게이트 lint·build·test 통과(총 46 테스트).",
+      "completed_at": "2026-08-15T00:55:19+0900"
     },
     {
       "step": 2,
