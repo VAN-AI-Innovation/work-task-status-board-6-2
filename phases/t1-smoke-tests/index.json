@@ -1,0 +1,34 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t1-smoke-tests",
+  "steps": [
+    {
+      "step": 0,
+      "name": "smoke-input-guard",
+      "commit": "docs: 스모크 입력 파일 배치 규약과 커밋 차단 확인 문서화",
+      "status": "completed",
+      "started_at": "2026-08-14T16:20:32+0900",
+      "summary": "smoke-input/(.docx 1개·.xlsx 1개 확인)을 .gitignore에 디렉토리째 추가하고 git check-ignore로 차단 실증, scripts/smoke/README.md에 배치 규약·기록 금지 항목·import 예외를 명시, CLAUDE.md의 exceljs 규칙에 적용 범위 문구 추가",
+      "completed_at": "2026-08-14T16:22:38+0900"
+    },
+    {
+      "step": 1,
+      "name": "docx-heading-smoke",
+      "commit": "chore: mammoth heading 인식 스모크 스크립트 추가",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "sheet-metrics-smoke",
+      "commit": "chore: 실제 시트 크기·셀 수 실측 스크립트 추가",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "plan-reflect",
+      "commit": "docs: mammoth·시트 실측 결과를 PLAN.md H8·A7에 반영",
+      "status": "pending"
+    }
+  ],
+  "created_at": "2026-08-14T16:20:32+0900"
+}
