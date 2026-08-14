@@ -24,7 +24,10 @@
       "step": 2,
       "name": "workbook-reader",
       "commit": "feat: 워크북을 시트 그리드로 읽는 workbook-reader 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-15T00:55:20+0900",
+      "summary": "src/lib/sheet/workbook-reader.ts 신설 — 제품 코드에서 exceljs를 import하는 유일한 파일(AC grep 1줄 통과). 내보낸 것: readWorkbook(input: Buffer|ArrayBuffer): Promise<WorkbookGrid>, class WorkbookReadError(code='WORKBOOK_CORRUPT', 인자 없는 생성자, 고정 한국어 메시지 — 원본 에러의 jszip URL·경로를 흘리지 않는다). src/types/sheet.ts에 SheetCell·MergeRange·SheetGrid·ParseWarning·WorkbookGrid 추가. 좌표 규칙: cells·merges·hiddenRows·hiddenColumns 전부 0-based이고 cells[0][0]=A1, ParseWarning의 row·column만 1-based(타입 주석에 명시). dimensions 기준 채택 — rowCount=dimensions.bottom, columnCount=dimensions.right로 잡아 exceljs의 rowCount 팽창(픽스처 00_통합 대시보드 200 → 격자 19)을 잘라낸다. dimensions가 0인 빈 시트는 rowCount 0·cells []. 빈 셀도 {value:null,numFmt:null}로 자리를 채워 모든 행 길이를 columnCount에 맞추고(공유 객체가 아니라 매번 새 객체), cell.value는 해석 없이 그대로, numFmt는 없으면 null. worksheet.model.merges의 A1 표기를 파일 안의 columnIndex/toMergeRange로 0-based 범위 변환. 숨김 행은 hiddenRows에 싣되 격자에서 지우지 않고 경고도 남기지 않음, 숨김 열은 hiddenColumns + 열마다 HIDDEN_COLUMN 경고(픽스처에 숨김 열이 없어 이 경로는 미실행 — 경고 배열 빈 상태를 테스트로 고정). 병합 채우기 실측 결과: **불필요**. exceljs가 슬레이브 셀에도 마스터 값을 돌려준다(01_편집팀 A14:A15 두 셀 모두 '[샘플] 시리즈 E') — cell.master를 따라가는 코드를 넣지 않고 그 사실을 테스트로 고정해 완료 기준 8을 충족했다. 타입 이슈 하나: exceljs 선언이 전역 Buffer를 `interface Buffer extends ArrayBuffer {}`로 병합해 Node Buffer가 xlsx.load에 그대로 안 들어가서 호출부 한 줄만 ArrayBuffer로 캐스팅(주석 명시). 테스트 12개(workbook-reader.test.ts, 픽스처를 Buffer로 읽어 제품과 같은 진입점 사용): 시트 5개 파일 순서·02 columnCount 71과 헤더 71칸·행 길이 정렬·00 rowCount 19(<41)·세로 병합 값 동일·merges에 A14:A15와 A8:D8·hiddenRows [12]와 해당 행 셀 보존·경고 0건·numFmt 보존(C10 '%')·{formula,result}→0.33과 toProgress 33·{sharedFormula}→FORMULA_WITHOUT_RESULT·{error}→CELL_ERROR·Date 원형 유지·깨진 바이트→WorkbookReadError. 게이트 lint·build·test 통과(총 58 테스트).",
+      "completed_at": "2026-08-15T01:04:52+0900"
     },
     {
       "step": 3,
