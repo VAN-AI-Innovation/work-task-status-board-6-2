@@ -25,6 +25,9 @@ __pycache__/
 !src/lib/fixtures/*.xlsx
 !src/lib/fixtures/*.docx
 
+# 스모크 테스트 입력 (익명화 전 원본). 확장자 무관하게 디렉토리째 차단.
+smoke-input/
+
 # phase execution outputs
 phases/**/phase*-output.json
 phases/**/step*-output.json
