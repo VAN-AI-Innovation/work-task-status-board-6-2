@@ -15,7 +15,10 @@
       "step": 1,
       "name": "docx-heading-smoke",
       "commit": "chore: mammoth heading 인식 스모크 스크립트 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-14T16:22:38+0900",
+      "summary": "H8 판정 PASS (기본 옵션, styleMap 불필요) — 실제 워크로드 .docx에서 h2 12건(N. 접두사 9건)·h3 50건(N-M. 접두사 20건) 인식, p 강등 번호 문단 6건, mammoth 경고는 'Title' 스타일 1건뿐. scripts/smoke/docx-headings.mjs + RESULT.md 작성, T7 예상 L 유지",
+      "completed_at": "2026-08-14T16:25:34+0900"
     },
     {
       "step": 2,
