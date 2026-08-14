@@ -24,7 +24,10 @@
       "step": 2,
       "name": "sheet-metrics-smoke",
       "commit": "chore: 실제 시트 크기·셀 수 실측 스크립트 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-14T16:25:34+0900",
+      "summary": "A7 PASS · S2 FAIL — 실제 시트 100,618 bytes(0.10MB, 4MB 한도의 2.4%), 워크시트 5개(00_통합 대시보드·01_편집팀·02_촬영·기획팀·03_마케팅·관리팀·99_설정), 전체 셀 값 있는 셀 2,730 / row×col 36,436. exceljs@4.4.0 열기 성공(T2 착수 가능). S2 셀 한도는 00_통합 대시보드의 rowCount×columnCount 26,026이 시트당 20,000을 넘어 정상 파일이 오탐된다 — Google Sheets가 1000행 그리드를 패딩한 탓이며 같은 시트의 dimensions(A1:J60) 기준은 600셀·최대 시트도 4,260셀로 한도 안. T5 착수 전 세는 기준(dimensions/값 있는 셀)이나 한도 숫자 상향 필요. 설정 탭 실제 이름은 '99_설정'이라 tab-detector는 부분 일치를 써야 한다. scripts/smoke/sheet-metrics.mjs + RESULT.md A7 절 작성",
+      "completed_at": "2026-08-14T16:28:38+0900"
     },
     {
       "step": 3,
