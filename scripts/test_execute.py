@@ -24,12 +24,12 @@ import execute as ex
 
 @pytest.fixture
 def tmp_project(tmp_path):
-    """phases/, AGENTS.md, docs/ 를 갖춘 임시 프로젝트 구조."""
+    """phases/, CLAUDE.md, docs/ 를 갖춘 임시 프로젝트 구조."""
     phases_dir = tmp_path / "phases"
     phases_dir.mkdir()
 
-    agents_md = tmp_path / "AGENTS.md"
-    agents_md.write_text("# Rules\n- rule one\n- rule two")
+    claude_md = tmp_path / "CLAUDE.md"
+    claude_md.write_text("# Rules\n- rule one\n- rule two")
 
     docs_dir = tmp_path / "docs"
     docs_dir.mkdir()
@@ -49,9 +49,11 @@ def phase_dir(tmp_project):
         "project": "TestProject",
         "phase": "mvp",
         "steps": [
-            {"step": 0, "name": "setup", "status": "completed", "summary": "프로젝트 초기화 완료"},
-            {"step": 1, "name": "core", "status": "completed", "summary": "핵심 로직 구현"},
-            {"step": 2, "name": "ui", "status": "pending"},
+            {"step": 0, "name": "setup", "commit": "chore: 프로젝트 초기 설정",
+             "status": "completed", "summary": "프로젝트 초기화 완료"},
+            {"step": 1, "name": "core", "commit": "feat: 핵심 도메인 로직 구현",
+             "status": "completed", "summary": "핵심 로직 구현"},
+            {"step": 2, "name": "ui", "commit": "feat: 대시보드 화면 구현", "status": "pending"},
         ],
     }
     (d / "index.json").write_text(json.dumps(index, indent=2, ensure_ascii=False))
@@ -146,7 +148,7 @@ class TestJsonHelpers:
 # ---------------------------------------------------------------------------
 
 class TestLoadGuardrails:
-    def test_loads_agents_md_and_docs(self, executor, tmp_project):
+    def test_loads_claude_md_and_docs(self, executor, tmp_project):
         with patch.object(ex, "ROOT", tmp_project):
             result = executor._load_guardrails()
         assert "# Rules" in result
@@ -166,11 +168,11 @@ class TestLoadGuardrails:
         guide_pos = result.index("guide")
         assert arch_pos < guide_pos
 
-    def test_no_agents_md(self, executor, tmp_project):
-        (tmp_project / "AGENTS.md").unlink()
+    def test_no_claude_md(self, executor, tmp_project):
+        (tmp_project / "CLAUDE.md").unlink()
         with patch.object(ex, "ROOT", tmp_project):
             result = executor._load_guardrails()
-        assert "AGENTS.md" not in result
+        assert "CLAUDE.md" not in result
         assert "Architecture" in result
 
     def test_no_docs_dir(self, executor, tmp_project):
@@ -232,43 +234,46 @@ class TestBuildStepContext:
 # ---------------------------------------------------------------------------
 
 class TestBuildPreamble:
+    COMMIT = "feat: 대시보드 화면 구현"
+
     def test_includes_project_name(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert "TestProject" in result
 
     def test_includes_guardrails(self, executor):
-        result = executor._build_preamble("GUARD_CONTENT", "")
+        result = executor._build_preamble("GUARD_CONTENT", "", self.COMMIT)
         assert "GUARD_CONTENT" in result
 
     def test_includes_step_context(self, executor):
         ctx = "## 이전 Step 산출물\n\n- Step 0: done"
-        result = executor._build_preamble("", ctx)
+        result = executor._build_preamble("", ctx, self.COMMIT)
         assert "이전 Step 산출물" in result
 
-    def test_includes_commit_example(self, executor):
-        result = executor._build_preamble("", "")
-        assert "feat(mvp):" in result
+    def test_includes_step_commit_message(self, executor):
+        """세션이 임의로 메시지를 지어내지 않도록 확정된 제목을 그대로 준다."""
+        result = executor._build_preamble("", "", self.COMMIT)
+        assert self.COMMIT in result
 
     def test_includes_rules(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert "작업 규칙" in result
         assert "AC" in result
 
     def test_no_retry_section_by_default(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert "이전 시도 실패" not in result
 
     def test_retry_section_with_prev_error(self, executor):
-        result = executor._build_preamble("", "", prev_error="타입 에러 발생")
+        result = executor._build_preamble("", "", self.COMMIT, prev_error="타입 에러 발생")
         assert "이전 시도 실패" in result
         assert "타입 에러 발생" in result
 
     def test_includes_max_retries(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert str(ex.StepExecutor.MAX_RETRIES) in result
 
     def test_includes_index_path(self, executor):
-        result = executor._build_preamble("", "")
+        result = executor._build_preamble("", "", self.COMMIT)
         assert "/phases/0-mvp/index.json" in result
 
 
@@ -323,59 +328,54 @@ class TestUpdateTopIndex:
 
 
 # ---------------------------------------------------------------------------
-# _checkout_branch (mocked)
+# _assert_not_main (mocked)
+#
+# 하네스는 브랜치를 만들지 않는다. 브랜치명은 팀 규칙상 `type/#이슈번호`라서
+# phase 이름으로 추론할 수 없다 (TEAM_RULES.md 2.1). 사람이 먼저 브랜치를
+# 만들고, 하네스는 main/master 위에서 도는 것만 막는다.
 # ---------------------------------------------------------------------------
 
-class TestCheckoutBranch:
-    def _mock_git(self, executor, responses):
-        call_idx = {"i": 0}
+class TestAssertNotMain:
+    def _mock_git(self, executor, response):
+        calls = []
         def fake_git(*args):
-            idx = call_idx["i"]
-            call_idx["i"] += 1
-            if idx < len(responses):
-                return responses[idx]
-            return MagicMock(returncode=0, stdout="", stderr="")
+            calls.append(args)
+            return response
         executor._run_git = fake_git
+        return calls
 
-    def test_already_on_branch(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=0, stdout="feat-mvp\n", stderr=""),
-        ])
-        executor._checkout_branch()  # should return without checkout
+    def test_feature_branch_passes(self, executor):
+        calls = self._mock_git(executor, MagicMock(returncode=0, stdout="chore/#3\n", stderr=""))
+        executor._assert_not_main()
+        assert calls == [("rev-parse", "--abbrev-ref", "HEAD")]
 
-    def test_branch_exists_checkout(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=0, stdout="main\n", stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),
-            MagicMock(returncode=0, stdout="", stderr=""),
-        ])
-        executor._checkout_branch()
+    def test_does_not_checkout(self, executor):
+        """브랜치를 생성하거나 갈아타지 않는다."""
+        calls = self._mock_git(executor, MagicMock(returncode=0, stdout="feat/#12\n", stderr=""))
+        executor._assert_not_main()
+        assert not any("checkout" in c for c in calls)
 
-    def test_branch_not_exists_create(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=0, stdout="main\n", stderr=""),
-            MagicMock(returncode=1, stdout="", stderr="not found"),
-            MagicMock(returncode=0, stdout="", stderr=""),
-        ])
-        executor._checkout_branch()
-
-    def test_checkout_fails_exits(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=0, stdout="main\n", stderr=""),
-            MagicMock(returncode=1, stdout="", stderr=""),
-            MagicMock(returncode=1, stdout="", stderr="dirty tree"),
-        ])
+    def test_main_exits(self, executor):
+        self._mock_git(executor, MagicMock(returncode=0, stdout="main\n", stderr=""))
         with pytest.raises(SystemExit) as exc_info:
-            executor._checkout_branch()
+            executor._assert_not_main()
+        assert exc_info.value.code == 1
+
+    def test_master_exits(self, executor):
+        self._mock_git(executor, MagicMock(returncode=0, stdout="master\n", stderr=""))
+        with pytest.raises(SystemExit) as exc_info:
+            executor._assert_not_main()
         assert exc_info.value.code == 1
 
     def test_no_git_exits(self, executor):
-        self._mock_git(executor, [
-            MagicMock(returncode=1, stdout="", stderr="not a git repo"),
-        ])
+        self._mock_git(executor, MagicMock(returncode=1, stdout="", stderr="not a git repo"))
         with pytest.raises(SystemExit) as exc_info:
-            executor._checkout_branch()
+            executor._assert_not_main()
         assert exc_info.value.code == 1
+
+    def test_checkout_branch_is_gone(self, executor):
+        """구 API가 남아 있으면 브랜치를 갈아타는 사고가 재발한다."""
+        assert not hasattr(executor, "_checkout_branch")
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +383,8 @@ class TestCheckoutBranch:
 # ---------------------------------------------------------------------------
 
 class TestCommitStep:
+    STEP = {"step": 2, "name": "ui", "commit": "feat: 대시보드 화면 구현"}
+
     def test_two_phase_commit(self, executor):
         calls = []
         def fake_git(*args):
@@ -392,14 +394,45 @@ class TestCommitStep:
             return MagicMock(returncode=0, stdout="", stderr="")
         executor._run_git = fake_git
 
-        executor._commit_step(2, "ui")
+        executor._commit_step(self.STEP)
 
-        commit_calls = [c for c in calls if c[0] == "commit"]
-        assert len(commit_calls) == 2
-        assert "feat(mvp):" in commit_calls[0][2]
-        assert "chore(mvp):" in commit_calls[1][2]
+        commit_msgs = [c[2] for c in calls if c[0] == "commit"]
+        assert len(commit_msgs) == 2
+        assert commit_msgs[0] == "feat: 대시보드 화면 구현"
+        assert commit_msgs[1].startswith("chore: ")
 
-    def test_no_code_changes_skips_feat_commit(self, executor):
+    def test_subject_has_no_scope_parens(self, executor):
+        """팀 컨벤션은 `{type}: {설명}`이다. `feat(scope):`는 Conventional Commits 형식."""
+        calls = []
+        def fake_git(*args):
+            calls.append(args)
+            if args[:2] == ("diff", "--cached"):
+                return MagicMock(returncode=1)
+            return MagicMock(returncode=0, stdout="", stderr="")
+        executor._run_git = fake_git
+
+        executor._commit_step(self.STEP)
+
+        for msg in [c[2] for c in calls if c[0] == "commit"]:
+            assert ex.StepExecutor.COMMIT_RE.match(msg), f"컨벤션 위반: {msg}"
+
+    def test_metadata_commit_describes_change(self, executor):
+        """`step 0 output` 같은 제목은 변경 내용을 알 수 없어 컨벤션 위반이다."""
+        calls = []
+        def fake_git(*args):
+            calls.append(args)
+            if args[:2] == ("diff", "--cached"):
+                return MagicMock(returncode=1)
+            return MagicMock(returncode=0, stdout="", stderr="")
+        executor._run_git = fake_git
+
+        executor._commit_step(self.STEP)
+
+        meta_msg = [c[2] for c in calls if c[0] == "commit"][1]
+        assert "output" not in meta_msg
+        assert "mvp" in meta_msg and "2" in meta_msg
+
+    def test_no_code_changes_skips_step_commit(self, executor):
         call_count = {"diff": 0}
         calls = []
         def fake_git(*args):
@@ -412,40 +445,115 @@ class TestCommitStep:
             return MagicMock(returncode=0, stdout="", stderr="")
         executor._run_git = fake_git
 
-        executor._commit_step(2, "ui")
+        executor._commit_step(self.STEP)
 
         commit_msgs = [c[2] for c in calls if c[0] == "commit"]
         assert len(commit_msgs) == 1
-        assert "chore" in commit_msgs[0]
+        assert commit_msgs[0].startswith("chore: ")
 
 
 # ---------------------------------------------------------------------------
-# _invoke_codex (mocked)
+# 커밋 메시지 컨벤션 검증 (docs/TEAM_RULES.md 3.3)
 # ---------------------------------------------------------------------------
 
-class TestInvokeCodex:
-    def test_invokes_codex_with_correct_args(self, executor):
+class TestCommitConvention:
+    def _make_phase(self, tmp_project, steps, name="conv"):
+        d = tmp_project / "phases" / name
+        d.mkdir(exist_ok=True)
+        index = {"project": "T", "phase": name, "steps": steps}
+        (d / "index.json").write_text(json.dumps(index, ensure_ascii=False))
+        return d
+
+    def test_valid_types_accepted(self, tmp_project):
+        steps = [{"step": i, "name": f"s{i}", "commit": f"{t}: 설명", "status": "pending"}
+                 for i, t in enumerate(["feat", "fix", "docs", "style", "refactor", "test", "chore"])]
+        self._make_phase(tmp_project, steps)
+        with patch.object(ex, "ROOT", tmp_project):
+            ex.StepExecutor("conv")  # 예외 없이 생성돼야 한다
+
+    def test_missing_commit_field_exits(self, tmp_project):
+        self._make_phase(tmp_project, [{"step": 0, "name": "s0", "status": "pending"}])
+        with patch.object(ex, "ROOT", tmp_project):
+            with pytest.raises(SystemExit) as exc_info:
+                ex.StepExecutor("conv")
+            assert exc_info.value.code == 1
+
+    def test_unknown_type_exits(self, tmp_project):
+        self._make_phase(tmp_project, [{"step": 0, "name": "s0", "commit": "wip: 대충", "status": "pending"}])
+        with patch.object(ex, "ROOT", tmp_project):
+            with pytest.raises(SystemExit) as exc_info:
+                ex.StepExecutor("conv")
+            assert exc_info.value.code == 1
+
+    def test_scope_parens_exits(self, tmp_project):
+        self._make_phase(tmp_project, [{"step": 0, "name": "s0", "commit": "feat(ui): 추가", "status": "pending"}])
+        with patch.object(ex, "ROOT", tmp_project):
+            with pytest.raises(SystemExit) as exc_info:
+                ex.StepExecutor("conv")
+            assert exc_info.value.code == 1
+
+    def test_missing_colon_space_exits(self, tmp_project):
+        self._make_phase(tmp_project, [{"step": 0, "name": "s0", "commit": "feat:설명없음", "status": "pending"}])
+        with patch.object(ex, "ROOT", tmp_project):
+            with pytest.raises(SystemExit) as exc_info:
+                ex.StepExecutor("conv")
+            assert exc_info.value.code == 1
+
+
+# ---------------------------------------------------------------------------
+# _invoke_claude (mocked)
+# ---------------------------------------------------------------------------
+
+class TestInvokeClaude:
+    def test_invokes_claude_with_correct_args(self, executor):
         mock_result = MagicMock(returncode=0, stdout='{"result": "ok"}', stderr="")
         step = {"step": 2, "name": "ui"}
         preamble = "PREAMBLE\n"
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
-            output = executor._invoke_codex(step, preamble)
+            executor._invoke_claude(step, preamble)
 
         cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "codex"
-        assert "exec" in cmd
-        assert "--dangerously-bypass-approvals-and-sandbox" in cmd
-        assert "--json" in cmd
-        assert "PREAMBLE" in cmd[-1]
-        assert "UI를 구현하세요" in cmd[-1]
+        assert cmd[0] == "claude"
+        assert "-p" in cmd
+        assert cmd[cmd.index("--permission-mode") + 1] == "bypassPermissions"
+        assert cmd[cmd.index("--output-format") + 1] == "json"
+
+    def test_prompt_goes_through_stdin(self, executor):
+        """프롬프트는 argv가 아니라 stdin으로 넘어간다 (가드레일이 수십 KB)."""
+        mock_result = MagicMock(returncode=0, stdout="{}", stderr="")
+        step = {"step": 2, "name": "ui"}
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            executor._invoke_claude(step, "PREAMBLE\n")
+
+        stdin = mock_run.call_args[1]["input"]
+        assert "PREAMBLE" in stdin
+        assert "UI를 구현하세요" in stdin
+        assert not any("PREAMBLE" in arg for arg in mock_run.call_args[0][0])
+
+    def test_strips_billed_auth_env(self, executor):
+        """구독 인증으로만 붙도록 종량 과금 환경변수를 제거한다."""
+        mock_result = MagicMock(returncode=0, stdout="{}", stderr="")
+        step = {"step": 2, "name": "ui"}
+        polluted = {key: "x" for key in ex.BILLED_AUTH_ENV}
+        polluted["PATH"] = os.environ.get("PATH", "")
+
+        with patch.dict(os.environ, polluted, clear=True):
+            with patch("subprocess.run", return_value=mock_result) as mock_run:
+                executor._invoke_claude(step, "preamble")
+
+        env = mock_run.call_args[1]["env"]
+        for key in ex.BILLED_AUTH_ENV:
+            assert key not in env
+        assert "PATH" in env
 
     def test_saves_output_json(self, executor):
         mock_result = MagicMock(returncode=0, stdout='{"ok": true}', stderr="")
         step = {"step": 2, "name": "ui"}
 
         with patch("subprocess.run", return_value=mock_result):
-            executor._invoke_codex(step, "preamble")
+            executor._invoke_claude(step, "preamble")
 
         output_file = executor._phase_dir / "step2-output.json"
         assert output_file.exists()
@@ -457,7 +565,7 @@ class TestInvokeCodex:
     def test_nonexistent_step_file_exits(self, executor):
         step = {"step": 99, "name": "nonexistent"}
         with pytest.raises(SystemExit) as exc_info:
-            executor._invoke_codex(step, "preamble")
+            executor._invoke_claude(step, "preamble")
         assert exc_info.value.code == 1
 
     def test_timeout_is_1800(self, executor):
@@ -465,7 +573,7 @@ class TestInvokeCodex:
         step = {"step": 2, "name": "ui"}
 
         with patch("subprocess.run", return_value=mock_result) as mock_run:
-            executor._invoke_codex(step, "preamble")
+            executor._invoke_claude(step, "preamble")
 
         assert mock_run.call_args[1]["timeout"] == 1800
 
@@ -513,6 +621,14 @@ class TestMainCli:
                 with pytest.raises(SystemExit) as exc_info:
                     ex.main()
                 assert exc_info.value.code == 1
+
+    def test_push_flag_rejected(self, phase_dir, tmp_project):
+        """--push는 제거됐다. 브랜치명을 추론할 수 없어 push 대상을 알 수 없다."""
+        with patch("sys.argv", ["execute.py", "0-mvp", "--push"]):
+            with patch.object(ex, "ROOT", tmp_project):
+                with pytest.raises(SystemExit) as exc_info:
+                    ex.main()
+                assert exc_info.value.code == 2  # argparse: unrecognized argument
 
 
 # ---------------------------------------------------------------------------

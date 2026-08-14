@@ -1,0 +1,53 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t0-repo-hygiene",
+  "steps": [
+    {
+      "step": 0,
+      "name": "repo-cleanup",
+      "commit": "chore: 데모 잔재 삭제 및 .gitignore 보강",
+      "status": "completed",
+      "summary": "index.html·public SVG 5개 삭제, .gitignore에 .turbo·.claude/settings.local.json 추가, page.tsx를 무채색 플레이스홀더로 교체, layout.tsx 메타데이터·lang=ko 교정",
+      "started_at": "2026-08-13T20:56:32+0900",
+      "completed_at": "2026-08-13T20:58:24+0900"
+    },
+    {
+      "step": 1,
+      "name": "test-gate",
+      "commit": "test: vitest @/ 별칭 설정과 env-guard 단위 테스트 추가",
+      "status": "completed",
+      "summary": "vitest.config.ts 신설(의존성 추가 없이 resolve.alias로 @/→src/), src/lib/env-guard.ts 순수 탐지 함수 + 테스트 7개, package.json의 --passWithNoTests 제거",
+      "started_at": "2026-08-13T20:58:25+0900",
+      "completed_at": "2026-08-13T21:01:04+0900"
+    },
+    {
+      "step": 2,
+      "name": "deps-pinning",
+      "commit": "chore: 파싱·차트 의존성 설치 및 exceljs 버전 고정",
+      "status": "completed",
+      "summary": "exceljs를 4.4.0으로 정확히 고정(캐럿 없음), mammoth·zod(v4, 4.4.3)·chart.js·react-chartjs-2·node-html-parser를 직접 의존성으로 설치, next.config.ts에 serverExternalPackages: ['exceljs'] 추가",
+      "started_at": "2026-08-13T21:01:04+0900",
+      "completed_at": "2026-08-13T21:03:08+0900"
+    },
+    {
+      "step": 3,
+      "name": "secret-guard",
+      "commit": "feat: service_role 키 노출을 빌드 실패로 막는 가드 연결",
+      "status": "completed",
+      "summary": "env-guard.test.ts에 저장소 스캔 케이스 추가(git ls-files + 루트 .env*, node_modules·.next·phases·가드 자신 제외), package.json에 guard:env·prebuild 연결로 npm run build가 위반 시 중단됨을 .env.guard-check 더미로 실증",
+      "started_at": "2026-08-13T21:03:08+0900",
+      "completed_at": "2026-08-13T21:05:27+0900"
+    },
+    {
+      "step": 4,
+      "name": "ci-workflow",
+      "commit": "chore: GitHub Actions 워크플로우를 lint·build·test로 교체",
+      "status": "completed",
+      "summary": "proof-html.yml(검사 대상 index.html이 step 0에서 삭제돼 깨진 상태)·auto-assign.yml(무관한 조직 계정 하드코딩) 삭제, ci.yml 신설(push·pull_request 트리거, checkout@v4·setup-node@v4 Node 24 + npm 캐시, npm ci 후 로컬과 동일한 lint→build→test 순차 실행), README의 GitHub Actions 절을 현재 상태로 갱신",
+      "started_at": "2026-08-13T21:05:28+0900",
+      "completed_at": "2026-08-13T21:07:02+0900"
+    }
+  ],
+  "created_at": "2026-08-13T20:56:32+0900",
+  "completed_at": "2026-08-13T21:07:02+0900"
+}

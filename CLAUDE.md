@@ -57,8 +57,35 @@ Google Docs 워크로드 문서를 **업무 배정표 xlsx로 뽑는** 웹. 이 
 - 머지 후 브랜치 삭제. 리뷰는 셀프 리뷰 (갠플이라 승인자 없음)
 - 커밋·PR·이슈는 사용자가 요청할 때만 생성할 것.
 
+## 하네스 실행 규칙
+`scripts/execute.py`가 각 step마다 이 파일과 `docs/*.md`를 가드레일로 주입한다.
+
+- 각 step은 지시된 작업만 수행하고, 요청되지 않은 기능/파일을 만들지 말 것.
+- 커밋은 하네스가 한다. step 세션은 `git commit`을 직접 실행하지 말 것. 커밋 제목은
+  `phases/<phase>/index.json`의 `steps[].commit`에 미리 확정해 두며, 형식이 컨벤션
+  (`docs/TEAM_RULES.md` 3.3)에 어긋나면 하네스가 실행 전에 중단한다.
+- AC(Acceptance Criteria)를 직접 실행해 검증한 뒤 `phases/<phase>/index.json`의 step status를 갱신할 것.
+- 사용자 개입(API 키, 인증, 수동 설정 등)이 필요하면 즉시 `blocked` 처리하고 중단할 것.
+- 하네스는 브랜치를 만들거나 push하지 않는다. 팀 규칙의 브랜치명이 `type/#이슈번호`
+  (`docs/TEAM_RULES.md` 2.1)라서 phase 이름으로 추론할 수 없기 때문이다.
+  실행 전에 `git checkout -b 'chore/#3'`처럼 직접 브랜치를 만들 것.
+  `main`·`master`에서 실행하면 하네스가 즉시 중단한다.
+
+## 가드레일 (`.claude/settings.json`)
+- `PreToolUse[Bash]` → 위험 명령(`rm -rf`, force push, `reset --hard`, `DROP TABLE`) 차단.
+- `PreToolUse[Edit|Write]` → `.claude/hooks/tdd-guard.sh`. 소스 파일에 대응 테스트가 없으면 편집 차단.
+  `components/`·`types/`·설정/스타일 파일은 예외.
+- `Stop` → 턴 종료 시 `lint`/`build`/`test` 실행.
+
 ## 명령어
 npm run dev      # 개발 서버
 npm run build    # 프로덕션 빌드
 npm run lint     # ESLint
 npm run test     # Vitest
+
+## 하네스
+python3 scripts/execute.py <phase-dir>      # phase의 step을 순차 실행 (claude -p 호출)
+python3 -m pytest scripts/test_execute.py   # 하네스 테스트
+
+하네스는 `claude` CLI를 **구독 인증(OAuth)** 으로만 호출한다. `ANTHROPIC_API_KEY` 등
+종량 과금 환경변수는 자식 프로세스에서 제거된다 (`scripts/execute.py`의 `BILLED_AUTH_ENV`).
