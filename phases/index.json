@@ -7,7 +7,8 @@
     },
     {
       "dir": "t1-smoke-tests",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-08-14T16:32:25+0900"
     }
   ]
 }
