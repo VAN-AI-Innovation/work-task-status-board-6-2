@@ -771,7 +771,7 @@ isDataRow(row) = 신원 컬럼(업무명·프로젝트명 / 담당자) 중 하�
 
 추가로 `cell-normalizer`가 **1900-01-01 이전 날짜를 전부 null로** 떨어뜨린다 (엑셀 시리얼 0/1 아티팩트). T3 완료 기준에 "픽스처의 유령 행 25건이 태스크로 생성되지 않는다"를 넣는다.
 
-### E2. ExcelJS `cell.value`는 최소 6가지 모양으로 온다
+### E2. ExcelJS `cell.value`는 최소 8가지 모양으로 온다
 
 `00_통합 대시보드` 탭은 KPI가 전부 **수식**이고, `01_편집팀`에는 Google Docs·Canva **하이퍼링크** 셀이 있다. 원시값만 기대하면 `[object Object]`가 그대로 저장된다.
 
@@ -779,12 +779,16 @@ isDataRow(row) = 신원 컬럼(업무명·프로젝트명 / 담당자) 중 하�
 |---|---|---|
 | 숫자·문자열 | 원시값 | 그대로 |
 | 날짜 | `Date` | KST 기준 `YYYY-MM-DD` |
-| **수식** | `{ formula, result }` | **`result`를 쓴다** |
+| **수식** | `{ formula, result }` | **`result`를 쓴다** (`result`도 `Date`·`richText`일 수 있어 재귀로 푼다) |
+| **수식 (결과 없음)** | `{ formula }` — `result` 키 자체가 없다 | null + warning |
+| **공유 수식** | `{ sharedFormula, result? }` | 위 두 줄과 동일 |
 | **하이퍼링크** | `{ text, hyperlink }` | `text`는 값, `hyperlink`는 별도 필드 |
 | 리치텍스트 | `{ richText: [...] }` | 조각을 이어붙임 |
 | 오류 | `{ error: '#REF!' }` | null + warning |
 
-`cell-normalizer.ts`가 이 6가지를 **전부** 처리하고, 각각 테스트를 쓴다. 미처리 형태가 오면 `warnings`에 기록하고 null로 떨어뜨린다 — 절대 `String(value)`로 뭉개지 않는다.
+`cell-normalizer.ts`가 이 8가지를 **전부** 처리하고, 각각 테스트를 쓴다. 미처리 형태가 오면 `warnings`에 기록하고 null로 떨어뜨린다 — 절대 `String(value)`로 뭉개지 않는다.
+
+**아래 두 줄은 실측으로 추가됐다** — 최초본은 `{formula, result}`만 알고 있었는데, `01_편집팀`의 KPI 행과 데이터 행에 `result` 키가 아예 없는 `{ formula }`와 공유 수식 슬레이브 `{ sharedFormula: 'C10' }`이 실제로 있었다. `value.result`를 그냥 읽으면 `undefined`가 아래로 흐르고, `String(value)`로 뭉개면 `[object Object]`가 저장된다. 둘 다 실제로 일어난다.
 
 ### E3. 퍼센트는 0.66으로 저장된다
 
