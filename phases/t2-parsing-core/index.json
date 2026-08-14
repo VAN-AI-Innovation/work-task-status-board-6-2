@@ -33,7 +33,10 @@
       "step": 3,
       "name": "header-resolver",
       "commit": "feat: 병합 2단 헤더를 경로로 결합하는 header-resolver 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-15T01:04:53+0900",
+      "summary": "src/lib/sheet/header-resolver.ts 신설(exceljs 미import — AC grep 통과)과 src/types/sheet.ts에 HeaderBand{groupRow:number|null,labelRow:number}·HeaderColumn{index,path,label} 추가. 내보낸 것: findHeaderBands(sheet: SheetGrid): HeaderBand[] · resolveHeaders(sheet: SheetGrid, band: HeaderBand): HeaderColumn[] — 좌표는 전부 0-based. 라벨 행 후보 조건 5개(toText 기준 값 3개 이상 / 서로 다른 값 3개 이상(전체 폭 배너는 슬레이브까지 같은 값이라 여기서 탈락) / 모든 값 40자 이하 / {formula}·{sharedFormula} 셀이 하나도 없음(KPI 행 탈락) / 마지막 행 제외), 그룹 행 조건 2개(바로 위 행에 2컬럼 이상 가로 병합이 있고 그것이 전체 폭(left 0 && right>=columnCount-1)이 아님 — 세로 병합 A14:A15는 right>left가 아니라 탈락). 후보를 좁히지 않고 위에서 아래로 전부 반환한다(진짜 고르기는 step 4 시그니처 매칭). 픽스처 밴드 개수: 00 9개 · 01 7개(그중 진짜 {groupRow:7,labelRow:8}) · 02 5개({7,8}) · 03 9개(A섹션 {null,16}·B섹션 {null,23} 둘 다) · 99 10개({null,2}) — 데이터 행도 후보로 남는 것은 의도다. resolveHeaders는 [group,label]에서 빈 값을 빼고 둘이 같으면 접으며(P8/P9=비고 → ['비고']) path가 비면 컬럼을 제외한다(컬럼 좌표는 index가 보존). 그룹 값 채우기는 merges 범위 안에서만 — 무조건 forward-fill 금지(리더가 이미 슬레이브를 채워 줘서 실전에서는 미실행이나 방어로 남김). 헤더 문자열은 원문 그대로 저장한다(정규화·접미사 절단 없음 — '컨셉·레퍼런스 (+2일)'의 (+2일)이 T3 STAGE_GROUPS의 SLA 근거). 완료 기준 2 충족 근거: 01_편집팀 {7,8} 밴드에서 E열(index 4)이 path ['컨셉·레퍼런스 (+2일)','예정일'] · label '컨셉·레퍼런스 (+2일) / 예정일'로 결합되고, 결합 라벨 16개가 전부 유일한 반면 하위 라벨만 쓰면 유일성이 깨짐(예정일·실제·확인 반복)을 같은 테스트에서 대조. 02는 71컬럼이 결합되고 그룹 8종이 10/10/9/7/8/9/9/9로 정확히 붙는다. 테스트 17개(손으로 만든 작은 격자 10개 — 배너·수식 행·값 2개·마지막 행·단층·가로 병합 그룹·세로 병합 비그룹·병합 밖 미번짐·동일 문자열 접힘·빈 컬럼 제외, 픽스처 통합 7개). 게이트 lint·build·test 통과(총 75 테스트).",
+      "completed_at": "2026-08-15T01:10:25+0900"
     },
     {
       "step": 4,
