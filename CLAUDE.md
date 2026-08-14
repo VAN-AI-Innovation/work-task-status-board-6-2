@@ -23,8 +23,8 @@ Google Docs 워크로드 문서를 **업무 배정표 xlsx로 뽑는** 웹. 이 
   `new Date()`를 호출하지 않는다. KST 기준 오늘은 `lib/domain/kst-today.ts`가 산출한다.
 - CRITICAL: `exceljs` import는 `src/lib/sheet/workbook-reader.ts`(읽기)와
   `src/lib/xlsx/assignment-writer.ts`(쓰기) **두 파일에서만**. 나머지는 자체 타입만 안다.
-  적용 범위는 `src/` 아래 제품 코드다. `scripts/smoke/`의 일회성 검증 스크립트는 번들에
-  들어가지 않으므로 예외이며, 이 예외는 `scripts/smoke/`에만 해당한다.
+  적용 범위는 `src/` 아래 제품 코드다. `scripts/` 아래 스크립트(스모크 검증·픽스처 생성)는
+  번들에 들어가지 않으므로 예외이며, 이 예외는 `scripts/`에만 해당한다.
 - CRITICAL: `src/lib/` 아래 파일명은 **전역 유니크**하게 짓는다. TDD 가드가 basename만 보고
   테스트를 찾아서, 같은 이름이 두 디렉토리에 있으면 테스트 하나로 둘 다 통과해버린다.
 - 컴포넌트는 `src/components/`, 타입은 `src/types/`, 비즈니스 로직은 `src/lib/`에 분리할 것.
