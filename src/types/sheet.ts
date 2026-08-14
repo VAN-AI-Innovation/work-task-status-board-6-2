@@ -88,6 +88,35 @@ export interface HeaderBand {
   labelRow: number;
 }
 
+/**
+ * 탭 종류. `unknown`은 에러가 아니라 정상적인 판별 결과다 —
+ * "알려진 탭이 하나도 없음"의 중단 판정은 워크북 전체를 본 뒤 파이프라인(T5)이 내린다.
+ */
+export type SheetTabKind =
+  | 'dashboard'
+  | 'edit_team'
+  | 'shoot_team'
+  | 'marketing_team'
+  | 'settings'
+  | 'unknown';
+
+/** 시그니처 하나가 밴드 하나에 맞은 사실 */
+export interface TabMatch {
+  /** 어느 시그니처가 맞았는지. 마케팅 A/B 구분에 쓴다 */
+  signatureKey: string;
+  band: HeaderBand;
+  /** 실제로 맞은 필수 컬럼 이름들 */
+  matched: string[];
+}
+
+export interface TabDetection {
+  sheet: string;
+  kind: SheetTabKind;
+  matchedBy: 'signature' | 'name' | 'both' | 'none';
+  /** 채택된 `kind`의 시그니처가 맞은 밴드들. 마케팅 탭은 2개가 나온다 */
+  matches: TabMatch[];
+}
+
 /** 그룹·하위 헤더를 결합한 컬럼 하나 */
 export interface HeaderColumn {
   /** 0-based 컬럼 인덱스. 배열 위치가 아니라 **이 값**이 컬럼 좌표다 */
