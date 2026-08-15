@@ -99,10 +99,15 @@ export interface RowMapResult {
 /** 공동 담당자 구분자. 시트에 실제로 섞여 쓰인다 */
 const CO_OWNER_SEPARATOR = /[,/·\n]/;
 
-const lastSegment = (column: HeaderColumn): string => column.path[column.path.length - 1];
+/**
+ * 헤더 매칭의 유일한 규칙 — **결합 경로의 마지막 조각**이다. 접두 일치를 쓰면
+ * `목표`가 `목표 KPI`·`목표 수치`까지 잡아 값이 뒤섞인다.
+ * (`adapter-goal-metrics`가 같은 규칙을 써야 해서 export한다.)
+ */
+export const lastSegment = (column: HeaderColumn): string => column.path[column.path.length - 1];
 
 /** `{formula}`·`{sharedFormula}` — 수식에서 온 값은 신원 근거가 아니다 (E1) */
-function isFormulaCell(value: SheetCellValue | undefined): boolean {
+export function isFormulaCell(value: SheetCellValue | undefined): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value !== 'object' || value instanceof Date) return false;
   return 'formula' in value || 'sharedFormula' in value;
@@ -113,7 +118,8 @@ function slug(value: string | null): string {
   return (value ?? '').trim().replace(/\s+/g, '-').toLowerCase();
 }
 
-function warn(
+/** 0-based 좌표를 1-based 경고로 올린다. 이 변환이 일어나는 지점을 하나로 묶어 둔다 */
+export function warn(
   code: string,
   sheet: string,
   row: number,
@@ -126,7 +132,7 @@ function warn(
 }
 
 /** `raw`·`extras`에 담을 값. 하이퍼링크는 텍스트와 URL을 둘 다 보존한다 */
-function toExtraValue(cell: SheetCell | undefined, baseYear: number): ExtraValue {
+export function toExtraValue(cell: SheetCell | undefined, baseYear: number): ExtraValue {
   const unwrapped = unwrapCellValue(cell?.value);
 
   if (unwrapped.hyperlink !== null) {
