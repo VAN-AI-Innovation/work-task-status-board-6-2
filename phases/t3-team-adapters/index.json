@@ -51,7 +51,10 @@
       "step": 5,
       "name": "section-splitter",
       "commit": "feat: 마케팅 탭 A/B/C 섹션 분할기 section-splitter 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-16T02:04:44+0900",
+      "summary": "lib/sheet/section-splitter.ts에 splitSections(sheet)->SheetSection[]와 SectionKey·SheetSection 타입을 추가. 배너 판정은 행마다 처음 값이 있는 셀의 텍스트가 /^([ABC])\\.\\s*.+$/에 맞는지 하나뿐이고 팀 이름을 모른다(A/B 테스트 결과는 마침표가 없어 걸리지 않는다). 섹션은 시트 순서 그대로 돌려주고 정렬하지 않는다 — 픽스처 03_마케팅·관리팀은 C(titleRow 7, 8~12) · A(15, 16~19) · B(22, 23~26) 순이다(0-based). endRow는 다음 배너 행-1(마지막은 rowCount-1)에서 뒤쪽 빈 행을 잘라낸 값이라 섹션 사이 빈 행 2줄이 앞 섹션에 딸려 오지 않고, 내용이 전부 비면 startRow-1이 되어 빈 범위가 된다. band는 findHeaderBands(sheet)의 후보 중 startRow<=labelRow<=endRow인 첫 번째를 고르는 것뿐이고 밴드 판정을 다시 구현하지 않았다 — A는 {groupRow:null,labelRow:16}, B는 {groupRow:null,labelRow:23}, 자유 텍스트인 C는 null(행마다 채워진 셀이 1개라 header-resolver의 MIN_FILLED_CELLS 3에 못 미친다). 배너가 없으면 예외가 아니라 빈 배열이고, 같은 key가 둘이어도 둘 다 돌려준다 — 경고를 만들지 않고 판단은 어댑터(step 6·7)가 한다. exceljs import 0건. 테스트 10개 통과, sheet 185개·전체 193개 회귀 통과, lint(경고 0)·build 통과.",
+      "completed_at": "2026-08-16T02:08:09+0900"
     },
     {
       "step": 6,
