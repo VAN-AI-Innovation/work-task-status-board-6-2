@@ -1,0 +1,62 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t2-parsing-core",
+  "steps": [
+    {
+      "step": 0,
+      "name": "sample-workbook-fixture",
+      "commit": "chore: 익명화 샘플 워크북 픽스처와 생성 스크립트 추가",
+      "status": "completed",
+      "started_at": "2026-08-15T00:38:41+0900",
+      "summary": "scripts/fixtures/build-sample-workbook.mjs로 src/lib/fixtures/sample-workbook.xlsx 생성(--verify 22항목 자체 점검 통과, jszip 기본 날짜 고정으로 재생성 바이트 동일). 탭 5개(00_통합 대시보드 10컬럼·01_편집팀 16컬럼 A~P·02_촬영·기획팀 71컬럼 A~BS·03_마케팅·관리팀 30컬럼·99_설정 28컬럼), 모든 팀 탭에 장식 행 r1~r6(촬영팀은 r7 목표 블록)과 r8 그룹 병합 헤더·r9 하위 헤더. 02 유령 행 정확히 25건(r11~r35, 신원 4컬럼 전부 빈칸 + 1900-01-01/1899-12-31 수식 날짜·0% 진행률·false 7컬럼). 셀 형태 7종 모두 포함 — Date 33 / {formula,result} 73 / result 없는 {formula} 30 / {sharedFormula} 2(C11→C10·E11→E10) / {text,hyperlink} 9 / {richText} 1 / {error:'#REF!'} 1, 추가로 문자열 날짜 '2026.07.22'·'9/1'·'-'·엑셀 시리얼 46000·불리언. numFmt 0% 34셀·yyyy 계열 84셀. 01 r8 가로 병합 4건·A14:A15 세로 병합·숨김 행 r13 1건. 03은 C(r8)→A(r16)→B(r23) 순에 섹션 간 빈 행 2행, B섹션 3행 중 1건은 달성률(0.95)이 목표 40/실적 12와 불일치. 99_설정은 r3 그룹명 28개·r4부터 값(공통_ 4종, 공통_진행 상태 10단계), SLA 8행을 두 블록(AA/AB r4~r11, A/B r21 헤더+r22~r29)에 중복 배치. 00_통합 대시보드는 r41~r200을 값 없이 행 높이·테두리만 주어 rowCount 200 > dimensions.bottom 19 팽창 재현. CLAUDE.md의 exceljs import 예외를 scripts/smoke/ → scripts/ 로 확대(한 줄).",
+      "completed_at": "2026-08-15T00:49:38+0900"
+    },
+    {
+      "step": 1,
+      "name": "cell-normalizer",
+      "commit": "feat: 엑셀 셀 값 정규화 모듈 cell-normalizer 추가",
+      "status": "completed",
+      "started_at": "2026-08-15T00:49:38+0900",
+      "summary": "src/types/sheet.ts(SheetCellPrimitive·SheetCellValue·NormalizeWarning 6종)와 src/lib/sheet/cell-normalizer.ts 신설. 내보낸 것: 타입 NormalizeResult<T>={value:T|null,warning:NormalizeWarning|null}·UnwrapResult=NormalizeResult<SheetCellPrimitive>&{hyperlink:string|null}, 함수 unwrapCellValue(v)·toText(v)·toNumber(v)·toDateString(v,{baseYear})·toProgress(v,numFmt?) — 모두 첫 인자는 SheetCellValue|undefined. unwrapCellValue가 셀 형태 8종을 푼다(원시값/Date/{formula,result}(재귀)/{formula}(result 없음→FORMULA_WITHOUT_RESULT)/{sharedFormula,result?}/{text,hyperlink}(hyperlink는 원문 그대로, 스킴 검사 없음)/{richText}(조각 이어붙임)/{error}→CELL_ERROR), 미지 객체는 String() 없이 UNSUPPORTED_CELL_SHAPE. 날짜는 UTC 게터로만 포맷하고 시리얼은 기준점 1899-12-30(Date.UTC(1899,11,30)+serial*86400000). 1900 경계 판단: 티켓 문구는 '1900-01-01 이전'이지만 죽여야 할 값이 시리얼 0·1이라 경계를 포함해 iso<='1900-01-01'을 전부 DATE_OUT_OF_RANGE로 자른다(1900 윤년 버그 구간 시리얼 2~59는 실제·픽스처에 없어 미대응, 코드 주석에 명시). 빈칸·공백·'-'·'—'·불리언은 경고 없이 null(유령 행 false 잡음 방지), 문자열은 YYYY[-./]M[-./]D와 M[-./]D(baseYear 주입)만 받고 나머지·달력 부재 날짜는 DATE_UNPARSABLE. toProgress는 numFmt의 %를 숫자 값에만 적용해 ×100 후 Math.round, '66%'/'66'은 자체로 퍼센트, 빈칸=null과 0을 구분, 0~100 밖은 값 보존+PROGRESS_OUT_OF_RANGE. 문서 선반영: PLAN.md E2 표를 6가지→8가지로 넓히고 {formula}(result 없음)·{sharedFormula} 두 행 추가, TICKETS.md T2 완료 기준 4도 8가지로 갱신. 테스트 38개(cell-normalizer.test.ts, xlsx 파일을 열지 않는 순수 단위 테스트)로 완료 기준 3·4·5·6 각각 커버. 게이트 lint·build·test 통과(총 46 테스트).",
+      "completed_at": "2026-08-15T00:55:19+0900"
+    },
+    {
+      "step": 2,
+      "name": "workbook-reader",
+      "commit": "feat: 워크북을 시트 그리드로 읽는 workbook-reader 추가",
+      "status": "completed",
+      "started_at": "2026-08-15T00:55:20+0900",
+      "summary": "src/lib/sheet/workbook-reader.ts 신설 — 제품 코드에서 exceljs를 import하는 유일한 파일(AC grep 1줄 통과). 내보낸 것: readWorkbook(input: Buffer|ArrayBuffer): Promise<WorkbookGrid>, class WorkbookReadError(code='WORKBOOK_CORRUPT', 인자 없는 생성자, 고정 한국어 메시지 — 원본 에러의 jszip URL·경로를 흘리지 않는다). src/types/sheet.ts에 SheetCell·MergeRange·SheetGrid·ParseWarning·WorkbookGrid 추가. 좌표 규칙: cells·merges·hiddenRows·hiddenColumns 전부 0-based이고 cells[0][0]=A1, ParseWarning의 row·column만 1-based(타입 주석에 명시). dimensions 기준 채택 — rowCount=dimensions.bottom, columnCount=dimensions.right로 잡아 exceljs의 rowCount 팽창(픽스처 00_통합 대시보드 200 → 격자 19)을 잘라낸다. dimensions가 0인 빈 시트는 rowCount 0·cells []. 빈 셀도 {value:null,numFmt:null}로 자리를 채워 모든 행 길이를 columnCount에 맞추고(공유 객체가 아니라 매번 새 객체), cell.value는 해석 없이 그대로, numFmt는 없으면 null. worksheet.model.merges의 A1 표기를 파일 안의 columnIndex/toMergeRange로 0-based 범위 변환. 숨김 행은 hiddenRows에 싣되 격자에서 지우지 않고 경고도 남기지 않음, 숨김 열은 hiddenColumns + 열마다 HIDDEN_COLUMN 경고(픽스처에 숨김 열이 없어 이 경로는 미실행 — 경고 배열 빈 상태를 테스트로 고정). 병합 채우기 실측 결과: **불필요**. exceljs가 슬레이브 셀에도 마스터 값을 돌려준다(01_편집팀 A14:A15 두 셀 모두 '[샘플] 시리즈 E') — cell.master를 따라가는 코드를 넣지 않고 그 사실을 테스트로 고정해 완료 기준 8을 충족했다. 타입 이슈 하나: exceljs 선언이 전역 Buffer를 `interface Buffer extends ArrayBuffer {}`로 병합해 Node Buffer가 xlsx.load에 그대로 안 들어가서 호출부 한 줄만 ArrayBuffer로 캐스팅(주석 명시). 테스트 12개(workbook-reader.test.ts, 픽스처를 Buffer로 읽어 제품과 같은 진입점 사용): 시트 5개 파일 순서·02 columnCount 71과 헤더 71칸·행 길이 정렬·00 rowCount 19(<41)·세로 병합 값 동일·merges에 A14:A15와 A8:D8·hiddenRows [12]와 해당 행 셀 보존·경고 0건·numFmt 보존(C10 '%')·{formula,result}→0.33과 toProgress 33·{sharedFormula}→FORMULA_WITHOUT_RESULT·{error}→CELL_ERROR·Date 원형 유지·깨진 바이트→WorkbookReadError. 게이트 lint·build·test 통과(총 58 테스트).",
+      "completed_at": "2026-08-15T01:04:52+0900"
+    },
+    {
+      "step": 3,
+      "name": "header-resolver",
+      "commit": "feat: 병합 2단 헤더를 경로로 결합하는 header-resolver 추가",
+      "status": "completed",
+      "started_at": "2026-08-15T01:04:53+0900",
+      "summary": "src/lib/sheet/header-resolver.ts 신설(exceljs 미import — AC grep 통과)과 src/types/sheet.ts에 HeaderBand{groupRow:number|null,labelRow:number}·HeaderColumn{index,path,label} 추가. 내보낸 것: findHeaderBands(sheet: SheetGrid): HeaderBand[] · resolveHeaders(sheet: SheetGrid, band: HeaderBand): HeaderColumn[] — 좌표는 전부 0-based. 라벨 행 후보 조건 5개(toText 기준 값 3개 이상 / 서로 다른 값 3개 이상(전체 폭 배너는 슬레이브까지 같은 값이라 여기서 탈락) / 모든 값 40자 이하 / {formula}·{sharedFormula} 셀이 하나도 없음(KPI 행 탈락) / 마지막 행 제외), 그룹 행 조건 2개(바로 위 행에 2컬럼 이상 가로 병합이 있고 그것이 전체 폭(left 0 && right>=columnCount-1)이 아님 — 세로 병합 A14:A15는 right>left가 아니라 탈락). 후보를 좁히지 않고 위에서 아래로 전부 반환한다(진짜 고르기는 step 4 시그니처 매칭). 픽스처 밴드 개수: 00 9개 · 01 7개(그중 진짜 {groupRow:7,labelRow:8}) · 02 5개({7,8}) · 03 9개(A섹션 {null,16}·B섹션 {null,23} 둘 다) · 99 10개({null,2}) — 데이터 행도 후보로 남는 것은 의도다. resolveHeaders는 [group,label]에서 빈 값을 빼고 둘이 같으면 접으며(P8/P9=비고 → ['비고']) path가 비면 컬럼을 제외한다(컬럼 좌표는 index가 보존). 그룹 값 채우기는 merges 범위 안에서만 — 무조건 forward-fill 금지(리더가 이미 슬레이브를 채워 줘서 실전에서는 미실행이나 방어로 남김). 헤더 문자열은 원문 그대로 저장한다(정규화·접미사 절단 없음 — '컨셉·레퍼런스 (+2일)'의 (+2일)이 T3 STAGE_GROUPS의 SLA 근거). 완료 기준 2 충족 근거: 01_편집팀 {7,8} 밴드에서 E열(index 4)이 path ['컨셉·레퍼런스 (+2일)','예정일'] · label '컨셉·레퍼런스 (+2일) / 예정일'로 결합되고, 결합 라벨 16개가 전부 유일한 반면 하위 라벨만 쓰면 유일성이 깨짐(예정일·실제·확인 반복)을 같은 테스트에서 대조. 02는 71컬럼이 결합되고 그룹 8종이 10/10/9/7/8/9/9/9로 정확히 붙는다. 테스트 17개(손으로 만든 작은 격자 10개 — 배너·수식 행·값 2개·마지막 행·단층·가로 병합 그룹·세로 병합 비그룹·병합 밖 미번짐·동일 문자열 접힘·빈 컬럼 제외, 픽스처 통합 7개). 게이트 lint·build·test 통과(총 75 테스트).",
+      "completed_at": "2026-08-15T01:10:25+0900"
+    },
+    {
+      "step": 4,
+      "name": "tab-detector",
+      "commit": "feat: 이름·헤더 시그니처 이중 탭 판별기 tab-detector 추가",
+      "status": "completed",
+      "started_at": "2026-08-15T01:10:25+0900",
+      "summary": "src/lib/sheet/tab-detector.ts 신설(exceljs 미import — AC grep 통과)과 src/types/sheet.ts에 SheetTabKind 6종·TabMatch{signatureKey,band,matched}·TabDetection{sheet,kind,matchedBy,matches} 추가. 내보낸 것: detectTab(sheet: SheetGrid): TabDetection 하나. 시그니처는 선언적 배열 TAB_SIGNATURES 7행(edit_team·shoot_team·marketing_inquiry·marketing_goal·settings·dashboard_kpi·dashboard_summary){key,kind,namePattern,required} + MIN_SIGNATURE_MATCH 3. 판정: findHeaderBands 후보 × 시그니처 전수 대조 → 3개 이상 맞으면 채택, 컬럼 일치는 HeaderColumn.path 조각의 접두 일치(그룹 라벨 '컨셉·레퍼런스 (+2일)'의 접미사를 넘기되 '담당자'가 '기획 담당자'는 안 잡음), 이름 일치는 정규식 부분 일치(99_설정·02_촬영·기획팀의 번호 접두사). 서로 다른 kind가 동시에 맞으면 맞은 컬럼 수(종류별 최댓값, 합산 아님) → 이름 일치 → 레지스트리 순서로 고르며 주석에 명시. 같은 signatureKey가 여러 밴드에 맞으면 keepBestBandPerSignature로 가장 많이 맞은 밴드 하나만 남긴다 — 2단 헤더는 그룹 행 단독 밴드({null,7}, 3개 일치)도 후보로 잡혀서 진짜 밴드({7,8}, 6개 일치)와 함께 나왔고 둘 다 넘기면 T3가 다시 골라야 한다. 서로 다른 시그니처(마케팅 A·B, 대시보드 KPI·요약표)는 그대로 둘 다 남는다. 픽스처 판별 결과: 00_통합 대시보드=dashboard(both, dashboard_kpi r6+dashboard_summary r10 2건) · 01_편집팀=edit_team(both, {groupRow:7,labelRow:8} 6개 전부 일치) · 02_촬영·기획팀=shoot_team(both) · 03_마케팅·관리팀=marketing_team(both, marketing_inquiry labelRow 16 · marketing_goal labelRow 23 두 밴드 검출) · 99_설정=settings(both). 이름 변경 테스트 통과 — 5개 시트를 Sheet1~5로 바꿔도 kind 동일하고 matchedBy가 signature로 떨어지며, 이름 '01_편집팀'에 촬영팀 격자를 넣으면 shoot_team으로 판별(시그니처가 이름을 이긴다). 모르는 탭은 예외 없이 kind 'unknown'·matchedBy 'none'(NO_KNOWN_TAB·SETTINGS_TAB_MISSING은 여기서 던지지 않음 — T5 책임). 테스트 13개(픽스처 6 + 이름 변경·시그니처 우선 3 + 작은 격자 4: 2개 일치=unknown / 3개 일치=edit_team 경계, 빈 시트, 접두 일치 오탐 방지). 게이트 lint·build·test 통과(총 88 테스트).",
+      "completed_at": "2026-08-15T01:16:15+0900"
+    },
+    {
+      "step": 5,
+      "name": "adapter-settings-tab",
+      "commit": "feat: 설정 탭 enum·SLA 레지스트리 어댑터 추가",
+      "status": "completed",
+      "started_at": "2026-08-15T01:16:15+0900",
+      "summary": "src/lib/sheet/adapter-settings-tab.ts 신설(exceljs 미import·semantic 문자열 미포함 — AC grep 2개 통과)과 src/types/sheet.ts에 EnumOptionEntry{groupKey,value,sortOrder}·SlaRuleEntry{label,days}·SettingsRegistry{enums,slaRules,warnings} 추가. 내보낸 것: parseSettingsTab(sheet: SheetGrid, band: HeaderBand): SettingsRegistry 하나 — 탭을 스스로 찾지 않고 밴드는 detectTab의 matches에서 받는다(픽스처 밴드는 {groupRow:null,labelRow:2}). 값 수집 범위는 resolveHeaders의 컬럼들에 대해 labelRow+1부터 '밴드 컬럼 전체가 빈 행'까지 — 픽스처에서 행 index 3~12에서 멈춘다(함정: 끝까지 긁으면 index 21~28의 SLA 항목명이 '편집팀 구성원'으로 들어온다). 추출 결과: enum 그룹 26개(구성원·부서 5 + 공통_ 4 + 편집_ 4 + 촬영_ 7 + 마케팅_ 6), 공통_우선순위 4·리스크 상태 5·진행 상태 10(업무 배정→…→취소 시트 순서 그대로 sortOrder 0~9)·승인 상태 6. SLA는 두 곳에서 모아 합친다 — 밴드 안 컬럼 쌍('기본 SLA 설정_항목'/'_일수', r4~r11)과 시트 전역에서 두 라벨이 가로로 인접한 행을 찾는 스캔(r21 헤더 + r22~r29). 같은 표를 두 번 가리키는 블록은 (itemColumn,startRow)로 접고, 라벨 기준 중복은 일수가 같으면 조용히 합쳐 8건이 된다(16건 아님). 일수가 다르면 SLA_CONFLICT 경고 + 먼저 나온 값 유지, 숫자가 아니면 그 행을 버리고 SLA_DAYS_INVALID — 경고는 code·sheet·row·column(1-based)만 담고 셀 값을 담지 않는다. 하지 않은 것 3가지를 코드 주석에 명시: semantic 매핑(T4)·팀/부서 레코드 생성(T4)·미등록 값 검사(T3). T2 완료 기준 8개 대조 — 전부 충족: 1 탭 판별(tab-detector.test.ts 픽스처 6+이름 변경 3) · 2 2단 헤더 결합(header-resolver.test.ts 픽스처 통합) · 3 날짜 수렴(cell-normalizer.test.ts toDateString 12개) · 4 셀 형태 8종(unwrapCellValue 13개 + workbook-reader 실측) · 5 1900 이전 null(시리얼 0/1·Date·수식 result 3개) · 6 퍼센트 0.66→66(toProgress 7개 + 픽스처 C10 0.33→33) · 7 설정 탭 공통 enum 4종·SLA 8행(이번 step) · 8 세로 병합 값 채움(workbook-reader.test.ts A14:A15). src/lib/sheet/에 T2 범위 5개 모듈 외 파일 없음. 테스트 15개(픽스처 통합 9 — 공통 4종·10단계 순서·개수·SLA 8건과 촬영팀 섭외 5일·두 블록 중복 제거(위/아래 한쪽씩 지워도 동일 결과)·구성원에 SLA 라벨 미혼입·SLA 컬럼 enum 제외·팀 전용 그룹 26개·수식 셀 값 정규화·semantic 미매핑, 작은 격자 6 — SLA_CONFLICT·SLA_DAYS_INVALID·경고에 셀 값 없음·빈 행에서 수집 중단·빈 칸 건너뛴 sortOrder 연번). 게이트 lint·build·test 통과(총 103 테스트).",
+      "completed_at": "2026-08-15T01:22:30+0900"
+    }
+  ],
+  "created_at": "2026-08-15T00:38:41+0900",
+  "completed_at": "2026-08-15T01:22:30+0900"
+}
