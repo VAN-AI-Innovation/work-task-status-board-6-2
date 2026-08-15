@@ -60,7 +60,10 @@
       "step": 6,
       "name": "adapter-goal-metrics",
       "commit": "feat: 주간 성과 지표 어댑터 adapter-goal-metrics 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-16T02:08:09+0900",
+      "summary": "lib/sheet/adapter-goal-metrics.ts에 parseGoalMetrics(sheet, section, ctx: {teamKey, baseYear}) -> {goalMetrics, warnings}를 추가. 섹션은 호출자(step 7)가 splitSections에서 꺼내 넘기고 스스로 찾지 않으며, section.band가 null이면 빈 결과 + 경고 0건이다(예외 없음). 파일 내용은 선언적 표(IDENTITY_HEADERS=['마케팅 과제명','실행 담당자'], GOAL_FIELD_MAP 16줄)와 조립 코드뿐이다. 달성률 처리가 이 step의 급소다 — toProgress를 쓰지 않고 파일 안의 toRate(cell)로 toNumber + numFmt에 '%'가 있으면 x100 + Math.round만 하며 범위 경고를 내지 않는다(진행률은 100 초과가 이상하지만 달성률 120%는 정상이라 PROGRESS_OUT_OF_RANGE가 잡음이 된다). actual/target 재계산은 하지 않는다 — 나눗셈이 0줄이고, 픽스처 셋째 행(목표 40·실적 12·시트 달성률 0.95)이 95로 그대로 남아 T4 summarizeGoals(T4 완료 기준 7)가 볼 불일치 증거가 보존된다. 픽스처 03_마케팅·관리팀 B섹션(0-based 헤더 23행, 데이터 24~26행) 실측: 지표 3건(sourceRowIndex 25·26·27), 달성률 120·82·95, 목표/실적 100/120·50/41·40/12, periodLabel 전부 '2026-07 4주차', prevPeriodDelta '+18%'·'-4%'·'신규', kpiName 유입수·저장수·전환수, startedAt/dueAt 2026-07-21~27 등 YYYY-MM-DD, ownerNameRaw는 '제안자'가 아니라 '실행 담당자'에서 온 마케터1·마케터2·마케터2, goalText·analysis·wentWell·needsImprovement 전부 채워짐, 탭 경고 0건. 헤더 매칭은 결합 경로 마지막 조각 정확 일치라 '목표'가 '목표 KPI'·'목표 수치'를 잡아채지 않는다(접두 일치 금지). raw 30컬럼 무손실, extras 14키 = 30 − GOAL_FIELD_MAP.length(16)이고 회의일·제안자·대상·실행 방식·계획 확정 여부·임원진 승인 여부·실제 실행 내용·다음 주 유지 여부·다음 주 개선안·관련 링크·담당자 자체 평가·임원진 피드백·최종 확인·비고가 남으며 '관련 링크'는 {text:'실행 기록', hyperlink:'https://example.test/marketing/1'}로 보존된다. mapRows를 고치지 않았다(ParsedGoalMetric은 필드가 달라 한 함수가 두 산출물을 만들면 뒤엉킨다) — 대신 같은 규칙(신원 판정 시 수식 셀 제외, 숨김 행 skip, extras/raw, 1-based 경고 좌표)을 따르고 row-mapper의 내부 헬퍼 4개(lastSegment·isFormulaCell·toExtraValue·warn)를 export로만 승격해 재사용했다. mapRows·RowMapSpec 등 공개 시그니처는 그대로이며 row-mapper 테스트 21개가 그대로 통과한다. 검증 실패는 validateParsedGoalMetric 경고로만 남기고 지표를 버리지 않으며(GOAL_TITLE_MISSING 검증), 경고는 code·sheet·row·column만 담는다. A섹션·C섹션은 다루지 않는다(step 7). exceljs import 0건. 테스트 19개 통과, sheet 204개·전체 212개 회귀 통과, lint(경고 0)·build 통과.",
+      "completed_at": "2026-08-16T02:16:24+0900"
     },
     {
       "step": 7,
