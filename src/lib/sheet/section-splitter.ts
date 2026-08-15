@@ -34,8 +34,11 @@ export interface SheetSection {
   band: HeaderBand | null;
 }
 
-/** 그 행에서 **처음으로 값이 있는** 셀의 텍스트. 전부 비었으면 null */
-function firstFilledText(sheet: SheetGrid, row: number): string | null {
+/**
+ * 그 행에서 **처음으로 값이 있는** 셀의 텍스트. 전부 비었으면 null.
+ * (자유 텍스트 섹션을 읽는 `adapter-marketing-team`이 같은 규칙을 써야 해서 export한다.)
+ */
+export function firstFilledText(sheet: SheetGrid, row: number): string | null {
   for (const cell of sheet.cells[row] ?? []) {
     const { value } = toText(cell.value);
     if (value !== null) return value;
