@@ -1,0 +1,76 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t4-store-domain",
+  "steps": [
+    {
+      "step": 0,
+      "name": "domain-model",
+      "commit": "feat: 저장 모델 타입과 KST 날짜 계산 kst-today 추가",
+      "status": "completed",
+      "started_at": "2026-08-18T10:40:19+0900",
+      "summary": "src/types/task.ts에 저장 모델 TaskSemantic·DisplayStatus·Task·TaskStage·TaskEvent를, src/types/goal.ts에 GoalMetric·TeamPeriodGoal을 추가(ParsedTask 등 T3 파싱 타입은 그대로 유지). src/lib/domain/kst-today.ts 신설 — kstToday·kstDateOf·daysBetween·addDays·startOfWeek·endOfWeek 6개 내보냄. 시간대 환산은 Intl.DateTimeFormat(en-CA, Asia/Seoul)로만 하고 +9시간 오프셋 상수를 쓰지 않으며, 날짜 산술은 Date.UTC로만 해 로컬 자정 혼입을 막는다. 현재 시각은 인자로만 받고 형식 오류는 예외 대신 null. 테스트 16개 통과, T3 회귀 232개 유지(전체 256개).",
+      "completed_at": "2026-08-18T10:44:03+0900"
+    },
+    {
+      "step": 1,
+      "name": "task-semantic",
+      "commit": "feat: 진행 상태 semantic 매핑과 미등록 enum 검사 task-semantic 추가",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "task-derive",
+      "commit": "feat: 업무 파생 판정 task-derive와 5색 매핑 display-status 추가",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "progress-stats",
+      "commit": "feat: 완료율·팀 요약·KPI 10종 집계 progress-stats 추가",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "goal-stats",
+      "commit": "feat: 목표 대비 달성률 재계산 goal-stats 추가",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "alert-rules",
+      "commit": "feat: 알림 판정 alert-rules 추가",
+      "status": "pending"
+    },
+    {
+      "step": 6,
+      "name": "weekly-report",
+      "commit": "feat: 주간 보고 마크다운 생성 weekly-report 추가",
+      "status": "pending"
+    },
+    {
+      "step": 7,
+      "name": "task-repository",
+      "commit": "feat: 저장소 계약과 메모리 드라이버 memory-task-store 추가",
+      "status": "pending"
+    },
+    {
+      "step": 8,
+      "name": "schema-migration",
+      "commit": "feat: Supabase 전체 스키마 마이그레이션 추가",
+      "status": "pending"
+    },
+    {
+      "step": 9,
+      "name": "supabase-task-store",
+      "commit": "feat: Supabase 저장소 supabase-task-store 추가",
+      "status": "pending"
+    },
+    {
+      "step": 10,
+      "name": "store-factory",
+      "commit": "feat: 저장소 선택과 읽기 전용 폴백 store-factory 추가",
+      "status": "pending"
+    }
+  ],
+  "created_at": "2026-08-18T10:40:19+0900"
+}
