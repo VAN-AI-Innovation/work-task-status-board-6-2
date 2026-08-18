@@ -34,6 +34,7 @@ src/
 ├── lib/
 │   ├── sheet/   workbook-reader · header-resolver · tab-detector
 │   │            section-splitter · cell-normalizer
+│   │            task-schema · row-mapper · stage-unpivot
 │   │            adapter-edit-team · adapter-shoot-team
 │   │            adapter-marketing-team · adapter-goal-metrics
 │   │            adapter-settings-tab · sheet-pipeline

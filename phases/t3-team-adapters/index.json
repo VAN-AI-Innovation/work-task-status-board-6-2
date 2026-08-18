@@ -1,0 +1,89 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t3-team-adapters",
+  "steps": [
+    {
+      "step": 0,
+      "name": "task-model",
+      "commit": "feat: 파싱 산출물 타입과 zod 검증 스키마 추가",
+      "status": "completed",
+      "started_at": "2026-08-16T01:40:32+0900",
+      "summary": "types/task.ts(TeamKey·ExtraValue·ParsedStage·ParsedTask·TabParseResult·WorkbookParseResult)와 types/goal.ts(ParsedGoalMetric·ParsedTeamPeriodGoal)로 T3 파싱 산출물 계약을 확정하고, lib/sheet/task-schema.ts에 zod safeParse 기반 validateParsedTask·validateParsedGoalMetric을 추가. 경고 5종(SOURCE_KEY_EMPTY·TASK_TITLE_MISSING·PROGRESS_INVALID·DATE_FORMAT_INVALID·GOAL_TITLE_MISSING)은 code·sheet·row(1-based)만 담아 실명·셀 값이 새지 않고, 하드 실패나 입력 변형 없이 경고만 반환한다. 날짜는 /^\\d{4}-\\d{2}-\\d{2}$/ 또는 null, 진행률은 0~100 정수 또는 null(0과 null 구분). 테스트 13개 통과, sheet 전체 108개 회귀 통과.",
+      "completed_at": "2026-08-16T01:43:47+0900"
+    },
+    {
+      "step": 1,
+      "name": "row-mapper",
+      "commit": "feat: 공용 행 매핑 엔진 row-mapper 추가",
+      "status": "completed",
+      "started_at": "2026-08-16T01:43:47+0900",
+      "summary": "lib/sheet/row-mapper.ts에 어댑터 3종이 공유하는 행→ParsedTask 변환 엔진 mapRows(sheet, band, spec, range?)를 추가. 내보낸 타입은 TaskScalarField·FieldMapEntry·RowMapSpec·RowRecord·RowMapResult. 신원 판정은 identityHeaders 컬럼만 보고 {formula}·{sharedFormula} 셀은 근거에서 제외해 유령 행을 경고 없이 조용히 버리며(E1), 숨김 행은 건너뛴다(E6). 헤더 매칭은 결합 경로의 마지막 조각 정확 일치(접두 일치 금지)이고 중복 매칭은 첫 컬럼 채택 + AMBIGUOUS_FIELD_HEADER를 시트당 1건만 남긴다. raw는 전 컬럼 무손실(하이퍼링크는 {text,hyperlink} 보존), extras는 raw에서 매핑 컬럼·idHeader·coOwnerHeader·excludeFromExtras(결합 라벨 전체 일치)만 뺀 나머지로 null 값도 키를 유지하고 미매핑 신원 컬럼은 남긴다. sourceKey는 idHeader 값 또는 slug(title)::slug(owner)(한글 보존)이며 중복 시 DUPLICATE_SOURCE_KEY 경고만 남기고 두 태스크를 모두 반환한다(E5). cell-normalizer 경고는 1-based 좌표로 승격되고 validateParsedTask 경고를 합치되 태스크를 버리지 않는다. 팀 분기·exceljs import 없음. 테스트 21개 통과, sheet 129개·전체 137개 회귀 통과, lint·build 통과.",
+      "completed_at": "2026-08-16T01:49:18+0900"
+    },
+    {
+      "step": 2,
+      "name": "stage-unpivot",
+      "commit": "feat: 단계 컬럼 그룹을 행으로 펴는 stage-unpivot 추가",
+      "status": "completed",
+      "started_at": "2026-08-16T01:49:18+0900",
+      "summary": "lib/sheet/stage-unpivot.ts에 단계 컬럼 그룹을 ParsedStage 행으로 펴는 unpivotStages(record, groups, ctx)와 stageColumnLabels(columns, groups)를 추가. 내보낸 타입은 StageGroupSpec·UnpivotResult. 컬럼 선택은 path[0] === groupHeader와 경로 마지막 조각 === cols.X 두 축을 모두 만족하는 컬럼이라(라벨 통째 비교 아님) 하위 라벨이 그룹마다 반복돼도 값이 섞이지 않는다. 그룹마다 항상 행 1개를 만들고(seq는 groups 배열 순서대로 0부터, 값이 전부 비어도 생성), stageLabel은 spec.label이 아니라 시트 원문 groupHeader를 싣는다. 값 변환은 cell-normalizer(planned·actual은 toDateString(baseYear), content·confirm은 toText)에 맡기고 불리언 확인 값은 'true'/'false' 그대로 둔다(해석은 T4 task-semantic). slaDays는 spec 값 복사뿐이고 설정 탭 SLA와 잇지 않는다(T4 범위). cell-normalizer 경고는 {code, sheet, row+1, column+1}로 승격하고, groupHeader에 맞는 컬럼이 0개면 STAGE_GROUP_NOT_FOUND 경고만 남기고 빈 행은 그대로 만든다(예외 없음). stageColumnLabels는 어댑터가 RowMapSpec.excludeFromExtras에 넘길 라벨을 계산하며, cols가 실제로 가리키는 컬럼만 돌려준다 — 그룹에 속했지만 어느 단계 필드에도 실리지 않는 컬럼까지 빼면 extras에도 단계에도 없어 사라져 완료 기준 3(누락 없음)이 깨지기 때문. 팀·단계 이름 하드코딩과 exceljs import 없음. 테스트 11개 통과, sheet 140개·전체 148개 회귀 통과, lint·build 통과.",
+      "completed_at": "2026-08-16T01:52:52+0900"
+    },
+    {
+      "step": 3,
+      "name": "adapter-edit-team",
+      "commit": "feat: 편집팀 어댑터 adapter-edit-team 추가",
+      "status": "completed",
+      "started_at": "2026-08-16T01:52:52+0900",
+      "summary": "lib/sheet/adapter-edit-team.ts에 parseEditTeamTab(sheet, band, ctx)을 추가. 파일 내용은 선언적 표 3개(IDENTITY_HEADERS=['업무명','담당자'], FIELD_MAP 5줄=title·ownerNameRaw·progress·assignedAt·note, STAGE_GROUPS 3그룹)와 조립 코드뿐이고 if/else 사슬이 0개다. 밴드는 detectTab의 matches[0].band({groupRow:7,labelRow:8})를 인자로 받으며 스스로 찾지 않는다. 조립은 resolveHeaders → stageColumnLabels로 excludeFromExtras 계산 → mapRows → 레코드별 unpivotStages → 경고 합산 순이고, tasks는 {...task, stages}로 새로 만든다. 픽스처 01_편집팀 결과: 태스크 5건(0-based 9·10·11·13·14 — 숨김 행 0-based 12는 신원 컬럼에 값이 있어도 E6로 제외), 태스크마다 단계 3행(seq 0·1·2, stageKey concept·production·final, stageLabel은 시트 원문 그룹 헤더), slaDays 2·5·7은 그룹 헤더의 (+N일)이 근거이고 설정 탭 SLA와 잇지 않았다(T4). 세 번째 그룹은 시트 M~O가 3컬럼이라 content가 항상 null. 값 검증: 수식 result가 Date인 E10 → 2026-07-22, 문자열 '2026.07.22' → 2026-07-22, 퍼센트 0.33+'0%' → progress 33, 시리얼 46000 → 2025-12-09, '9/1' → baseYear 기준 2026-09-01, '-' → null 무경고, 리치텍스트 비고 → '컨셉 확정 승인자1 확인 필요', 하이퍼링크는 stages[].content에 표시 문자열·raw에 {text,hyperlink} 보존. 세로 병합 A14:A15는 업무명이 같아도 담당자가 달라 sourceKey가 갈리고 DUPLICATE_SOURCE_KEY가 없다. raw는 16컬럼 전량, extras는 5건 모두 키 0개(16 = 매핑 5 + 단계 11이라 남는 컬럼이 없다) — extras에 예정일·실제·내용·확인이 하나도 들어가지 않는다. 발생 경고는 3건뿐이고 전부 code·sheet·row·column만 담는다: FORMULA_WITHOUT_RESULT(11:3 진행률 공유 수식, 11:5 컨셉 예정일 공유 수식), CELL_ERROR(12:7 #REF!). exceljs import 0건. 테스트 20개 통과, sheet 160개·전체 168개 회귀 통과, lint·build 통과.",
+      "completed_at": "2026-08-16T01:57:54+0900"
+    },
+    {
+      "step": 4,
+      "name": "adapter-shoot-team",
+      "commit": "feat: 촬영·기획팀 어댑터 adapter-shoot-team 추가",
+      "status": "completed",
+      "started_at": "2026-08-16T01:57:54+0900",
+      "summary": "lib/sheet/adapter-shoot-team.ts에 parseShootTeamTab(sheet, band, ctx)을 추가. 파일 내용은 선언적 표 (IDENTITY_HEADERS 4개=업무ID·프로젝트명·기획 담당자·촬영 담당자, ID_HEADER=업무ID, CO_OWNER_HEADER=공동 담당자, FIELD_MAP 14줄, STAGE_GROUPS 빈 배열)와 조립 코드뿐이고 if 사슬이 0개다. 밴드는 detectTab의 matches[0].band({groupRow:7,labelRow:8})를 인자로 받는다. 유령 행 25건(0-based 10~34) 차단 근거: 신원 판정을 row-mapper의 identityHeaders에 맡기고 그 4컬럼만 보게 했다 — 수식 셀({formula}·{sharedFormula})은 신원 근거에서 제외되므로 1900-01-01·1899-12-31·0%·false만 찬 행이 데이터 행이 되지 않는다. 실측 결과 태스크는 0-based 9행 1건뿐(sourceRowIndex 10)이고 26건이 아니며, 유령 행에서 나온 경고가 0건이라 25건이 잡음이 되지 않았다. 탭 전체 경고는 0건이다. extras 키 55개 = 71 − FIELD_MAP.length(14) − 2(업무ID·공동 담당자)로 실측과 계산식이 일치하고, raw는 71컬럼 무손실이다. 촬영 담당자('기본 업무정보 / 촬영 담당자')는 신원 판정에 썼지만 어느 필드에도 매핑하지 않아 extras에 남고, '섭외 / 출연자 연락처 (내부용)'도 extras·raw에 보존한다(마스킹은 T6 응답 계층). 목표 블록은 행 번호를 하드코딩하지 않고 헤더 밴드 위쪽(0 ~ band.labelRow-1)을 훑어 셀 텍스트가 기준 주차·이번 주 핵심 목표·주요 리스크와 정확히 일치하면 바로 오른쪽 셀을 값으로 읽는 방식이며(adapter-settings-tab의 SLA 블록 스캔과 같은 기법), ParsedTeamPeriodGoal 1건(periodLabel '2026-07 4주차', goalText '브랜드 필름 섭외 확정', riskText '출연자 일정 미확정')을 산출한다. 셋 다 없으면 빈 배열이고 경고를 남기지 않는다. STAGE_GROUPS를 비운 근거는 TICKETS.md T3「리스크·미결」의 완화안(촬영팀은 1차에 공통 필드 + extras 전량 보존만, 언피벗은 편집팀만)이고 완료 기준 4는 편집팀만 요구한다 — 나중에 이 배열만 채우면 unpivotStages가 붙는 자리로 남겼다. '비어 있음'이 실수가 아니라 결정임을 테스트가 확인하도록 FIELD_MAP과 함께 export했다(extras 개수도 상수가 아니라 FIELD_MAP.length로 계산해 대조한다). 값 검증: 진행률 0.4+'0%' → 40, 배정일 2026-07-20, 기한 2026-08-05, sourceKey는 업무ID 원문 '[샘플] SH-001'(slug 규칙 아님), coOwnerNames ['기획자2'], stages []. exceljs import 0건, cells[리터럴] 0건. 테스트 15개 통과, sheet 175개·전체 183개 회귀 통과, lint(경고 0)·build 통과.",
+      "completed_at": "2026-08-16T02:04:43+0900"
+    },
+    {
+      "step": 5,
+      "name": "section-splitter",
+      "commit": "feat: 마케팅 탭 A/B/C 섹션 분할기 section-splitter 추가",
+      "status": "completed",
+      "started_at": "2026-08-16T02:04:44+0900",
+      "summary": "lib/sheet/section-splitter.ts에 splitSections(sheet)->SheetSection[]와 SectionKey·SheetSection 타입을 추가. 배너 판정은 행마다 처음 값이 있는 셀의 텍스트가 /^([ABC])\\.\\s*.+$/에 맞는지 하나뿐이고 팀 이름을 모른다(A/B 테스트 결과는 마침표가 없어 걸리지 않는다). 섹션은 시트 순서 그대로 돌려주고 정렬하지 않는다 — 픽스처 03_마케팅·관리팀은 C(titleRow 7, 8~12) · A(15, 16~19) · B(22, 23~26) 순이다(0-based). endRow는 다음 배너 행-1(마지막은 rowCount-1)에서 뒤쪽 빈 행을 잘라낸 값이라 섹션 사이 빈 행 2줄이 앞 섹션에 딸려 오지 않고, 내용이 전부 비면 startRow-1이 되어 빈 범위가 된다. band는 findHeaderBands(sheet)의 후보 중 startRow<=labelRow<=endRow인 첫 번째를 고르는 것뿐이고 밴드 판정을 다시 구현하지 않았다 — A는 {groupRow:null,labelRow:16}, B는 {groupRow:null,labelRow:23}, 자유 텍스트인 C는 null(행마다 채워진 셀이 1개라 header-resolver의 MIN_FILLED_CELLS 3에 못 미친다). 배너가 없으면 예외가 아니라 빈 배열이고, 같은 key가 둘이어도 둘 다 돌려준다 — 경고를 만들지 않고 판단은 어댑터(step 6·7)가 한다. exceljs import 0건. 테스트 10개 통과, sheet 185개·전체 193개 회귀 통과, lint(경고 0)·build 통과.",
+      "completed_at": "2026-08-16T02:08:09+0900"
+    },
+    {
+      "step": 6,
+      "name": "adapter-goal-metrics",
+      "commit": "feat: 주간 성과 지표 어댑터 adapter-goal-metrics 추가",
+      "status": "completed",
+      "started_at": "2026-08-16T02:08:09+0900",
+      "summary": "lib/sheet/adapter-goal-metrics.ts에 parseGoalMetrics(sheet, section, ctx: {teamKey, baseYear}) -> {goalMetrics, warnings}를 추가. 섹션은 호출자(step 7)가 splitSections에서 꺼내 넘기고 스스로 찾지 않으며, section.band가 null이면 빈 결과 + 경고 0건이다(예외 없음). 파일 내용은 선언적 표(IDENTITY_HEADERS=['마케팅 과제명','실행 담당자'], GOAL_FIELD_MAP 16줄)와 조립 코드뿐이다. 달성률 처리가 이 step의 급소다 — toProgress를 쓰지 않고 파일 안의 toRate(cell)로 toNumber + numFmt에 '%'가 있으면 x100 + Math.round만 하며 범위 경고를 내지 않는다(진행률은 100 초과가 이상하지만 달성률 120%는 정상이라 PROGRESS_OUT_OF_RANGE가 잡음이 된다). actual/target 재계산은 하지 않는다 — 나눗셈이 0줄이고, 픽스처 셋째 행(목표 40·실적 12·시트 달성률 0.95)이 95로 그대로 남아 T4 summarizeGoals(T4 완료 기준 7)가 볼 불일치 증거가 보존된다. 픽스처 03_마케팅·관리팀 B섹션(0-based 헤더 23행, 데이터 24~26행) 실측: 지표 3건(sourceRowIndex 25·26·27), 달성률 120·82·95, 목표/실적 100/120·50/41·40/12, periodLabel 전부 '2026-07 4주차', prevPeriodDelta '+18%'·'-4%'·'신규', kpiName 유입수·저장수·전환수, startedAt/dueAt 2026-07-21~27 등 YYYY-MM-DD, ownerNameRaw는 '제안자'가 아니라 '실행 담당자'에서 온 마케터1·마케터2·마케터2, goalText·analysis·wentWell·needsImprovement 전부 채워짐, 탭 경고 0건. 헤더 매칭은 결합 경로 마지막 조각 정확 일치라 '목표'가 '목표 KPI'·'목표 수치'를 잡아채지 않는다(접두 일치 금지). raw 30컬럼 무손실, extras 14키 = 30 − GOAL_FIELD_MAP.length(16)이고 회의일·제안자·대상·실행 방식·계획 확정 여부·임원진 승인 여부·실제 실행 내용·다음 주 유지 여부·다음 주 개선안·관련 링크·담당자 자체 평가·임원진 피드백·최종 확인·비고가 남으며 '관련 링크'는 {text:'실행 기록', hyperlink:'https://example.test/marketing/1'}로 보존된다. mapRows를 고치지 않았다(ParsedGoalMetric은 필드가 달라 한 함수가 두 산출물을 만들면 뒤엉킨다) — 대신 같은 규칙(신원 판정 시 수식 셀 제외, 숨김 행 skip, extras/raw, 1-based 경고 좌표)을 따르고 row-mapper의 내부 헬퍼 4개(lastSegment·isFormulaCell·toExtraValue·warn)를 export로만 승격해 재사용했다. mapRows·RowMapSpec 등 공개 시그니처는 그대로이며 row-mapper 테스트 21개가 그대로 통과한다. 검증 실패는 validateParsedGoalMetric 경고로만 남기고 지표를 버리지 않으며(GOAL_TITLE_MISSING 검증), 경고는 code·sheet·row·column만 담는다. A섹션·C섹션은 다루지 않는다(step 7). exceljs import 0건. 테스트 19개 통과, sheet 204개·전체 212개 회귀 통과, lint(경고 0)·build 통과.",
+      "completed_at": "2026-08-16T02:16:24+0900"
+    },
+    {
+      "step": 7,
+      "name": "adapter-marketing-team",
+      "commit": "feat: 마케팅·관리팀 어댑터 adapter-marketing-team 추가",
+      "status": "completed",
+      "started_at": "2026-08-16T02:16:24+0900",
+      "summary": "lib/sheet/adapter-marketing-team.ts에 parseMarketingTeamTab(sheet, ctx:{baseYear}) -> TabParseResult를 추가. 편집팀·촬영팀과 달리 band를 받지 않고 splitSections(sheet)를 스스로 호출한다 — 이 탭은 표가 셋이라 밴드 하나로 표현되지 않기 때문이다. 세 섹션이 각각 다른 목적지로 간다(완료 기준 5): C(자유 텍스트)→briefingLines, A(문의 20컬럼)→tasks, B(성과 30컬럼)→parseGoalMetrics 위임→goalMetrics. B 처리 코드는 parseGoalMetrics 호출 한 줄뿐이고 지표 파싱을 복제하지 않았다(테스트가 두 결과를 toEqual로 대조한다). 파일 내용은 선언적 표(IDENTITY_HEADERS=['문의 ID','담당자'], ID_HEADER='문의 ID', FIELD_MAP 11줄)와 조립 코드뿐이고 STAGE_GROUPS가 없다 — 마케팅 문의에는 단계 컬럼 그룹이 없어 stages는 전부 빈 배열이다. 픽스처 03_마케팅·관리팀 실측: 태스크 3건(sourceRowIndex 18·19·20, sourceKey는 slug 규칙이 아니라 문의 ID 원문 '[샘플] Q-001'~'Q-003'), 지표 3건, 브리핑 5줄, 탭 경고 0건. A섹션은 mapRows에 range{startRow: band.labelRow+1(=17), endRow: section.endRow(=19)}를 줘서 아래 B섹션 행이 문의로 읽히지 않게 했다. 담당자/후속 담당자 비뒤바뀜 근거는 row-mapper의 마지막 조각 정확 일치이며, 셋째 건에서 ownerNameRaw='마케터1'·nextActionOwner=null로 갈려 접두 일치였다면 깨진다. 셋째 건 dueAt=null('답변 기한' 빈칸)이 보존돼 T4 '기한 미설정' 알림의 근거가 남는다. extras는 raw(20컬럼 무손실) − FIELD_MAP.length(11) − 1(문의 ID)로 8키이며 접수 시간·채널·계정·문의자·문의 유형·답변 필요 여부·실제 답변일·답변 내용 요약·완료 여부가 남는다 — 개인정보인 '계정·문의자'는 값째로 보존한다(sample_account_1). 파싱 단계에서 지우면 admin도 못 보므로 마스킹은 T6 응답 계층의 일이다(T6 완료 기준 13). 브리핑은 team_period_goals로 보내지 않고 briefingLines 문자열 배열까지가 끝이며(회고 문장이지 목표가 아니다) 배너 행(titleRow)은 제외되고 빈 행은 건너뛴다 — 섹션의 첫 채워진 셀 텍스트를 읽는 규칙이 section-splitter와 같아야 해서 그쪽 firstFilledText에 export만 붙여 재사용했다(공개 시그니처 변경 없음, 기존 테스트 10개 그대로 통과). 섹션 누락은 예외가 아니라 종류당 MARKETING_SECTION_MISSING 경고 1건이고(A는 band까지 있어야 유효), 섹션 0개인 시트도 빈 결과 + 경고 3건으로 정상 반환한다(UC-04 부분 업로드). 경고는 code·sheet(·row·column)만 담아 셀 값·계정·이름이 새지 않는다. exceljs import 0건, mask/redact 0건. 테스트 14개 통과, sheet 218개·전체 226개 회귀 통과, lint(경고 0)·build 통과.",
+      "completed_at": "2026-08-16T02:21:14+0900"
+    },
+    {
+      "step": 8,
+      "name": "sheet-pipeline",
+      "commit": "feat: 워크북 파싱 파이프라인 sheet-pipeline 추가",
+      "status": "completed",
+      "started_at": "2026-08-16T02:21:15+0900",
+      "summary": "lib/sheet/sheet-pipeline.ts에 parseWorkbook(input: Buffer|ArrayBuffer, ctx:{baseYear}) -> Promise<WorkbookParseResult>를 추가해 T2 리더·판별기와 T3 어댑터를 한 함수 뒤로 감췄다. T5 라우트는 이 함수만 부르면 된다. 탭 종류별 처리는 TAB_ROUTES 표 한 개가 전부이고(Record<SheetTabKind,TabRoute>라 종류가 늘면 컴파일이 먼저 막는다) 팀별 if 사슬이 0개다: edit_team·shoot_team은 mode 'band'(detectTab의 matches[0].band 주입), marketing_team은 mode 'whole'(섹션 분할을 어댑터가 스스로 한다), settings·dashboard·unknown은 mode 'skip'이며 warn은 각각 null·null·UNKNOWN_TAB이다. 대시보드는 건너뛰되 경고를 남기지 않는다(E6 — 매 업로드마다 뜨는 잡음). 설정 탭은 순서 때문에 먼저 처리해 SettingsRegistry를 settings에 싣고, 없거나 밴드를 못 찾으면 예외가 아니라 null + SETTINGS_TAB_MISSING 경고 1건이다(한 사건에 HEADER_BAND_NOT_FOUND를 겹쳐 남기지 않는다). 예외는 던지지 않는다 — readWorkbook의 WorkbookReadError만 그대로 통과하고, 어댑터 예외는 탭 단위 try/catch로 TAB_PARSE_FAILED{code,sheet} 경고로 바꿔 나머지 탭을 계속 처리한다(X2 부분 실패). 예외 메시지·스택·경로는 담지 않는다. '알려진 탭 0개'는 중단이 아니라 빈 tabs + 경고이며 중단 판정은 T5의 몫이다. new Date()·semantic 매핑·미등록 값 검사·API/DB/화면 코드는 없다. 스펙에 없던 판단 하나 — readWorkbook이 돌려준 리더 경고(HIDDEN_COLUMN 등)를 최상위 warnings에 이어 붙였다. 이 파이프라인이 유일한 호출자라 버리면 신호가 사라지기 때문이고, 전용 테스트로 고정했다(픽스처에서는 0건이라 실측으로는 드러나지 않는다). 픽스처 sample-workbook.xlsx 전체 파싱 실측: tabs 3개(01_편집팀·02_촬영·기획팀·03_마케팅·관리팀, teamKey edit·shoot·marketing / 대시보드·설정은 tabs에 없음), 태스크 5+1+3=9건, goalMetrics 3건(달성률 120·82·95), teamPeriodGoals 1건(shoot), briefingLines 5줄, settings enums·slaRules 채워짐, 최상위 warnings 0건·settings.warnings 0건, 탭 경고는 편집팀 3건(FORMULA_WITHOUT_RESULT 11:3·11:5, CELL_ERROR 12:7)뿐이고 전부 code·sheet·row·column만 담는다. [T3 완료 기준 10개 대조] 1 픽스처 3개 팀 탭 → Task[] = sheet-pipeline.test.ts '완료 기준 1'+'완료 기준 2'(탭 3개·teamKey 3종·태스크 [5,1,3]). 2 유령 행 25건 미생성 = sheet-pipeline.test.ts '완료 기준 2'(촬영 1건, 26건 아님) + adapter-shoot-team.test.ts. 3 미매핑 컬럼 extras 보존 = sheet-pipeline.test.ts '완료 기준 3'(raw 71키, extras 55키 = 71 − FIELD_MAP.length(14) − 2, 상수와 계산식 양쪽 대조). 4 편집팀 3그룹 언피벗 = sheet-pipeline.test.ts '완료 기준 4'(태스크 5건 전부 stages 3행, stageKey concept·production·final) + stage-unpivot.test.ts. 5 A/B/C 분할과 목적지 = sheet-pipeline.test.ts '완료 기준 5·6·7'(tasks·goalMetrics·briefingLines가 각자 자리) + section-splitter.test.ts + adapter-marketing-team.test.ts. 6 B섹션 → goal_metrics = sheet-pipeline.test.ts '완료 기준 5·6·7'(achievementRate 120·82·95) + adapter-goal-metrics.test.ts 19개. 7 촬영 헤더 '이번 주 핵심 목표' → team_period_goals = sheet-pipeline.test.ts '완료 기준 5·6·7'(1건, teamKey shoot) + adapter-shoot-team.test.ts. 8 source_key 중복 경고 = **파이프라인이 증명하지 못한다 — 픽스처에 중복 키가 없다.** 증명은 step 1의 단위 테스트 row-mapper.test.ts:225 '중복 sourceKey는 경고 1건을 남기고 두 태스크를 모두 돌려준다'이고, 픽스처 쪽은 adapter-edit-team.test.ts:152가 '경고 없음'이라는 반대 방향만 고정한다. 9 zod 실패가 하드 실패가 아니라 warnings = task-schema.test.ts 13개 + row-mapper.test.ts(검증 경고를 합치되 태스크를 버리지 않음). 10 숨김 행 skip = adapter-edit-team.test.ts:54(숨김 0-based 12 제외로 6건이 아닌 5건) + row-mapper.test.ts:93 + adapter-goal-metrics.test.ts:201. 빠진 기준은 없고, 8번만 픽스처가 아닌 단위 테스트가 근거다. [AC 실측] sheet-pipeline.test.ts 14개 통과, src/lib/sheet 15파일 232개·전체 240개 통과, lint(경고 0)·build 통과. grep 두 개는 출력이 0/1줄이 아니라 각각 3줄·1줄인데 전부 T2에서 이미 있던 테스트 파일의 텍스트다 — exceljs는 제품 import 1건(workbook-reader.ts)뿐이고 나머지 2건은 cell-normalizer.test.ts:12·workbook-reader.test.ts:57의 주석 언급이며, semantic grep 1건은 adapter-settings-tab.test.ts:160의 not.toContain('in_progress') 부정 단언이다(둘 다 이 step에서 만든 것이 아니고 경계 위반도 아니다). [문서 대조] ARCHITECTURE.md의 lib/sheet 트리는 11개를 적고 있는데 실제는 14개다 — 차이는 T3가 도입한 공용 엔진 row-mapper·stage-unpivot·task-schema 셋이고 이 step에서 새로 생긴 파일은 sheet-pipeline.ts와 그 테스트 2개뿐이다. 문서 수정은 이 step의 범위가 아니라 보고만 한다. 파일명은 src/lib 전역 유니크(중복 basename 0건).",
+      "completed_at": "2026-08-16T02:28:52+0900"
+    }
+  ],
+  "created_at": "2026-08-16T01:40:32+0900",
+  "completed_at": "2026-08-16T02:28:52+0900"
+}
