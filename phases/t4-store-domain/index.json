@@ -24,7 +24,10 @@
       "step": 2,
       "name": "task-derive",
       "commit": "feat: 업무 파생 판정 task-derive와 5색 매핑 display-status 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-18T10:48:38+0900",
+      "summary": "src/lib/domain/task-derive.ts와 display-status.ts 신설. task-derive는 DeriveContext(today·semanticIndex·dueSoonDays 기본3·staleDays 기본7·knownOwners)를 받아 TaskFlags(semantic·dday·isOverdue·isDueSoon·isStale·hasNoOwner·hasUnknownOwner·hasNoDueDate)를 내는 deriveTaskFlags와 id를 키로 하는 deriveAllFlags 2개를 내보낸다. 지연은 (dday<0 OR 시트 riskStatus='지연')이되 done·cancelled면 무조건 false — 완료 건이 빨간색이면 완료율과 화면이 어긋나므로 상수 주석에 근거를 남겼다. 임박은 지연이 아닐 때 0<=dday<=dueSoonDays(오늘 마감 포함)이고, 단계 SLA는 slaDays가 TaskStage에만 붙어 step 5로 미뤘다. 미갱신은 lastProgressAt이 null이면 false(증거의 부재), 담당자 미지정 토큰은 NO_OWNER_TOKENS 상수 하나, knownOwners가 없거나 비면 hasUnknownOwner는 항상 false. 날짜 차이는 daysBetween·kstDateOf로만 구해 Date 뺄셈을 쓰지 않고, 이 파일이 아는 한글 상태 문자열은 riskStatus '지연' 하나(RISK_DELAYED 상수)뿐이라 AC grep 3종이 모두 빈 출력이다. display-status는 Record<TaskSemantic, DisplayStatus> 표 하나로 10단계를 5색으로 접고 isOverdue가 최우선으로 덮어쓰며 null·hold·cancelled는 muted, DISPLAY_STATUS_LABELS는 예정·진행·검토·완료·지연·기타 6개이고 색·클래스는 넣지 않았다. 픽스처 실측(기준 2026-07-25): 업무 9건 중 isOverdue 2건(마케팅 문의 마감 7/22·7/23 — 상태 원문이 마케팅_답변 상태 값이라 semantic이 null이지만 완료가 아니므로 지연에 포함), isDueSoon 0건. 기준을 2026-08-03으로 옮기면 촬영 건(마감 8/5)이 잡혀 isDueSoon 1건. 테스트 26개(task-derive 20·display-status 6) 통과, 회귀 포함 전체 301개 통과.",
+      "completed_at": "2026-08-18T10:54:01+0900"
     },
     {
       "step": 3,
