@@ -78,7 +78,10 @@
       "step": 8,
       "name": "schema-migration",
       "commit": "feat: Supabase 전체 스키마 마이그레이션 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-18T11:25:27+0900",
+      "summary": "supabase/migrations/0001_init.sql·0002_seed_reference.sql 신설 — SQL만 만들고 코드·테스트는 없다. **적용은 사용자가 Supabase Studio SQL Editor에 파일 전체를 붙여넣어 직접 해야 한다** (이 저장소에 supabase CLI·psql·Docker가 없어 자동 적용 경로가 없고, 파일 맨 위에 그 방법을 주석으로 남겼다). 0001은 테이블 12개 — departments·teams·members·uploads·tasks·task_stages·task_events·enum_options·sla_rules·doc_extractions·goal_metrics·team_period_goals. 키 설계: departments.id·teams.id는 uuid가 아니라 **text PK**이고 teams.id가 곧 TeamKey(edit·shoot·marketing)라 저장소가 팀 uuid를 다시 조회해 teamKey로 바꾸는 왕복이 사라진다(Task.teamId가 이미 TeamKey다). 근거는 SQL 주석에 있다. 나머지 id는 uuid default gen_random_uuid(). 충돌 키는 tasks unique(team_id, source_key)와 goal_metrics unique(team_id, period_label, title) — 뒤엣것은 뒤 두 컬럼이 null 허용이라 Postgres 기본 nulls distinct에서 null 낀 행을 접지 못하므로 step 9가 메모리 구현처럼 upsert 전에 자연키 중복을 접어야 한다고 주석에 못박았다. sla_rules만 unique nulls not distinct(team_id, label)로 공통 규칙(team_id null)이 여러 벌 쌓이는 것을 막는다. progress는 smallint **nullable** — 빈 셀과 0을 구분하는 T2·T3의 성질을 DB에서 무너뜨리지 않는다. task_stages·task_events는 tasks에, doc_extractions는 uploads에 on delete cascade. 인덱스 6개(tasks team_id·due_at·source_key, task_stages task_id, task_events (task_id, occurred_at desc), goal_metrics (team_id, period_label)). 컬럼은 src/types/task.ts·goal.ts와 1:1(snake_case↔camelCase)이라 step 9의 매퍼가 대응만 옮기면 된다. RLS 방침: 12개 테이블 전부 enable하되 **정책은 만들지 않는다**(T8의 범위). 정책 없이 켜면 anon·authenticated 키로는 아무것도 되지 않고 서버 전용 키만 통과하는데, T4 저장소는 서버에서만 붙으므로 정상 동작하고, 끈 채로 두면 URL과 anon 키만으로 실명·연락처가 다 읽힌다(S6). 트리거·함수·뷰·집계 뷰는 만들지 않았다(ADR-006 — 갱신 시각은 저장소가 명시적으로 넣는다). 0002는 부서 1건(contents-marketing 컨텐츠마케팅부)과 팀 3건(edit/shoot/marketing + name·sheet_tab·sort_order)만 on conflict (id) do nothing으로 재실행 가능하게 넣는다. enum_options·sla_rules·tasks는 시드하지 않았다 — 시트가 진실의 원천이고 T5가 채운다. AC 전부 통과: create table 12개·이름 12줄 일치, 충돌 키 2건, RLS 12건, progress nullable, 키·비밀 grep 빈 출력, on conflict 존재, supabase/가 .gitignore에 걸리지 않음(git status ?? supabase/). 코드 변경이 없어 lint·build·test 448개 그대로 통과.",
+      "completed_at": "2026-08-18T11:29:33+0900"
     },
     {
       "step": 9,
