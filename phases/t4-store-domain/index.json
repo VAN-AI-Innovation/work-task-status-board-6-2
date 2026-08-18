@@ -15,7 +15,10 @@
       "step": 1,
       "name": "task-semantic",
       "commit": "feat: 진행 상태 semantic 매핑과 미등록 enum 검사 task-semantic 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-18T10:44:04+0900",
+      "summary": "src/lib/domain/task-semantic.ts 신설 — STATUS_SEMANTIC_MAP(시트 원문 10값→semantic 9종)·CHECKED_ENUM_GROUPS·buildSemanticIndex·toSemantic·isActiveSemantic·collectUnregisteredEnumWarnings 6개 내보냄. 한글 상태 문자열을 아는 파일은 이 하나뿐이고(ADR-009), 매핑은 trim 후 정확 일치만 하며 레지스트리가 없거나 공통_진행 상태 그룹이 비면 내장 표로 폴백해 부분 업로드(UC-04)에서도 판정이 죽지 않는다. 미등록 enum 검사는 공통 4종(진행 상태·승인 상태·우선순위·리스크 상태)만 보고, 레지스트리·그룹이 없으면 그 검사를 건너뛰며, 경고는 code·sheet·row 셋뿐이라 값이 새지 않고 행마다 1건씩 접지 않는다. H4 실측: 픽스처 업무 9건에서 미등록 경고 6건 — UNREGISTERED_STATUS 2(마케팅 답변 완료·미답변은 마케팅_답변 상태 값이라 공통_진행 상태에 없음), UNREGISTERED_RISK_STATUS 3(리스크 컬럼에 진행 상태 문구가 들어 있음), UNREGISTERED_APPROVAL_STATUS 1. 즉 공통 enum은 팀 탭에서 그대로 지켜지지 않으며 값 보존 + 경고 방침이 옳다. 테스트 19개 통과, 회귀 포함 전체 275개 통과.",
+      "completed_at": "2026-08-18T10:48:37+0900"
     },
     {
       "step": 2,
