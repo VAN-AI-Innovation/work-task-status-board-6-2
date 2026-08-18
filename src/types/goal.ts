@@ -38,3 +38,44 @@ export interface ParsedTeamPeriodGoal {
   goalText: string | null;
   riskText: string | null;
 }
+
+/**
+ * 저장소에 들어갔다 나온 성과 지표.
+ *
+ * `raw`를 두지 않는다 — `ParsedGoalMetric.raw`는 파싱 감사용이고, 지표는 `extras`만으로
+ * 복원 가능하다. 업무(`Task`)와 달리 원본 행을 통째로 보관할 이유가 없다.
+ */
+export interface GoalMetric {
+  id: string;
+  teamId: TeamKey;
+  periodLabel: string | null;
+  title: string | null;
+  goalText: string | null;
+  kpiName: string | null;
+  targetValue: number | null;
+  actualValue: number | null;
+  /** **시트에 적힌 달성률.** 재계산은 `goal-stats.ts`가 따로 하고 이 값은 보존한다 */
+  achievementRate: number | null;
+  prevPeriodDelta: string | null;
+  channel: string | null;
+  ownerMemberId: string | null;
+  ownerNameRaw: string | null;
+  execStatus: string | null;
+  analysis: string | null;
+  wentWell: string | null;
+  needsImprovement: string | null;
+  startedAt: string | null;
+  dueAt: string | null;
+  extras: Record<string, ExtraValue>;
+  sourceUploadId: string | null;
+  sourceSheetTab: string;
+  sourceRowIndex: number;
+}
+
+export interface TeamPeriodGoal {
+  id: string;
+  teamId: TeamKey;
+  periodLabel: string | null;
+  goalText: string | null;
+  riskText: string | null;
+}
