@@ -69,7 +69,10 @@
       "step": 7,
       "name": "task-repository",
       "commit": "feat: 저장소 계약과 메모리 드라이버 memory-task-store 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-18T11:14:52+0900",
+      "summary": "src/lib/store/ 3파일 신설 — task-repository.ts(계약 타입 + matchesTaskFilter·TASK_DIFF_FIELDS·diffTaskFields·GOAL_METRIC_DIFF_FIELDS·diffGoalMetricFields·taskUpsertKey·goalMetricUpsertKey), repository-contract.ts(계약 항목 19개), memory-task-store.ts(createMemoryTaskStore). 리포지토리는 저장·조회만 하고 판정·집계는 없다(ADR-006) — AC grep(isOverdue|completionRate|toSemantic|toDisplayStatus, exceljs) 전부 빈 출력. 이 파일이 지는 판단은 '무엇이 바뀐 것인가' 하나다. TASK_DIFF_FIELDS는 사람이 시트에서 고치는 16개 필드이고, 제외한 것은 sourceUploadId·sourceRowIndex·sourceSheetTab(같은 내용이라도 업로드마다 바뀌어 포함하면 재업로드가 전건 '변경'이 되고 UC-03과 장기 미갱신 판정이 동시에 무너진다), raw(extras와 겹치고 크다), id·teamId·sourceKey(신원이라 바뀌면 다른 업무), ownerMemberId(시트가 아니라 T5의 이름 해석이 채운다), lastProgressAt(이 판정의 결과라 넣으면 순환)이다. extras·coOwnerNames는 키를 정렬한 안정 직렬화로 깊은 비교하고 progress는 Object.is로 시작해 0과 null을 구분한다. lastProgressAt은 created·updated에만 options.occurredAt으로 움직이고 unchanged 건은 손대지 않으며, 감사 필드는 무변경 건도 최신 업로드를 가리키게 갱신한다. TaskEvent는 updated 건에만, 필드 이름만 담는다. 단계는 TaskUpsertInput.stages로 태스크와 같은 트랜잭션에서 통째로 교체(delete-then-insert)하고 changedFields에 넣지 않는다. 배열 안 중복 자연키는 upsert 전에 접어 뒤엣것만 남긴다 — ON CONFLICT가 한 문장 안의 중복 키를 거부해 step 9도 같은 접기를 해야 하기 때문. 계약은 describe가 아니라 REPOSITORY_CONTRACT_CASES(19항목) 목록으로 두고 describeRepositoryContract가 it으로 감싸며, assertRepositoryContract로 계약 자체를 검사한다 — 일부러 어긋난 가짜 4종(무변경을 변경으로 셈·이벤트 미생성·필터 무시·단계 누적)이 각각 항목 3·4·10·12에서 잡히는 것을 확인했다. 메모리 구현은 배열 몇 개뿐(인덱스·캐시 없음), id는 crypto.randomUUID(), 읽기·쓰기 모두 structuredClone으로 깊은 복사(항목 19), 정렬은 teamId→sourceKey. 테스트 54개(task-repository 22·repository-contract 6·memory-task-store 26=계약 19+메모리 전용 7), 회귀 포함 전체 448개 통과(lint 경고 0·build 통과). docs/ARCHITECTURE.md store/ 트리 줄에 repository-contract 추가.",
+      "completed_at": "2026-08-18T11:25:27+0900"
     },
     {
       "step": 8,
