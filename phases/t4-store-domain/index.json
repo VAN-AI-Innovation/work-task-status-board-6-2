@@ -42,7 +42,10 @@
       "step": 4,
       "name": "goal-stats",
       "commit": "feat: 목표 대비 달성률 재계산 goal-stats 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-18T10:59:40+0900",
+      "summary": "src/lib/domain/goal-stats.ts 신설 — GoalStatsContext·ComputedGoalMetric·TeamGoalSummary·GoalStatsResult와 summarizeGoals 1함수를 내보낸다. 요구 4번의 계산부이고 시간을 읽지 않으며(달성률은 날짜에 매이지 않아 now조차 받지 않는다) SQL·@supabase를 쓰지 않는다(ADR-006). 핵심은 시트 값을 덮어쓰지 않는 것 — achievementRate는 sheetRate로 그대로 남고 actual/target*100을 반올림한 computedRate가 나란히 붙어 T6가 무엇을 보여줄지 고르게 한다. target이 0이면 나누기 전에 멈추고 GOAL_TARGET_ZERO 경고를 남겨 Infinity가 화면까지 새지 않으며, target·actual이 null인 미입력은 오류가 아니라 경고 없이 unmeasurableCount로만 센다. rateMismatch는 둘 다 있고 차이가 tolerancePoints(기본 1, 시트 소수 자리를 정수로 접는 반올림 폭)를 넘을 때만 참이고 참이면 GOAL_RATE_MISMATCH 1건. 경고는 code·sheet·row 셋뿐이라 목표 수치·실적·과제명·담당자가 새지 않고, sourceRowIndex가 이미 1-based라 row-mapper의 warn(+1) 헬퍼를 쓰지 않는다. 달성률에 100% 상한이나 범위 경고를 걸지 않았다(120%는 정상값). byTeam은 TEAM_ORDER(edit→shoot→marketing) 순이되 지표가 있는 팀만 행으로 내고, avgAchievement는 계산 가능 건만 평균내며 없으면 0이 아니라 null이다. 입력을 고치지 않아 items[].metric은 입력 객체를 그대로 가리킨다. 픽스처 실측: 지표 3건의 computedRate [120, 82, 30], sheetRate [120, 82, 95] — 셋째 행(목표 40·실적 12·시트 95)에서 GOAL_RATE_MISMATCH 정확히 1건(03_마케팅·관리팀 27행)이 잡히고 GOAL_TARGET_ZERO 0건, byTeam은 marketing 1행(metricCount 3·avgAchievement 77·onTarget 1·belowTarget 2·unmeasurable 0). 테스트 18개 통과, 회귀 포함 전체 346개 통과(lint·build 통과).",
+      "completed_at": "2026-08-18T11:03:36+0900"
     },
     {
       "step": 5,
