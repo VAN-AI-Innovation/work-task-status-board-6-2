@@ -13,6 +13,7 @@
 
 import { usePathname } from 'next/navigation';
 
+import { RefreshButton } from '@/components/shell/refresh-button';
 import { RoleSwitch } from '@/components/shell/role-switch';
 import { SearchBox } from '@/components/shell/search-box';
 import { SyncBadge } from '@/components/shell/sync-badge';
@@ -24,18 +25,22 @@ export function AppTopbar({
   freshness,
   role,
   query,
+  showRoleSwitch,
 }: {
   freshness: SyncFreshness;
   role: ViewerRole;
   query: DashboardQuery;
+  /** 판정은 `PageShell`이 넘긴다. 여기서 `?as=` 규칙을 다시 읽지 않는다 (`S4`) */
+  showRoleSwitch: boolean;
 }) {
   const pathname = usePathname();
 
   return (
-    <header className="bg-panel border-line flex h-14 shrink-0 items-center gap-4 border-b px-6">
+    <header className="bg-panel border-line relative flex h-14 shrink-0 items-center gap-4 border-b px-6">
       <SearchBox pathname={pathname} query={query} />
       <SyncBadge freshness={freshness} />
-      <RoleSwitch pathname={pathname} query={query} role={role} />
+      <RefreshButton />
+      {showRoleSwitch && <RoleSwitch pathname={pathname} query={query} role={role} />}
     </header>
   );
 }

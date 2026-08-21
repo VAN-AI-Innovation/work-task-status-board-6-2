@@ -20,9 +20,17 @@
  *
  * 같은 이유로 **승인 대기함도 `/`가 진다.** 이 화면에는 알림 패널만 두고, 목표 대비 성과는
  * 그 팀 지표만 뽑아 보여준다 — 저장소에서 팀으로 좁혀 읽으므로 경고 건수도 그 팀 것이다.
+ *
+ * ## 섹션 순서는 `/`와 같은 표를 본다
+ *
+ * `sectionsFor(role)`가 정한다 (완료 기준 7). 다만 이 화면에 **없는 섹션은 건너뛴다** —
+ * 팀 요약표·완료율 바(`teams`)·승인 대기함(`approvals`)·주간 브리핑(`briefing`)은 위 이유로
+ * `/`가 지기 때문이고, 순서 표를 팀 화면용으로 따로 만들면 두 화면의 역할 규칙이 갈라진다.
  */
 
 import { notFound } from 'next/navigation';
+
+import { Fragment, type ReactNode } from 'react';
 
 import { AlertPanel } from '@/components/alerts/alert-panel';
 import { StatusDonut } from '@/components/charts/status-donut';
@@ -50,6 +58,7 @@ import {
   toURLSearchParams,
 } from '@/lib/view/dashboard-query';
 import { toGoalRows } from '@/lib/view/goal-view';
+import { COMPACT_KPI_KEYS, sectionsFor, type SectionKey } from '@/lib/view/role-layout';
 import { sortTasks } from '@/lib/view/task-sort';
 import { describeSync } from '@/lib/view/sync-freshness';
 import { teamLabel, toTeamKey, toTeamSlug } from '@/lib/view/team-slug';
@@ -96,71 +105,128 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   const goalStats = summarizeGoals(await storage.repo.listGoalMetrics({ teamKeys: [teamKey] }));
   const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
 
+  /** `/`와 같다 — `member`가 자기 업무를 고르지 않은 상태. 이름을 대신 채워 넣지 않는다 */
+  const needsOwnerHint = read.role === 'member' && query.owner === null;
+
+  /**
+   * 이 화면이 그리는 섹션. **`/`가 지기로 한 것(`teams`·`approvals`·`briefing`)은 `null`이라
+   * 순서 배열에서 조용히 빠진다** — 역할 표는 하나이고 화면마다 있는 섹션만 다르다.
+   */
+  const renderSection = (key: SectionKey): ReactNode => {
+    switch (key) {
+      case 'kpi':
+        return <KpiStrip tiles={buildKpiStrip(read.tasks, read.ctx)} />;
+
+      case 'kpi_compact':
+        // 10칸을 다시 세지 않고 `buildKpiStrip`의 결과에서 골라 쓴다 (`ADR-006`)
+        return (
+          <KpiStrip
+            compact
+            tiles={buildKpiStrip(read.tasks, read.ctx).filter((tile) =>
+              COMPACT_KPI_KEYS.includes(tile.key)
+            )}
+          />
+        );
+
+      case 'charts':
+        return (
+          <div className="grid grid-cols-12 gap-6">
+            <section className="border-line bg-panel col-span-5 rounded-md border p-5">
+              <h2 className="text-ink text-sm font-semibold">상태 분포</h2>
+              <p className="text-ink-muted mt-1 text-xs">
+                지연이 다른 상태를 덮어쓴다 · 「기타」는 보류·취소·미등록
+              </p>
+              <div className="mt-3">
+                <StatusDonut series={buildStatusDonut(listed)} />
+              </div>
+            </section>
+          </div>
+        );
+
+      case 'goals':
+        return (
+          <GoalSection
+            rows={goalRows}
+            byTeam={goalStats.byTeam}
+            mismatchCount={goalStats.warnings.length}
+          />
+        );
+
+      case 'alerts':
+        return (
+          <AlertPanel
+            groups={alertGroups}
+            titleOf={(taskId) => titles.get(taskId) ?? taskId}
+            hrefOf={(taskId) => buildHref(pathname, query, { task: taskId })}
+          />
+        );
+
+      case 'tasks':
+        return (
+          <section className="border-line bg-panel rounded-md border p-5">
+            <h2 className="text-ink text-sm font-semibold">업무</h2>
+            {needsOwnerHint && (
+              <p className="text-ink-muted mt-1 text-xs">
+                담당자를 지정하면 내 업무만 볼 수 있습니다 — 아래 「담당자」 칸에 이름을 넣고
+                Enter를 누르세요.
+              </p>
+            )}
+            <div className="mt-3">
+              <FilterBar query={query} pathname={pathname} showTeamChips={false} />
+            </div>
+            {/* `/`와 같은 자리다 — 패널은 오버레이지만 「필터 밖」 안내는 표 위에 붙는다 */}
+            <div className="mt-3">
+              <TaskPanelSlot
+                tasks={visible}
+                stages={read.stages}
+                role={read.role}
+                query={query}
+                pathname={pathname}
+              />
+            </div>
+            {visible.length === 0 ? (
+              /*
+               * 두 사실을 가른다 — 걸린 필터가 있으면 「조건에 맞는 업무가 없습니다」와
+               * 초기화 링크이고, 없으면 이 팀에 업무가 없는 것이라 초기화할 것도 없다 (`X3`).
+               */
+              activeFilters === 0 ? (
+                <EmptyState kind="no-data" />
+              ) : (
+                <EmptyState
+                  kind="no-match"
+                  resetHref={buildHref(pathname, query, FILTER_RESET_PATCH)}
+                />
+              )
+            ) : (
+              <div className="mt-4">
+                <TaskTable tasks={visible} query={query} pathname={pathname} />
+              </div>
+            )}
+          </section>
+        );
+
+      // `/`가 지는 섹션들 (머리말)
+      case 'teams':
+      case 'approvals':
+      case 'briefing':
+        return null;
+    }
+  };
+
   return (
-    <PageShell mode={read.meta.mode} freshness={freshness} role={read.role} query={query}>
+    <PageShell
+      mode={read.meta.mode}
+      driver={read.meta.driver}
+      freshness={freshness}
+      role={read.role}
+      query={query}
+    >
       <h1 className="text-ink text-xl font-semibold">{teamLabel(teamKey)}</h1>
 
       <div className="mt-6 space-y-6">
-        <KpiStrip tiles={buildKpiStrip(read.tasks, read.ctx)} />
-
-        <div className="grid grid-cols-12 gap-6">
-          <section className="border-line bg-panel col-span-5 rounded-md border p-5">
-            <h2 className="text-ink text-sm font-semibold">상태 분포</h2>
-            <p className="text-ink-muted mt-1 text-xs">
-              지연이 다른 상태를 덮어쓴다 · 「기타」는 보류·취소·미등록
-            </p>
-            <div className="mt-3">
-              <StatusDonut series={buildStatusDonut(listed)} />
-            </div>
-          </section>
-        </div>
-
-        <GoalSection
-          rows={goalRows}
-          byTeam={goalStats.byTeam}
-          mismatchCount={goalStats.warnings.length}
-        />
-
-        <AlertPanel
-          groups={alertGroups}
-          titleOf={(taskId) => titles.get(taskId) ?? taskId}
-          hrefOf={(taskId) => buildHref(pathname, query, { task: taskId })}
-        />
-
-        <section className="border-line bg-panel rounded-md border p-5">
-          <h2 className="text-ink text-sm font-semibold">업무</h2>
-          <div className="mt-3">
-            <FilterBar query={query} pathname={pathname} showTeamChips={false} />
-          </div>
-          {/* `/`와 같은 자리다 — 패널은 오버레이지만 「필터 밖」 안내는 표 위에 붙는다 */}
-          <div className="mt-3">
-            <TaskPanelSlot
-              tasks={visible}
-              stages={read.stages}
-              role={read.role}
-              query={query}
-              pathname={pathname}
-            />
-          </div>
-          {visible.length === 0 ? (
-            /*
-             * 두 사실을 가른다 — 걸린 필터가 있으면 「조건에 맞는 업무가 없습니다」와
-             * 초기화 링크이고, 없으면 이 팀에 업무가 없는 것이라 초기화할 것도 없다 (`X3`).
-             */
-            activeFilters === 0 ? (
-              <EmptyState kind="no-data" />
-            ) : (
-              <EmptyState
-                kind="no-match"
-                resetHref={buildHref(pathname, query, FILTER_RESET_PATCH)}
-              />
-            )
-          ) : (
-            <div className="mt-4">
-              <TaskTable tasks={visible} query={query} pathname={pathname} />
-            </div>
-          )}
-        </section>
+        {sectionsFor(read.role).map((key) => (
+          <Fragment key={key}>{renderSection(key)}</Fragment>
+        ))}
       </div>
     </PageShell>
   );

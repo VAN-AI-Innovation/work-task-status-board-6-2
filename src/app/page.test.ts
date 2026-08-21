@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
 import { buildKpiStrip, type KpiTile, type TeamSummary } from '@/lib/domain/progress-stats';
+import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 import { kstToday } from '@/lib/domain/kst-today';
 import { buildSemanticIndex } from '@/lib/domain/task-semantic';
 import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
@@ -22,6 +23,7 @@ import { buildCompletionBars, type ChartSeries } from '@/lib/view/chart-series';
 import type { GoalRow } from '@/lib/view/goal-view';
 import type { ExtraCell } from '@/lib/view/extras-render';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
+import { COMPACT_KPI_KEYS, sectionsFor } from '@/lib/view/role-layout';
 import { sortTasks } from '@/lib/view/task-sort';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { TaskResponse } from '@/types/api';
@@ -123,6 +125,20 @@ function emptyHandle(overrides: Partial<StorageHandle> = {}): StorageHandle {
   };
 }
 
+/**
+ * 화면이 실제로 그린 **섹션 순서**. 페이지가 `sectionsFor`의 배열을 `<Fragment key={…}>`로
+ * 감싸므로 그 키를 순서대로 모으면 된다 — 컴포넌트 이름으로 찾으면 「그렸다」만 알 수 있고
+ * 「몇 번째냐」를 알 수 없는데, 완료 기준 7이 묻는 것은 **맨 위에 오는 것**이다.
+ */
+function sectionKeys(tree: unknown): string[] {
+  const keys: string[] = [];
+  walk(tree, (element) => {
+    const key = (element as { key?: unknown }).key;
+    if (typeof element.type === 'symbol' && typeof key === 'string') keys.push(key);
+  });
+  return keys;
+}
+
 async function seed(): Promise<void> {
   const payload = buildSeedPayload();
   await handle.repo.upsertTasks(payload.tasks, { occurredAt: '2026-08-22T01:00:00.000Z' });
@@ -200,10 +216,11 @@ describe('/ — KPI 10칸 (T6 완료 기준 1)', () => {
    * 지고, 화면은 그 배열을 그대로 옮기기만 해야 한다. 화면이 칸을 더하거나 라벨을 다시 지으면
    * 시트와 대조할 수 없으므로, **도메인 함수가 낸 것과 같은지**를 단언한다.
    */
+  // 10칸은 `admin`·`lead`의 화면이다. 기본 역할 `member`는 축약 3칸을 쓴다 (`role-layout.ts`)
   it('화면이 KPI를 발명하지 않는다 — 도메인 함수가 낸 10칸을 그대로 넘긴다', async () => {
     await seed();
 
-    const tiles = findComponent(await Home(props()), 'KpiStrip')?.props?.tiles as
+    const tiles = findComponent(await Home(props({ as: 'admin' })), 'KpiStrip')?.props?.tiles as
       | KpiTile[]
       | undefined;
 
@@ -558,7 +575,8 @@ describe('/ — 알림 패널 (요구 3번 · 완료 기준 2)', () => {
   it('승인 대기함 건수가 KPI 타일과 같다', async () => {
     await seed();
 
-    const tree = await Home(props());
+    // 「승인 대기」 타일은 10칸 쪽에만 있다 — 축약 3칸에는 없으므로 `admin`으로 연다
+    const tree = await Home(props({ as: 'admin' }));
     const tiles = findComponent(tree, 'KpiStrip')?.props?.tiles as KpiTile[];
     const items = findComponent(tree, 'ApprovalQueue')?.props?.items as WaitingItem[];
 
@@ -601,5 +619,117 @@ describe('/ — 목표 대비 성과 (요구 4번 · 완료 기준 3)', () => {
       ?.rows as GoalRow[];
 
     expect(filtered).toEqual(all);
+  });
+});
+
+describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
+  /**
+   * **이 테스트가 완료 기준 7의 실체다.** 세 역할이 같은 순서를 그리면 `?as=`는 배지만 바꾸는
+   * 장식이 되고 `H7` 헤지가 성립하지 않는다.
+   */
+  it('맨 위에 오는 것이 역할마다 다르다', async () => {
+    await seed();
+
+    const first = async (as: string): Promise<string> =>
+      sectionKeys(await Home(props({ as })))[0];
+
+    expect(await first('admin')).toBe('kpi');
+    expect(await first('lead')).toBe('alerts');
+    expect(await first('member')).toBe('tasks');
+  });
+
+  it('그린 순서가 `sectionsFor`가 정한 그대로다 — 화면이 표를 다시 짜지 않는다', async () => {
+    await seed();
+
+    for (const role of ['admin', 'lead', 'member'] as const) {
+      expect(sectionKeys(await Home(props({ as: role })))).toEqual([...sectionsFor(role)]);
+    }
+  });
+
+  /** 순서를 바꾸는 것은 헤지고 삭제는 권한이다. 권한은 T8이다 */
+  it('어느 역할에서도 업무 표와 알림이 사라지지 않는다', async () => {
+    await seed();
+
+    for (const role of ['admin', 'lead', 'member'] as const) {
+      const tree = await Home(props({ as: role }));
+      expect(findComponent(tree, 'TaskTable')).not.toBeNull();
+      expect(findComponent(tree, 'AlertPanel')).not.toBeNull();
+      expect(findComponent(tree, 'GoalSection')).not.toBeNull();
+    }
+  });
+
+  it('`?as=` 없이 들어가면 가장 좁은 `member` 화면이다', async () => {
+    await seed();
+
+    expect(sectionKeys(await Home(props()))).toEqual([...sectionsFor('member')]);
+  });
+
+  it('`member`의 KPI는 축약 3칸이고, 그 값은 10칸에서 골라 온 것이다', async () => {
+    await seed();
+
+    const compact = findComponent(await Home(props({ as: 'member' })), 'KpiStrip')?.props;
+    const full = findComponent(await Home(props({ as: 'admin' })), 'KpiStrip')?.props
+      ?.tiles as KpiTile[];
+
+    const tiles = compact?.tiles as KpiTile[];
+    expect(compact?.compact).toBe(true);
+    expect(tiles.map((tile) => tile.key)).toEqual([...COMPACT_KPI_KEYS]);
+    // 화면이 따로 세지 않았다 — 같은 키의 값이 10칸과 같다
+    for (const tile of tiles) {
+      expect(tile.value).toBe(full.find((entry) => entry.key === tile.key)?.value);
+    }
+  });
+
+  /** 그 사람이 누군지 우리는 모른다. 이름을 대신 채워 넣지 않고 **묻는다** (`UC-14`) */
+  it('`member`가 담당자를 고르지 않았을 때만 안내가 뜬다', async () => {
+    await seed();
+
+    const owner = (await handle.repo.listTasks())[0]?.ownerNameRaw ?? '담당자1';
+
+    expect(textOf(await Home(props({ as: 'member' })))).toContain('담당자를 지정하면');
+    expect(textOf(await Home(props({ as: 'member', owner })))).not.toContain('담당자를 지정하면');
+    expect(textOf(await Home(props({ as: 'admin' })))).not.toContain('담당자를 지정하면');
+  });
+});
+
+describe('/ — 주간 브리핑 카드 (`UC-08` · 완료 기준 9)', () => {
+  it('마크다운 문자열을 그대로 넘긴다 — 화면이 다시 만들지 않는다', async () => {
+    await seed();
+    await seedGoals();
+
+    const tasks = await handle.repo.listTasks();
+    const markdown = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard')?.props
+      ?.markdown as string;
+
+    expect(markdown).toBe(
+      buildWeeklyReport({
+        tasks,
+        stages: await handle.repo.listStages(tasks.map((task) => task.id)),
+        goals: await handle.repo.listGoalMetrics(),
+        events: [],
+        ctx: { today: kstToday(new Date()), semanticIndex: buildSemanticIndex(null) },
+      })
+    );
+  });
+
+  /** 이 문자열은 복사돼 회의록으로 나간다. `extras`가 한 값도 실리면 안 된다 (`S6`) */
+  it('연락처·계정이 실리지 않는다', async () => {
+    await seed();
+
+    const markdown = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard')?.props
+      ?.markdown as string;
+
+    expect(markdown).not.toContain('연락처');
+    expect(markdown).not.toContain('계정');
+  });
+
+  /** 0을 그냥 두면 회의에서 「이번 주 아무 일도 없었다」로 읽힌다 */
+  it('변경 건수 0의 근거를 카드가 밝힌다', async () => {
+    await seed();
+
+    const note = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard')?.props
+      ?.note as string;
+
+    expect(note).toContain('이력 조회');
   });
 });

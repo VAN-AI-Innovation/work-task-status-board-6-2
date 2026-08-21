@@ -14,6 +14,7 @@ import { buildSeedPayload } from '@/lib/upload/seed-loader';
 import type { AlertGroup } from '@/lib/view/alert-groups';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
 import type { GoalRow } from '@/lib/view/goal-view';
+import { COMPACT_KPI_KEYS, sectionsFor, type SectionKey } from '@/lib/view/role-layout';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { ExtraCell } from '@/lib/view/extras-render';
 import type { TaskResponse } from '@/types/api';
@@ -99,6 +100,16 @@ async function idOf(teamId: string): Promise<string> {
   return task.id;
 }
 
+/** `/`와 같은 방식이다 — 페이지가 섹션을 `<Fragment key={…}>`로 감싸므로 키가 곧 순서다 */
+function sectionKeys(tree: unknown): string[] {
+  const keys: string[] = [];
+  walk(tree, (element) => {
+    const key = (element as { key?: unknown }).key;
+    if (typeof element.type === 'symbol' && typeof key === 'string') keys.push(key);
+  });
+  return keys;
+}
+
 async function seed(): Promise<void> {
   const payload = buildSeedPayload();
   await handle.repo.upsertTasks(payload.tasks, { occurredAt: '2026-08-22T01:00:00.000Z' });
@@ -116,6 +127,9 @@ beforeEach(() => {
     readOnly: false,
   };
 });
+
+/** 이 화면이 실제로 그리는 섹션. 나머지는 `null`이라 순서 배열에서 조용히 빠진다 */
+const SUPPORTED: readonly SectionKey[] = ['kpi', 'kpi_compact', 'charts', 'goals', 'alerts', 'tasks'];
 
 describe('/teams/[teamSlug] — 슬러그', () => {
   it('세 팀이 각각 자기 이름으로 뜬다', async () => {
@@ -300,5 +314,50 @@ describe('/teams/[teamSlug] — 알림·목표 (완료 기준 2·3)', () => {
 
     expect(edit).not.toBeNull();
     expect(edit?.props?.rows).toEqual([]);
+  });
+});
+
+describe('/teams/[teamSlug] — 역할별 진입 화면 (완료 기준 7)', () => {
+  /** 순서 표는 `/`와 **같은 것**이다. 팀 화면용을 따로 만들면 역할 규칙이 갈라진다 */
+  it('그린 순서가 `sectionsFor`의 순서를 따른다', async () => {
+    await seed();
+
+    for (const role of ['admin', 'lead', 'member'] as const) {
+      // `/`가 지는 섹션도 자리(Fragment)는 그대로 있고 내용만 `null`이라 순서가 흔들리지 않는다
+      expect(sectionKeys(await TeamPage(props('edit', { as: role })))).toEqual([
+        ...sectionsFor(role),
+      ]);
+      expect(sectionsFor(role).some((key) => !SUPPORTED.includes(key))).toBe(true);
+    }
+  });
+
+  it('맨 위에 오는 것이 역할마다 다르다', async () => {
+    await seed();
+
+    expect(sectionKeys(await TeamPage(props('edit', { as: 'admin' })))[0]).toBe('kpi');
+    expect(sectionKeys(await TeamPage(props('edit', { as: 'lead' })))[0]).toBe('alerts');
+    expect(sectionKeys(await TeamPage(props('edit', { as: 'member' })))[0]).toBe('tasks');
+  });
+
+  /** `/`가 지기로 한 섹션은 여기에 없다 — 행 하나짜리 표와 승인 대기함은 전사 화면의 것이다 */
+  it('팀 요약표·승인 대기함·브리핑은 그리지 않는다', async () => {
+    await seed();
+
+    const tree = await TeamPage(props('edit', { as: 'admin' }));
+
+    expect(findComponent(tree, 'TeamSummaryTable')).toBeNull();
+    expect(findComponent(tree, 'ApprovalQueue')).toBeNull();
+    expect(findComponent(tree, 'BriefingCard')).toBeNull();
+  });
+
+  it('`member`의 KPI는 축약 3칸이다', async () => {
+    await seed();
+
+    const strip = findComponent(await TeamPage(props('edit', { as: 'member' })), 'KpiStrip')?.props;
+
+    expect(strip?.compact).toBe(true);
+    expect((strip?.tiles as { key: string }[]).map((tile) => tile.key)).toEqual([
+      ...COMPACT_KPI_KEYS,
+    ]);
   });
 });
