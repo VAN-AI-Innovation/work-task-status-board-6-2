@@ -1,0 +1,78 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t6-dashboard",
+  "steps": [
+    {
+      "step": 0,
+      "name": "design-tokens",
+      "commit": "style: 다크 테마 디자인 토큰과 UI 가이드 개정",
+      "status": "error",
+      "started_at": "2026-08-22T01:37:18+0900",
+      "completed_at": "2026-08-22T01:42:18+0900",
+      "summary": "다크 테마 토큰 15개를 src/app/globals.css의 @theme에 확정했다 — 배경·테두리 canvas·panel·raise·line·line-strong, 텍스트 ink·ink-body·ink-muted·ink-faint, 시맨틱 late·late-bg·late-line·warn·warn-bg·warn-line. Tailwind v4가 이 이름으로 bg-*/text-*/border-* 유틸리티를 만들므로 이후 화면 코드는 neutral-·red-·amber-·white 팔레트 클래스를 쓰지 않는다. 다크에서 명도 방향이 뒤집혔다 — 라이트의 「진행 = 가장 진한 무채색」은 어두운 배경에 묻히므로, 다크에서 가장 눈에 띄는 무채색인 가장 밝은 것(bg-ink text-canvas 반전 배지)이 「진행」이 된다. 시맨틱은 여전히 2색이고 액센트를 하나도 추가하지 않았다(참고 이미지의 보라는 구조만 참고하고 색은 채택하지 않음). 목표 미달은 빨강이 아니라 text-warn으로 정했다 — 빨강은 업무 지연 전용이라 두 뜻이 되면 지연이 묻힌다. 고친 문서 3곳: docs/UI_GUIDE.md(머리말 톤 전환 근거·안티패턴 표 아래 다크 특유 유혹 2건·색상 절 토큰표·상태 5색 표·컴포넌트 클래스·차트 계열색·앱 셸 규격·목표 대비 성과의 톤 신설), docs/PLAN.md 37행, docs/PRD.md 디자인 절. 안티패턴 표는 한 줄도 지우지 않았고 T6 완료 기준 10번은 그대로 유효하다. globals.css의 보일러플레이트 잔재(--background/--foreground·@theme inline·prefers-color-scheme 블록·기본 산세리프 font-family)를 제거하고 color-scheme: dark를 선언했다(다크 단일이라 OS 설정에 따라 판정이 갈리면 안 됨). [AC 조정] AC의 `grep -c -- \"--color-\"`는 15를 요구하는데 step 지시문의 CSS 예시는 body에서 var(--color-canvas)·var(--color-ink)를 불러 17이 된다. 배경·전경을 layout.tsx의 bg-canvas text-ink(step 지시 4번이 요구한 것)에 맡기고 globals.css의 body는 폰트만 고정해 정의 15개로 맞췄다 — 값의 출처는 여전히 한 곳이다. 게이트: lint·build 통과, test 807 passed / 10 failed. 실패 10건은 전부 src/lib/store/supabase-task-store.test.ts의 라이브 Supabase 계약 테스트로, 원격 DB에 이전 실행의 잔여 행 9건이 남아 「빈 저장소」 전제가 깨진 것이다. 이 step의 변경(문서·CSS·layout)을 git stash로 빼고 재실행해도 동일하게 10건이 실패해 사전 존재 실패임을 확인했다.",
+      "error_message": "[3회 시도 후 실패] Step did not update status",
+      "failed_at": "2026-08-22T01:44:08+0900"
+    },
+    {
+      "step": 1,
+      "name": "dashboard-query",
+      "commit": "feat: URL 화면 상태 dashboard-query 추가",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "app-shell",
+      "commit": "feat: 사이드바 앱 셸과 마지막 반영 표시 추가",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "dashboard-kpi",
+      "commit": "feat: 통합 대시보드 KPI 스트립과 팀별 요약표 추가",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "dashboard-charts",
+      "commit": "feat: 팀별 상태 도넛과 완료율 바 차트 추가",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "task-table",
+      "commit": "feat: 업무 표 5색 배지와 필터 바 추가",
+      "status": "pending"
+    },
+    {
+      "step": 6,
+      "name": "teams-route",
+      "commit": "feat: 부서별 탭 라우트와 팀 슬러그 추가",
+      "status": "pending"
+    },
+    {
+      "step": 7,
+      "name": "task-panel",
+      "commit": "feat: 업무 상세 사이드 패널과 딥링크 추가",
+      "status": "pending"
+    },
+    {
+      "step": 8,
+      "name": "alerts-goals",
+      "commit": "feat: 알림 패널 4종과 목표 대비 성과 섹션 추가",
+      "status": "pending"
+    },
+    {
+      "step": 9,
+      "name": "briefing-roles",
+      "commit": "feat: 주간 브리핑 카드와 역할별 진입 화면 추가",
+      "status": "pending"
+    },
+    {
+      "step": 10,
+      "name": "t6-audit",
+      "commit": "docs: T6 완료 기준 전수 검증과 문서 갱신",
+      "status": "pending"
+    }
+  ],
+  "created_at": "2026-08-22T01:37:18+0900"
+}
