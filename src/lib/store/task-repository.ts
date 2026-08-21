@@ -80,6 +80,15 @@ export interface TaskRepository {
   ): Promise<GoalMetricUpsertResult>;
   recordEvents(events: readonly Omit<TaskEvent, 'id'>[]): Promise<void>;
   getLastSyncedAt(): Promise<string | null>;
+
+  /**
+   * 실패하면 호출 전 상태로 되돌린다. **메모리 드라이버의 원자성이 이것이다** (`X4`).
+   *
+   * **선택 메서드다.** 필수로 만들면 supabase 구현이 "트랜잭션인 척하는 함수"를 갖게 되는데,
+   * `supabase-js`에는 트랜잭션 API가 없으므로 그것은 이름으로 하는 거짓말이다. 없으면 호출자가
+   * 그냥 `fn()`을 부르고, 부분 반영은 **멱등 재시도**로 수렴시킨다 (`PLAN.md` `X4` 후속 문단).
+   */
+  runAtomically?<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 /** 변경 감지 대상. `keyof Task`의 부분집합이고 `TaskUpsertInput`에도 전부 있다 */
