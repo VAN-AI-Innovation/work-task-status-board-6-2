@@ -42,7 +42,10 @@
       "step": 4,
       "name": "upload-commit",
       "commit": "feat: 업로드 확정 upload-commit 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-21T23:13:47+0900",
+      "completed_at": "2026-08-21T23:21:22+0900",
+      "summary": "src/lib/upload/upload-commit.ts(commitUpload·CommitFailureCode·CommitOutcome·CommitDeps)를 신설하고 TaskRepository에 **선택 메서드** runAtomically?<T>를 더했다(메모리만 구현). [원자성 결론 — 두 겹] 메모리는 스냅샷-교체로 실제 원자적이다: 내부 배열 넷과 lastSyncedAt을 깊은 복사해 두고 fn이 던지면 참조 교체 한 번으로 되돌린다. Supabase는 원자적이지 않다 — supabase-js에 트랜잭션 API가 없어 tasks upsert·goal_metrics upsert가 별개 왕복이고, 진짜 트랜잭션은 RPC를 새로 만들어야 하는데 그 길은 (a) ADR-006이 SQL로 밀어내지 않기로 한 로직을 되돌리고 (b) 마이그레이션 적용이라는 사용자 개입을 만든다. 대신 **멱등 재시도**로 수렴시킨다 — 실패하면 parse_result를 남긴 채 failed로 두고 같은 입력으로 다시 확정하면 같은 결과가 된다(키가 (teamId,sourceKey)이고 단계는 통째 교체이며 이벤트는 updated인 건에만 생긴다). 그래서 runAtomically를 **필수로 만들지 않았다**: 필수면 supabase가 '트랜잭션인 척하는 함수'를 갖게 되고, 그 거짓말이 이 step에서 가장 위험한 실수다. 없으면 호출자가 그냥 fn()을 부른다(runMaybeAtomically). [고친 문서 3곳] docs/PLAN.md X4에 후속 문단(멱등 근거 + RPC 승격 경로)을 덧붙였고, docs/TICKETS.md T5 완료 기준 14를 '메모리는 스냅샷-교체로 원자적, Supabase는 멱등 재시도'로 고쳤으며, docs/ADR.md ADR-008 트레이드오프에 갭 한 줄을 덧붙였다(기존 문장은 지우지 않았다). [순서] readOnly → get → previewing·parseResult 검사 → (runAtomically 안에서) upsertTasks → upsertGoalMetrics → markCommitted. markCommitted가 null이면 그 사이 누가 확정한 것이라 409이고, 반영은 멱등이라 데이터는 같다. 실패하면 markFailed를 부르되 **그것이 또 던져도 삼킨다**(저장소가 죽은 상태에서 정상이고, 원래 실패를 덮으면 사용자가 엉뚱한 이유를 본다). StorageReadOnlyError는 instanceof가 아니라 code로 판별해 STORAGE_READONLY로 옮긴다. [삭제 없음] 이 파일에 delete가 없다 — 워크북에 없는 팀·행은 그대로 둔다. 그것이 UC-04의 실체다. occurredAt은 인자이고 process.env를 읽지 않는다(readOnly는 store-factory가 낸 값을 받는다 — 규칙이 두 곳에 생기면 갈라진다). 실패 메시지는 고정 표라 예외 메시지를 이어 붙이지 않는다(X1). [지시와 다르게 한 것 둘, 근거와 함께] (1) recordEvents(taskResult.events)를 **부르지 않았다** — T4의 UpsertResult.events 주석이 '이미 저장돼 있다, 다시 넣으면 이력이 두 벌이 된다'고 못박았고 memory·supabase 두 구현 모두 upsertTasks 안에서 task_events에 넣는다. 부르면 T6 사이드 패널의 '최근 변경 이력'이 매 확정마다 두 배로 불어난다. (2) summary.warningCount를 0으로 둔다 — CommitPayload가 경고를 싣지 않아 확정 시점에는 셀 수 없다. 이력에 경고 수를 남기려면 payload에 실어 와야 하며 그 결정은 step 7의 몫이라 주석으로 남겼다. [계약] repository-contract에 케이스 20을 더했다 — runAtomically가 없으면 즉시 return해 supabase에서는 no-op이다. 테스트 12개 추가(upload-commit 10 + 계약 20번 memory·supabase 각 1). 게이트 통과: lint·build·test 590개(이전 578개)."
     },
     {
       "step": 5,
