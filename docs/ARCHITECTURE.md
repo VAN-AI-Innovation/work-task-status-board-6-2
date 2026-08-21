@@ -27,7 +27,7 @@ src/
 │   ├── upload/page.tsx               # 엑셀 업로드 + 미리보기
 │   ├── extract/page.tsx              # 독스 → 배정표
 │   ├── error.tsx                     # 조회 실패 바운더리 (teams/ 에도 둔다)
-│   └── api/  uploads/sheet · uploads/[id]/commit · uploads/doc
+│   └── api/  uploads/sheet · uploads/[id]/commit · uploads/seed · uploads/doc
 │             export/assignment · tasks · tasks/[id] · stats · alerts
 │             goals · report/weekly · health
 ├── components/   dashboard/ charts/ tasks/ goals/ upload/ ui/   # props 받아 JSX만. 계산 금지
@@ -44,7 +44,7 @@ src/
 │   ├── domain/  task-semantic · display-status · task-derive · kst-today
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
 │   ├── store/   task-repository · repository-contract · memory-task-store
-│   │            supabase-task-store · store-factory
+│   │            supabase-task-store · upload-record-store · store-factory
 │   └── fixtures/  sample-workbook.xlsx · sample-workload.md · seed-tasks.json
 ├── supabase/migrations/   *.sql        # 스키마 단일 소스 (T4부터)
 └── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts
@@ -223,7 +223,7 @@ TaskRepository  (저장/조회만)                domain/  (판정/집계만)
 ```
 FILE_TOO_LARGE · FILE_TYPE_MISMATCH · ARCHIVE_LIMIT_EXCEEDED · PARSE_TIMEOUT
 WORKBOOK_CORRUPT · NO_KNOWN_TAB · SETTINGS_TAB_MISSING
-UPLOAD_NOT_FOUND · UPLOAD_ALREADY_COMMITTED
+UPLOAD_NOT_FOUND · UPLOAD_ALREADY_COMMITTED · TASK_NOT_FOUND
 STORAGE_READONLY · STORAGE_UNAVAILABLE · FORBIDDEN · VALIDATION_FAILED
 ```
 

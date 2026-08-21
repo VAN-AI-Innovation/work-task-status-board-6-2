@@ -58,6 +58,9 @@ create table if not exists members (
 -- status 값은 ARCHITECTURE.md 「업로드 상태 전이」와 같아야 한다.
 -- 'rejected'·'idle'은 클라이언트 화면 상태라 DB에 행이 생기기 전이므로 여기 없다.
 -- parse_result는 확정 즉시 비우고 summary만 남긴다 (A8·S6) — 원본 행에 실명·연락처가 있다.
+-- 같은 이유로 lib/store/upload-record-store.ts는 행을 'previewing'부터 만든다.
+-- 'validating'·'parsing'도 파일이 DB에 닿기 전의 클라이언트 화면 상태라서, 파싱에 실패한
+-- 업로드가 여기에 쓰레기를 쌓지 않는다. 확정·실패 전이는 status='previewing' 조건부 갱신이다.
 create table if not exists uploads (
   id           uuid primary key default gen_random_uuid(),
   kind         text not null check (kind in ('sheet','doc')),

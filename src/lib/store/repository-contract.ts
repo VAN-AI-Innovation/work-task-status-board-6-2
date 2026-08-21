@@ -575,6 +575,30 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       expect(findGoal(await repo.listGoalMetrics(), '인스타 팔로워 증대').actualValue).toBe(120);
     },
   },
+  {
+    /**
+     * **선택 메서드라 없으면 건너뛴다.** supabase에는 대응물이 없다 — `supabase-js`에
+     * 트랜잭션 API가 없어서 구현하면 「트랜잭션인 척하는 함수」가 된다 (`X4`).
+     * 그쪽의 부분 반영은 **멱등 재시도**로 수렴시킨다.
+     */
+    name: '20. (구현이 지원하면) runAtomically는 도중에 실패하면 호출 전 상태로 되돌린다',
+    async run(repo) {
+      if (!repo.runAtomically) return;
+
+      await repo.upsertTasks([SEED_A], { occurredAt: FIRST_UPLOAD_AT });
+      const before = (await repo.listTasks()).map((task) => task.sourceKey);
+
+      await expect(
+        repo.runAtomically(async () => {
+          await repo.upsertTasks([SEED_B], { occurredAt: SECOND_UPLOAD_AT });
+          throw new Error('의도적 실패');
+        }),
+      ).rejects.toThrow('의도적 실패');
+
+      expect((await repo.listTasks()).map((task) => task.sourceKey)).toEqual(before);
+      expect(await repo.getLastSyncedAt()).toBe(FIRST_UPLOAD_AT);
+    },
+  },
 ];
 
 /**

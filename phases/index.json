@@ -24,6 +24,11 @@
       "dir": "t4-store-domain",
       "status": "completed",
       "completed_at": "2026-08-21T21:04:56+0900"
+    },
+    {
+      "dir": "t5-api-upload",
+      "status": "completed",
+      "completed_at": "2026-08-22T00:30:07+0900"
     }
   ]
 }

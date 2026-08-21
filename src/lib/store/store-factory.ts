@@ -20,6 +20,11 @@ import seedJson from '@/lib/fixtures/seed-tasks.json';
 import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
 import { createSupabaseTaskStore } from '@/lib/store/supabase-task-store';
 import type { TaskRepository } from '@/lib/store/task-repository';
+import {
+  createMemoryUploadStore,
+  createSupabaseUploadStore,
+  type UploadRecordStore,
+} from '@/lib/store/upload-record-store';
 import type { GoalMetric } from '@/types/goal';
 import type { Task, TaskStage } from '@/types/task';
 
@@ -30,6 +35,12 @@ export type StorageMode = 'live' | 'demo' | 'fallback';
 
 export interface StorageHandle {
   repo: TaskRepository;
+  /**
+   * 업로드 이력 (`ADR-008`). **`fallback`에서도 쓰기를 막지 않는다** — 읽기 전용 모드에서는
+   * 라우트가 업로드 경로 **전체**를 `503 STORAGE_READONLY`로 거부한다(step 7). 여기서 또
+   * 막으면 같은 규칙이 두 곳에 생기고, 한쪽만 고쳐졌을 때 어느 쪽이 진짜인지 알 수 없다.
+   */
+  uploads: UploadRecordStore;
   driver: StorageDriver;
   mode: StorageMode;
   readOnly: boolean;
@@ -128,16 +139,29 @@ async function isReachable(client: SupabaseClient): Promise<boolean> {
 export async function createStorage(env: NodeJS.ProcessEnv): Promise<StorageHandle> {
   if (env.STORAGE_DRIVER === 'memory') {
     // 의도된 데모다. 심사자가 `.env` 없이 클론해 바로 쓰는 경로이므로 쓰기를 막지 않는다.
-    return { repo: createSeededMemoryStore(), driver: 'memory', mode: 'demo', readOnly: false };
+    return {
+      repo: createSeededMemoryStore(),
+      uploads: createMemoryUploadStore(),
+      driver: 'memory',
+      mode: 'demo',
+      readOnly: false,
+    };
   }
 
   const client = createClientFrom(env);
   if (client && (await isReachable(client))) {
-    return { repo: createSupabaseTaskStore(client), driver: 'supabase', mode: 'live', readOnly: false };
+    return {
+      repo: createSupabaseTaskStore(client),
+      uploads: createSupabaseUploadStore(client),
+      driver: 'supabase',
+      mode: 'live',
+      readOnly: false,
+    };
   }
 
   return {
     repo: toReadOnly(createSeededMemoryStore()),
+    uploads: createMemoryUploadStore(),
     driver: 'memory',
     mode: 'fallback',
     readOnly: true,

@@ -209,6 +209,33 @@ export function createMemoryTaskStore(seed?: {
       return lastSyncedAt;
     },
 
+    /**
+     * 스냅샷 → 실행 → 실패하면 교체. **메모리 드라이버의 원자성이 이것이다** (`X4`).
+     *
+     * 배열 넷과 시각 하나를 깊은 복사해 두는 것이 전부다 — 수백~수천 행 규모라 비용이 없고,
+     * `let`으로 들고 있으므로 되돌리기가 참조 교체 한 번이다. supabase 구현에는 대응물이
+     * 없고(트랜잭션 API가 없다) 그래서 계약에서도 **선택 메서드**다.
+     */
+    async runAtomically<T>(fn: () => Promise<T>): Promise<T> {
+      const snapshot = {
+        tasks: clone(tasks),
+        stages: clone(stages),
+        goalMetrics: clone(goalMetrics),
+        events: clone(events),
+        lastSyncedAt,
+      };
+      try {
+        return await fn();
+      } catch (error) {
+        tasks = snapshot.tasks;
+        stages = snapshot.stages;
+        goalMetrics = snapshot.goalMetrics;
+        events = snapshot.events;
+        lastSyncedAt = snapshot.lastSyncedAt;
+        throw error;
+      }
+    },
+
     clear(): void {
       tasks = [];
       stages = [];
