@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   taskResponseSchema,
+  toGoalResponse,
   toTaskListResponse,
   toTaskResponse,
 } from '@/lib/api/task-response';
 import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
+import type { ComputedGoalMetric } from '@/lib/domain/goal-stats';
 import type { TaskFlags } from '@/lib/domain/task-derive';
+import type { GoalMetric } from '@/types/goal';
 import type { Task } from '@/types/task';
 
 const CONTACT_KEY = '출연자 연락처';
@@ -196,5 +199,80 @@ describe('toTaskListResponse', () => {
 
   it('빈 배열은 빈 배열이다', () => {
     expect(toTaskListResponse([], new Map(), 'admin')).toEqual([]);
+  });
+});
+
+function makeGoalItem(overrides: Partial<GoalMetric> = {}): ComputedGoalMetric {
+  const metric: GoalMetric = {
+    id: 'goal-1',
+    teamId: 'marketing',
+    periodLabel: '2026-07 4주차',
+    title: '인스타 릴스 확대',
+    goalText: '주 3회 업로드',
+    kpiName: '도달수',
+    targetValue: 10000,
+    actualValue: 12000,
+    achievementRate: 120,
+    prevPeriodDelta: '+15%',
+    channel: '인스타그램',
+    ownerMemberId: null,
+    ownerNameRaw: '박마케',
+    execStatus: '완료',
+    analysis: null,
+    wentWell: null,
+    needsImprovement: null,
+    startedAt: null,
+    dueAt: null,
+    extras: { '문의자 계정': '@someone', '실행 방식': '릴스' },
+    sourceUploadId: null,
+    sourceSheetTab: '03_마케팅·관리팀',
+    sourceRowIndex: 31,
+    ...overrides,
+  };
+
+  return { metric, computedRate: 120, sheetRate: 120, rateMismatch: false, onTarget: true };
+}
+
+describe('toGoalResponse', () => {
+  it('member에게는 민감 키의 값이 가려지고 일반 키는 그대로다', () => {
+    const [item] = toGoalResponse([makeGoalItem()], 'member');
+
+    expect(item.metric.extras['문의자 계정']).toBeNull();
+    expect(item.metric.extras['실행 방식']).toBe('릴스');
+  });
+
+  it('admin·lead는 원래 값을 본다', () => {
+    for (const role of ['admin', 'lead'] as const) {
+      const [item] = toGoalResponse([makeGoalItem()], role);
+      expect(item.metric.extras['문의자 계정']).toBe('@someone');
+    }
+  });
+
+  it('재계산 결과는 손대지 않고 그대로 옮긴다 — 판정은 goal-stats의 것이다', () => {
+    const source = makeGoalItem();
+    const [item] = toGoalResponse([source], 'member');
+
+    expect(item.computedRate).toBe(source.computedRate);
+    expect(item.sheetRate).toBe(source.sheetRate);
+    expect(item.rateMismatch).toBe(source.rateMismatch);
+    expect(item.onTarget).toBe(source.onTarget);
+  });
+
+  it('입력 객체를 고치지 않는다 — 두 역할에게 연달아 내려보내도 원본이 살아 있다', () => {
+    const source = makeGoalItem();
+
+    toGoalResponse([source], 'member');
+    const [asAdmin] = toGoalResponse([source], 'admin');
+
+    expect(source.metric.extras['문의자 계정']).toBe('@someone');
+    expect(asAdmin.metric.extras['문의자 계정']).toBe('@someone');
+  });
+
+  it('member 응답을 직렬화해도 민감 값이 문자열에 없다', () => {
+    expect(JSON.stringify(toGoalResponse([makeGoalItem()], 'member'))).not.toContain('@someone');
+  });
+
+  it('빈 배열은 빈 배열이다', () => {
+    expect(toGoalResponse([], 'admin')).toEqual([]);
   });
 });

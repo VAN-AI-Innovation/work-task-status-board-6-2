@@ -33,8 +33,12 @@ export interface ReadContext {
   tasks: Task[];
   stages: TaskStage[];
   role: ViewerRole;
-  /** 도메인 함수에 그대로 넘긴다. `flags`가 미리 계산돼 있다 */
-  ctx: AlertContext & StatsContext;
+  /**
+   * 도메인 함수에 그대로 넘긴다. `flags`가 **반드시** 들어 있다 —
+   * `AlertContext`·`StatsContext`에서는 선택 필드지만 여기서는 좁힌다. 그래야 라우트가
+   * `read.ctx.flags!`를 쓰지 않고, 판정을 다시 계산할 유혹도 생기지 않는다.
+   */
+  ctx: AlertContext & StatsContext & { flags: ReadonlyMap<string, TaskFlags> };
   meta: ApiMeta;
 }
 

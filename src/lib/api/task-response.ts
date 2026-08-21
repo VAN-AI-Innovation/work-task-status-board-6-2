@@ -16,6 +16,7 @@ import { z } from 'zod';
 
 import { DISPLAY_STATUS_LABELS, toDisplayStatus } from '@/lib/domain/display-status';
 import { maskExtras, type ViewerRole } from '@/lib/domain/extras-visibility';
+import type { ComputedGoalMetric } from '@/lib/domain/goal-stats';
 import type { TaskFlags } from '@/lib/domain/task-derive';
 import type { TaskResponse } from '@/types/api';
 import type { ExtraValue, Task } from '@/types/task';
@@ -152,4 +153,26 @@ export function toTaskListResponse(
     }
     return toTaskResponse(task, taskFlags, role);
   });
+}
+
+/**
+ * 목표 지표를 응답 모양으로. **`extras`가 여기서도 마스킹을 거친다** (`S6`) —
+ * B섹션 성과 행에는 담당자·채널·문의자 계정이 섞여 들어오고, 「업무가 아니니 괜찮다」는
+ * 근거가 없다. 민감 키 판정은 `maskExtras` 한 곳이다.
+ *
+ * `toTaskResponse`와 달리 `.strict()` 스키마를 두지 않는다. `Task`에 `.strict()`가 필요한 이유는
+ * 감사용 원본 행(`raw`)이 붙어 있기 때문인데, **`GoalMetric`에는 그 필드가 없다**
+ * (`types/goal.ts`가 "raw를 두지 않는다"고 못박았다). 막을 것이 없는데 스키마를 두면
+ * 실제 방어와 형식적 방어가 같아 보이고, 다음 사람이 어느 쪽이 진짜인지 모르게 된다.
+ *
+ * 입력을 고치지 않는다 — 같은 목록을 두 역할에게 내려보내면 먼저 지나간 마스킹이 원본을 지운다.
+ */
+export function toGoalResponse(
+  items: readonly ComputedGoalMetric[],
+  role: ViewerRole
+): ComputedGoalMetric[] {
+  return items.map((item) => ({
+    ...item,
+    metric: { ...item.metric, extras: maskExtras(item.metric.extras, role) },
+  }));
 }

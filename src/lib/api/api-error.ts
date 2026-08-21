@@ -21,6 +21,7 @@ export const API_ERROR_CODES = [
   'SETTINGS_TAB_MISSING',
   'UPLOAD_NOT_FOUND',
   'UPLOAD_ALREADY_COMMITTED',
+  'TASK_NOT_FOUND',
   'STORAGE_READONLY',
   'STORAGE_UNAVAILABLE',
   'FORBIDDEN',
@@ -38,6 +39,10 @@ export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
  *   xlsx인 것은 맞는데 **내용이 처리 불가**라는 구분을 뭉개지 않는다.
  * - `PARSE_TIMEOUT`이 504인 이유: 5xx여야 클라이언트가 재시도 가능한 실패로 읽는다.
  *   입력이 잘못된 게 아니라 우리가 시간 안에 못 끝냈다.
+ * - `TASK_NOT_FOUND`가 404인 이유: `UPLOAD_NOT_FOUND`와 같은 「없는 것을 가리켰다」이지만
+ *   **코드를 따로 둔다.** 업로드가 없는 것과 업무가 없는 것은 사용자가 할 일이 다르고
+ *   (파일을 다시 올린다 / 링크가 낡았다), `VALIDATION_FAILED`로 뭉개면 「id 형식이 틀렸다」와
+ *   구분되지 않는다. 코드를 늘렸으므로 `ARCHITECTURE.md`·`PLAN.md` `X1` 목록도 함께 고쳤다.
  * - `SETTINGS_TAB_MISSING`이 200인 이유: **이것만 에러가 아니다.** 설정 탭이 없으면
  *   내장 폴백 레지스트리로 파싱을 계속하므로 경고로 실려 200으로 나간다. 표에 남겨 두는 것은
  *   `ARCHITECTURE.md`의 코드 목록과 개수를 맞추기 위해서고, **`errorResponse`에 넘기지 않는다**
@@ -47,6 +52,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   VALIDATION_FAILED: 400,
   FORBIDDEN: 403,
   UPLOAD_NOT_FOUND: 404,
+  TASK_NOT_FOUND: 404,
   UPLOAD_ALREADY_COMMITTED: 409,
   FILE_TOO_LARGE: 413,
   ARCHIVE_LIMIT_EXCEEDED: 413,
@@ -74,6 +80,7 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   SETTINGS_TAB_MISSING: '설정 탭을 찾지 못해 기본 항목으로 해석했습니다.',
   UPLOAD_NOT_FOUND: '해당 업로드를 찾을 수 없습니다. 파일을 다시 올려 주세요.',
   UPLOAD_ALREADY_COMMITTED: '이미 확정된 업로드입니다.',
+  TASK_NOT_FOUND: '해당 업무를 찾을 수 없습니다. 링크가 낡았을 수 있습니다.',
   STORAGE_READONLY: '읽기 전용 모드입니다. 저장소 연결이 복구되어야 저장할 수 있습니다.',
   STORAGE_UNAVAILABLE: '저장소에 반영하지 못했습니다. 잠시 후 다시 시도해 주세요.',
   FORBIDDEN: '이 작업을 수행할 권한이 없습니다.',
@@ -101,4 +108,24 @@ export function errorResponse(code: ApiErrorCode, message?: string): Response {
   const safe = trimmed.length > 0 && isSafeMessage(trimmed) ? trimmed : API_ERROR_MESSAGES[code];
 
   return Response.json({ error: { code, message: safe } }, { status: API_ERROR_STATUS[code] });
+}
+
+/**
+ * 조회 라우트 6종이 `catch`에서 부르는 판별기.
+ *
+ * **라우트마다 손으로 쓰지 않는다.** 여섯 곳에 같은 `instanceof` 분기를 복사하면 그중 하나가
+ * 언젠가 다르게 고쳐지고, 같은 실패가 라우트마다 다른 코드로 나간다.
+ *
+ * 판별을 `instanceof`가 아니라 **모양**으로 하는 이유는 이 프로젝트가 이미 택한 방식이다
+ * (`parse-runner.ts`·`upload-commit.ts`가 `code` 속성으로 가른다) — 모듈이 두 벌 로드되면
+ * `instanceof`가 조용히 거짓이 되고, 그때 사용자는 400 대신 503을 본다.
+ *
+ * ⚠ 알려진 경계: 라우트의 `try` 안에는 zod가 두 번 돈다 — 쿼리 파싱과 응답 직렬화
+ * (`task-response.ts`의 `.strict()`). 후자가 던지면 그것은 **우리 버그**인데 여기서는
+ * `VALIDATION_FAILED`(400)로 나간다. 둘을 타입으로 가를 방법이 없어 감수하며, `.strict()`가
+ * 실제로 무엇을 막는지는 `task-response.test.ts`가 단위로 지킨다.
+ */
+export function toApiErrorCode(error: unknown): ApiErrorCode {
+  const name = (error as { name?: unknown } | null)?.name;
+  return name === 'ZodError' ? 'VALIDATION_FAILED' : 'STORAGE_UNAVAILABLE';
 }

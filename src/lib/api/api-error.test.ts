@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { z } from 'zod';
+
 import {
   API_ERROR_CODES,
   API_ERROR_MESSAGES,
   API_ERROR_STATUS,
   errorResponse,
+  toApiErrorCode,
   type ApiErrorCode,
 } from '@/lib/api/api-error';
 
@@ -22,6 +25,7 @@ const CODES_FROM_ARCHITECTURE = [
   'SETTINGS_TAB_MISSING',
   'UPLOAD_NOT_FOUND',
   'UPLOAD_ALREADY_COMMITTED',
+  'TASK_NOT_FOUND',
   'STORAGE_READONLY',
   'STORAGE_UNAVAILABLE',
   'FORBIDDEN',
@@ -34,6 +38,7 @@ const EXPECTED_STATUS: Record<(typeof CODES_FROM_ARCHITECTURE)[number], number> 
   FORBIDDEN: 403,
   UPLOAD_NOT_FOUND: 404,
   UPLOAD_ALREADY_COMMITTED: 409,
+  TASK_NOT_FOUND: 404,
   FILE_TOO_LARGE: 413,
   ARCHIVE_LIMIT_EXCEEDED: 413,
   FILE_TYPE_MISMATCH: 415,
@@ -46,7 +51,7 @@ const EXPECTED_STATUS: Record<(typeof CODES_FROM_ARCHITECTURE)[number], number> 
 };
 
 describe('API_ERROR_CODES', () => {
-  it('ARCHITECTURE.md의 코드 13개와 정확히 일치한다 (빠짐도 남음도 없다)', () => {
+  it('ARCHITECTURE.md의 코드 14개와 정확히 일치한다 (빠짐도 남음도 없다)', () => {
     expect([...API_ERROR_CODES].sort()).toEqual([...CODES_FROM_ARCHITECTURE].sort());
   });
 
@@ -142,5 +147,34 @@ describe('errorResponse', () => {
       const res = errorResponse(code satisfies ApiErrorCode);
       expect(res.status).toBe(API_ERROR_STATUS[code]);
     }
+  });
+});
+
+describe('toApiErrorCode', () => {
+  it('zod 검증 실패는 사용자 입력 문제라 VALIDATION_FAILED다', () => {
+    let thrown: unknown;
+    try {
+      z.object({ limit: z.number() }).parse({ limit: 'hr' });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(toApiErrorCode(thrown)).toBe('VALIDATION_FAILED');
+    expect(API_ERROR_STATUS[toApiErrorCode(thrown)]).toBe(400);
+  });
+
+  it.each([
+    ['보통 예외', new Error('connect ECONNREFUSED')],
+    ['문자열', 'boom'],
+    ['null', null],
+    ['undefined', undefined],
+    ['name이 다른 객체', { name: 'TypeError' }],
+  ])('%s는 우리 쪽 실패라 STORAGE_UNAVAILABLE이다', (_label, thrown) => {
+    expect(toApiErrorCode(thrown)).toBe('STORAGE_UNAVAILABLE');
+  });
+
+  it('모듈이 두 벌 로드돼도 판별이 흔들리지 않는다 — instanceof가 아니라 name을 본다', () => {
+    // 다른 zod 인스턴스가 던진 것처럼 생긴 객체. `instanceof`였다면 여기서 503이 나간다
+    expect(toApiErrorCode({ name: 'ZodError', issues: [] })).toBe('VALIDATION_FAILED');
   });
 });
