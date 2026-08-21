@@ -22,7 +22,10 @@
  *
  * 「조회 실패」는 `error.tsx`가 지고, **「필터 결과 0건」은 업무 표가 따로 진다** —
  * 전체가 0건인 것과 조건에 맞는 게 없는 것은 다른 사실이라 문구를 섞지 않는다.
- * 알림·목표 섹션은 아직 없다 — 각각 뒤 step의 몫이라 자리를 비워 둔다.
+ * 알림 패널과 목표 대비 성과 섹션도 같은 규칙을 따른다. 알림의 판정은 `collectAlerts`가,
+ * 달성률 재계산은 `summarizeGoals`가 한다 — **업무명만 화면이 붙인다.** `Alert`에 이름이
+ * 없는 것은 의도이고(그 응답이 화면 밖으로도 나간다, `S6`), 그래서 이름을 못 붙이는
+ * 항목(필터에 걸려 목록에서 빠진 건)은 알림에서도 뺀다.
  *
  * 차트도 여기서 세지 않는다. `buildStatusDonut`·`buildCompletionBars`가 만든 배열만
  * 클라이언트 컴포넌트로 넘어간다 — 업무 배열 전량을 넘기면 직렬화 비용을 치르고 클라이언트
@@ -31,19 +34,26 @@
 
 import Link from 'next/link';
 
+import { AlertPanel } from '@/components/alerts/alert-panel';
+import { ApprovalQueue } from '@/components/alerts/approval-queue';
 import { CompletionBars } from '@/components/charts/completion-bars';
 import { StatusDonut } from '@/components/charts/status-donut';
 import { KpiStrip } from '@/components/dashboard/kpi-strip';
 import { TeamSummaryTable } from '@/components/dashboard/team-summary-table';
+import { GoalSection } from '@/components/goals/goal-section';
 import { PageShell } from '@/components/shell/page-shell';
 import { EmptyState } from '@/components/tasks/empty-state';
 import { FilterBar } from '@/components/tasks/filter-bar';
+import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
 import { TaskTable } from '@/components/tasks/task-table';
 import { SeedButton } from '@/components/upload/seed-button';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
-import { toTaskListResponse } from '@/lib/api/task-response';
+import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
+import { collectAlerts } from '@/lib/domain/alert-rules';
+import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip, summarizeAllTeams } from '@/lib/domain/progress-stats';
 import { getStorage } from '@/lib/store/store-factory';
+import { approvalQueue, groupAlerts } from '@/lib/view/alert-groups';
 import {
   buildCompletionBars,
   buildStatusDonut,
@@ -57,6 +67,7 @@ import {
   parseDashboardQuery,
   toURLSearchParams,
 } from '@/lib/view/dashboard-query';
+import { toGoalRows } from '@/lib/view/goal-view';
 import { sortTasks } from '@/lib/view/task-sort';
 import { describeSync } from '@/lib/view/sync-freshness';
 
@@ -100,6 +111,28 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
    * 걸린 필터가 하나도 없는데 0건일 때만 진짜 빈 저장소다.
    */
   const activeFilters = countActiveFilters(query);
+
+  /*
+   * 알림·승인 대기함이 보는 목록은 **표에 실제로 보이는 것**(`visible`)이다. 이름을 붙일 수
+   * 없는 항목은 클릭할 수 없는 줄이 되므로 목록에서 빠진 `taskId`는 알림에서도 뺀다.
+   */
+  const titles = new Map(visible.map((task) => [task.id, task.title ?? task.sourceKey]));
+  const titleOf = (taskId: string): string => titles.get(taskId) ?? taskId;
+  const taskHrefOf = (taskId: string): string => buildHref(PATHNAME, query, { task: taskId });
+
+  const alertGroups = groupAlerts(
+    collectAlerts(read.tasks, read.stages, read.ctx),
+    new Set(titles.keys())
+  );
+  const waiting = approvalQueue(visible, read.meta.today);
+
+  /*
+   * 목표 지표는 업무 필터를 타지 않는다 — 성과 지표는 진행 상태·마감·담당자 축이 아니라
+   * 목표값 대 실적값 축으로 움직인다 (`ADR-002`). `toGoalResponse`를 반드시 거친다:
+   * 성과 행에도 담당자·채널·문의자 계정이 섞여 들어온다 (`S6`).
+   */
+  const goalStats = summarizeGoals(await storage.repo.listGoalMetrics());
+  const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
 
   return (
     <PageShell mode={read.meta.mode} freshness={freshness} role={read.role} query={query}>
@@ -153,10 +186,36 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
             </section>
           </div>
 
+          <GoalSection
+            rows={goalRows}
+            byTeam={goalStats.byTeam}
+            mismatchCount={goalStats.warnings.length}
+          />
+
+          <div className="grid grid-cols-12 gap-6">
+            <div className="col-span-7">
+              <AlertPanel groups={alertGroups} titleOf={titleOf} hrefOf={taskHrefOf} />
+            </div>
+            <div className="col-span-5">
+              <ApprovalQueue items={waiting} titleOf={titleOf} hrefOf={taskHrefOf} />
+            </div>
+          </div>
+
           <section className="border-line bg-panel rounded-md border p-5">
             <h2 className="text-ink text-sm font-semibold">업무</h2>
             <div className="mt-3">
               <FilterBar query={query} pathname={PATHNAME} />
+            </div>
+            {/* 패널은 `fixed` 오버레이라 여기 있어도 오른쪽에 뜬다. 표 위에 두는 이유는
+                「필터 밖」 안내 한 줄이 붙을 자리가 여기이기 때문이다 (`UC-15`) */}
+            <div className="mt-3">
+              <TaskPanelSlot
+                tasks={visible}
+                stages={read.stages}
+                role={read.role}
+                query={query}
+                pathname={PATHNAME}
+              />
             </div>
             {visible.length === 0 ? (
               // 전체가 0건인 화면과 **다른 문구**다. 여기서 「데이터가 없습니다」가 뜨면

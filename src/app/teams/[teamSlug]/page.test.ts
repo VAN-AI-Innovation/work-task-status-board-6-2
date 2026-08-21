@@ -11,8 +11,11 @@ import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
 import { createMemoryUploadStore } from '@/lib/store/upload-record-store';
 import type { StorageHandle } from '@/lib/store/store-factory';
 import { buildSeedPayload } from '@/lib/upload/seed-loader';
+import type { AlertGroup } from '@/lib/view/alert-groups';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
+import type { GoalRow } from '@/lib/view/goal-view';
 import { teamLabel } from '@/lib/view/team-slug';
+import type { ExtraCell } from '@/lib/view/extras-render';
 import type { TaskResponse } from '@/types/api';
 
 let handle: StorageHandle;
@@ -78,9 +81,30 @@ function props(teamSlug: string, searchParams: Record<string, string | string[]>
   };
 }
 
+/**
+ * 순회 헬퍼는 자식을 렌더하지 않으므로 슬롯을 **페이지가 넘긴 props로** 한 번 부른다
+ * (`app/page.test.ts`와 같은 방식).
+ */
+function openSlot(tree: unknown): unknown {
+  const slot = findComponent(tree, 'TaskPanelSlot');
+  if (slot === null) return null;
+
+  return (slot.type as (props: unknown) => unknown)(slot.props);
+}
+
+/** 시드의 `id`는 저장되며 새로 발급된다 — 원본 id를 그대로 쓰면 「없는 업무」가 된다 */
+async function idOf(teamId: string): Promise<string> {
+  const task = (await handle.repo.listTasks()).find((item) => item.teamId === teamId);
+  if (task === undefined) throw new Error(`시드에 ${teamId} 업무가 없습니다.`);
+  return task.id;
+}
+
 async function seed(): Promise<void> {
   const payload = buildSeedPayload();
   await handle.repo.upsertTasks(payload.tasks, { occurredAt: '2026-08-22T01:00:00.000Z' });
+  await handle.repo.upsertGoalMetrics(payload.goalMetrics, {
+    occurredAt: '2026-08-22T01:00:00.000Z',
+  });
 }
 
 beforeEach(() => {
@@ -199,5 +223,82 @@ describe('/teams/[teamSlug] — 화면 구성', () => {
 
     expect(empty?.props?.kind).toBe('no-data');
     expect(empty?.props?.resetHref).toBeUndefined();
+  });
+});
+
+describe('/teams/[teamSlug] — 사이드 패널 (T6 완료 기준 4·6)', () => {
+  /**
+   * **70컬럼 팀이 이 패널의 존재 이유다** (`ADR-002`·`UC-15`). 표는 공통 8칸만 뿌리므로
+   * 촬영·기획팀의 나머지 필드는 여기서만 보인다.
+   */
+  it('촬영·기획팀 업무를 열면 `extras`가 전량 온다', async () => {
+    await seed();
+    const id = await idOf('shoot');
+
+    const panel = findComponent(openSlot(await TeamPage(props('shoot', { task: id }))), 'TaskPanel');
+    const cells = panel?.props?.cells as ExtraCell[];
+
+    expect((panel?.props?.task as TaskResponse).id).toBe(id);
+    expect(cells.length).toBeGreaterThan(50);
+  });
+
+  it('닫기 링크가 이 팀 경로로 돌아온다 — `?team=`을 다시 싣지 않는다', async () => {
+    await seed();
+
+    const tree = await TeamPage(props('shoot', { task: await idOf('shoot') }));
+    const closeHref = findComponent(openSlot(tree), 'TaskPanel')?.props?.closeHref as string;
+
+    expect(closeHref).toBe('/teams/shoot');
+  });
+
+  it('다른 팀 업무의 `?task=`는 열리지 않는다 — 경로가 팀을 정했다', async () => {
+    await seed();
+
+    const rendered = openSlot(await TeamPage(props('edit', { task: await idOf('shoot') })));
+
+    expect(findComponent(rendered, 'TaskPanel')).toBeNull();
+    expect(textOf(rendered)).not.toBe('');
+  });
+});
+
+describe('/teams/[teamSlug] — 알림·목표 (완료 기준 2·3)', () => {
+  /** 승인 대기함은 `/`가 진다 — 팀 화면에는 알림 패널만 둔다 */
+  it('알림 패널은 있고 승인 대기함은 없다', async () => {
+    await seed();
+
+    const tree = await TeamPage(props('edit'));
+
+    expect(findComponent(tree, 'AlertPanel')).not.toBeNull();
+    expect(findComponent(tree, 'ApprovalQueue')).toBeNull();
+  });
+
+  it('알림이 그 팀 업무만 가리킨다', async () => {
+    await seed();
+
+    const tree = await TeamPage(props('shoot'));
+    const visible = new Set(
+      (findComponent(tree, 'TaskTable')?.props?.tasks as TaskResponse[]).map((task) => task.id)
+    );
+    const groups = findComponent(tree, 'AlertPanel')?.props?.groups as AlertGroup[];
+
+    for (const item of groups.flatMap((group) => group.items)) {
+      expect(visible.has(item.taskId)).toBe(true);
+      expect(item.teamKey).toBe('shoot');
+    }
+  });
+
+  /** 전사 섹션을 그대로 옮기면 「우리 팀 화면」이 다른 팀 성과를 말한다 */
+  it('목표 섹션이 그 팀 행만 보여 준다 — 지표가 없는 팀도 섹션은 남는다', async () => {
+    await seed();
+
+    const marketing = findComponent(await TeamPage(props('marketing')), 'GoalSection');
+    const edit = findComponent(await TeamPage(props('edit')), 'GoalSection');
+
+    const rows = marketing?.props?.rows as GoalRow[];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.teamKey === 'marketing')).toBe(true);
+
+    expect(edit).not.toBeNull();
+    expect(edit?.props?.rows).toEqual([]);
   });
 });

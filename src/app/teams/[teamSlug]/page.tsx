@@ -17,20 +17,29 @@
  *
  * 팀별 요약표와 완료율 바는 **넣지 않는다** — 행이 하나뿐인 표와 막대 하나짜리 차트는
  * 정보가 아니다. 전사 비교는 `/`가 진다.
+ *
+ * 같은 이유로 **승인 대기함도 `/`가 진다.** 이 화면에는 알림 패널만 두고, 목표 대비 성과는
+ * 그 팀 지표만 뽑아 보여준다 — 저장소에서 팀으로 좁혀 읽으므로 경고 건수도 그 팀 것이다.
  */
 
 import { notFound } from 'next/navigation';
 
+import { AlertPanel } from '@/components/alerts/alert-panel';
 import { StatusDonut } from '@/components/charts/status-donut';
 import { KpiStrip } from '@/components/dashboard/kpi-strip';
+import { GoalSection } from '@/components/goals/goal-section';
 import { PageShell } from '@/components/shell/page-shell';
 import { EmptyState } from '@/components/tasks/empty-state';
 import { FilterBar } from '@/components/tasks/filter-bar';
+import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
 import { TaskTable } from '@/components/tasks/task-table';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
-import { toTaskListResponse } from '@/lib/api/task-response';
+import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
+import { collectAlerts } from '@/lib/domain/alert-rules';
+import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip } from '@/lib/domain/progress-stats';
 import { getStorage } from '@/lib/store/store-factory';
+import { groupAlerts } from '@/lib/view/alert-groups';
 import { buildStatusDonut } from '@/lib/view/chart-series';
 import {
   applyDisplayFilter,
@@ -40,6 +49,7 @@ import {
   parseDashboardQuery,
   toURLSearchParams,
 } from '@/lib/view/dashboard-query';
+import { toGoalRows } from '@/lib/view/goal-view';
 import { sortTasks } from '@/lib/view/task-sort';
 import { describeSync } from '@/lib/view/sync-freshness';
 import { teamLabel, toTeamKey, toTeamSlug } from '@/lib/view/team-slug';
@@ -75,6 +85,17 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   const visible = sortTasks(applyDisplayFilter(listed, query), query.sort);
   const activeFilters = countActiveFilters(query);
 
+  /* `/`와 같은 규칙이다 — 이름은 화면이 자기 목록에서 붙이고, 못 붙이는 항목은 빼낸다 (`S6`) */
+  const titles = new Map(visible.map((task) => [task.id, task.title ?? task.sourceKey]));
+  const alertGroups = groupAlerts(
+    collectAlerts(read.tasks, read.stages, read.ctx),
+    new Set(titles.keys())
+  );
+
+  // 성과 행에도 담당자·채널이 섞여 들어온다. `toGoalResponse`를 거른다 (`S6`)
+  const goalStats = summarizeGoals(await storage.repo.listGoalMetrics({ teamKeys: [teamKey] }));
+  const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
+
   return (
     <PageShell mode={read.meta.mode} freshness={freshness} role={read.role} query={query}>
       <h1 className="text-ink text-xl font-semibold">{teamLabel(teamKey)}</h1>
@@ -94,10 +115,32 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
           </section>
         </div>
 
+        <GoalSection
+          rows={goalRows}
+          byTeam={goalStats.byTeam}
+          mismatchCount={goalStats.warnings.length}
+        />
+
+        <AlertPanel
+          groups={alertGroups}
+          titleOf={(taskId) => titles.get(taskId) ?? taskId}
+          hrefOf={(taskId) => buildHref(pathname, query, { task: taskId })}
+        />
+
         <section className="border-line bg-panel rounded-md border p-5">
           <h2 className="text-ink text-sm font-semibold">업무</h2>
           <div className="mt-3">
             <FilterBar query={query} pathname={pathname} showTeamChips={false} />
+          </div>
+          {/* `/`와 같은 자리다 — 패널은 오버레이지만 「필터 밖」 안내는 표 위에 붙는다 */}
+          <div className="mt-3">
+            <TaskPanelSlot
+              tasks={visible}
+              stages={read.stages}
+              role={read.role}
+              query={query}
+              pathname={pathname}
+            />
           </div>
           {visible.length === 0 ? (
             /*

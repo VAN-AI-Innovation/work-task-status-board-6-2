@@ -37,3 +37,16 @@ html {
 body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
+
+/* 사이드 패널 슬라이딩 (`UI_GUIDE.md`「애니메이션」 — translate-x 200ms ease-out).
+   `transition`이 아니라 keyframe인 이유: 패널은 열릴 때 **마운트**되므로 옮겨갈 이전
+   상태가 없다. 시작 위치를 상태로 한 번 푸는 방법도 있지만, 그러면 패널이 열림 여부를
+   자기 상태로 들고 있는 것처럼 읽힌다 — 이 화면에서 열림은 URL이다 (`task-panel.tsx`). */
+@keyframes panel-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}

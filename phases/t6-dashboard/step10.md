@@ -79,10 +79,16 @@ T9가 README를 진다. 다만 **지금 README가 「대시보드는 준비 중�
 
 ```bash
 # ── 완료 기준 10: 안티패턴 0건 ────────────────────────────
-grep -rniE "backdrop-blur|backdrop-filter|bg-gradient|gradient-to|bg-clip-text|purple|violet|indigo|fuchsia|blur-3xl|drop-shadow|hover:scale|animate-pulse|animate-spin|animate-bounce|animate-ping" src/ ; test $? -eq 1
+# **렌더되는 코드만 본다.** 테스트 파일에는 금지어가 정당하게 들어 있다 —
+# `status-badge.test.ts`가 "배지 클래스에 purple·indigo가 없다"를 검사하려면 그 단어를 써야 하고,
+# `dashboard-query.test.ts`는 `?display=purple`을 「모르는 값」 예시로 쓴다.
+# 그 줄들을 지워 grep을 통과시키면 **검사를 지키는 테스트를 지우는 것**이 된다.
+grep -rniE "backdrop-blur|backdrop-filter|bg-gradient|gradient-to|bg-clip-text|purple|violet|indigo|fuchsia|blur-3xl|drop-shadow|hover:scale|animate-pulse|animate-spin|animate-bounce|animate-ping" src/app src/components | grep -v "\.test\." ; test $? -eq 1
 
 # 색이 토큰에서만 온다 (출력이 비어야 함)
-grep -rnE "neutral-|bg-white|text-white|red-[0-9]|amber-[0-9]|#[0-9a-fA-F]{6}" src/app src/components ; test $? -eq 1
+# `globals.css`는 제외한다 — 토큰 원본이 사는 **유일한** 자리이고, hex가 거기 있는 것이 정상이다.
+# 차트 계열색은 `src/lib/view/chart-series.ts`에 있어야 하며 컴포넌트에는 없어야 한다.
+grep -rnE "neutral-|bg-white|text-white|red-[0-9]|amber-[0-9]|#[0-9a-fA-F]{6}" src/app src/components --include="*.tsx" --include="*.ts" | grep -v "\.test\." ; test $? -eq 1
 
 # ── 완료 기준 14: 에러 바운더리 둘 ────────────────────────
 ls src/app/error.tsx src/app/teams/error.tsx

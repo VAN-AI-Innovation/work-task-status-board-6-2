@@ -17,11 +17,15 @@ import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
 import { createMemoryUploadStore } from '@/lib/store/upload-record-store';
 import type { StorageHandle } from '@/lib/store/store-factory';
 import { buildSeedPayload } from '@/lib/upload/seed-loader';
+import { ALERT_LABELS, type AlertGroup, type WaitingItem } from '@/lib/view/alert-groups';
 import { buildCompletionBars, type ChartSeries } from '@/lib/view/chart-series';
+import type { GoalRow } from '@/lib/view/goal-view';
+import type { ExtraCell } from '@/lib/view/extras-render';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
 import { sortTasks } from '@/lib/view/task-sort';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { TaskResponse } from '@/types/api';
+import type { TaskStage } from '@/types/task';
 
 let handle: StorageHandle;
 
@@ -84,6 +88,30 @@ function props(searchParams: Record<string, string | string[]> = {}) {
   return { params: Promise.resolve({}), searchParams: Promise.resolve(searchParams) };
 }
 
+/**
+ * 순회 헬퍼는 자식 컴포넌트를 **렌더하지 않는다** — 트리에는 `<TaskPanelSlot>` 엘리먼트만
+ * 남고 그 안의 패널은 보이지 않는다. 슬롯은 순수 함수이므로 **페이지가 실제로 넘긴 props로**
+ * 한 번 불러 그 출력을 다시 훑는다. 페이지 → 슬롯 → 패널 배선이 그대로 검증된다.
+ */
+function openSlot(tree: unknown): unknown {
+  const slot = findComponent(tree, 'TaskPanelSlot');
+  if (slot === null) return null;
+
+  const render = slot.type as (props: unknown) => unknown;
+  return render(slot.props);
+}
+
+/**
+ * **시드의 `id`는 저장되면서 새로 발급된다** (`upsertTasks`는 `sourceKey`가 자연키다).
+ * 그래서 테스트가 `seed-edit-0001` 같은 원본 id를 그대로 쓰면 조용히 「없는 업무」가 된다.
+ */
+async function idOf(teamId: string, index = 0): Promise<string> {
+  const tasks = await handle.repo.listTasks();
+  const task = tasks.filter((item) => item.teamId === teamId)[index];
+  if (task === undefined) throw new Error(`시드에 ${teamId} 업무가 없습니다.`);
+  return task.id;
+}
+
 function emptyHandle(overrides: Partial<StorageHandle> = {}): StorageHandle {
   return {
     repo: createMemoryTaskStore(),
@@ -98,6 +126,14 @@ function emptyHandle(overrides: Partial<StorageHandle> = {}): StorageHandle {
 async function seed(): Promise<void> {
   const payload = buildSeedPayload();
   await handle.repo.upsertTasks(payload.tasks, { occurredAt: '2026-08-22T01:00:00.000Z' });
+}
+
+/** 목표 지표는 업무와 다른 테이블이다 — 따로 넣어야 성과 섹션에 행이 생긴다 (`ADR-002`) */
+async function seedGoals(): Promise<void> {
+  const payload = buildSeedPayload();
+  await handle.repo.upsertGoalMetrics(payload.goalMetrics, {
+    occurredAt: '2026-08-22T01:00:00.000Z',
+  });
 }
 
 beforeEach(() => {
@@ -347,5 +383,223 @@ describe('/ — 업무 표 (T6 완료 기준 2·5·14)', () => {
     expect((bar?.props?.query as DashboardQuery).team).toEqual(['marketing']);
     expect((bar?.props?.query as DashboardQuery).display).toEqual(['overdue']);
     expect(findComponent(tree, 'TaskTable')?.props?.query).toBe(bar?.props?.query);
+  });
+});
+
+describe('/ — 사이드 패널 (T6 완료 기준 4·6·13)', () => {
+  it('`?task=`가 없으면 패널을 그리지 않는다', async () => {
+    await seed();
+
+    expect(openSlot(await Home(props()))).toBeNull();
+  });
+
+  /** **완료 기준 6의 검증면이다.** URL만으로 패널이 열려야 링크를 받은 사람도 같은 화면을 본다 */
+  it('`?task=`가 있으면 그 업무의 패널이 열린다', async () => {
+    await seed();
+    const id = await idOf('edit');
+
+    const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
+
+    expect((panel?.props?.task as TaskResponse).id).toBe(id);
+    // 닫기는 그 키만 지운 링크다 — 이동이지 상태 변화가 아니다
+    expect(panel?.props?.closeHref).toBe('/');
+  });
+
+  it('닫기 링크가 다른 필터와 역할을 남긴다 — 닫으면 보던 목록으로 돌아온다', async () => {
+    await seed();
+
+    const tree = await Home(props({ task: await idOf('edit'), as: 'admin', sort: 'team' }));
+    const closeHref = findComponent(openSlot(tree), 'TaskPanel')?.props?.closeHref as string;
+
+    expect(closeHref).toContain('as=admin');
+    expect(closeHref).toContain('sort=team');
+    expect(closeHref).not.toContain('task=');
+  });
+
+  /**
+   * **이 패널이 있는 이유다** (`ADR-002`·`UC-15`). 표는 공통 8칸만 뿌리므로 촬영팀 70컬럼은
+   * 여기서만 보인다 — 개수를 자르면 그 팀 데이터가 화면에서 사라진다.
+   */
+  it('`extras`를 전량 넘긴다 — 개수를 자르지 않는다', async () => {
+    await seed();
+
+    const id = await idOf('shoot');
+    const tree = await Home(props({ task: id, as: 'admin' }));
+    const cells = findComponent(openSlot(tree), 'TaskPanel')?.props?.cells as ExtraCell[];
+
+    const task = (await handle.repo.listTasks()).find((item) => item.id === id);
+    expect(cells).toHaveLength(Object.keys(task?.extras ?? {}).length);
+    expect(cells.length).toBeGreaterThan(50);
+  });
+
+  it('단계는 그 업무 것만 `seq` 순으로 간다', async () => {
+    await seed();
+
+    const id = await idOf('edit');
+    const tree = await Home(props({ task: id }));
+    const stages = findComponent(openSlot(tree), 'TaskPanel')?.props?.stages as TaskStage[];
+
+    expect(stages.length).toBeGreaterThan(0);
+    expect(stages.every((stage) => stage.taskId === id)).toBe(true);
+    expect(stages.map((stage) => stage.seq)).toEqual([...stages.map((s) => s.seq)].sort((a, b) => a - b));
+  });
+
+  /** 완료 기준 13. 거르는 곳은 응답 계층 하나이고, 패널은 그 결과를 **표시**만 한다 (`S6`) */
+  it('member에게 민감 키가 (비공개)로 보이고 admin에게는 값이 보인다', async () => {
+    await seed();
+
+    const id = await idOf('shoot');
+    const cellsFor = async (as: string): Promise<ExtraCell[]> => {
+      const tree = await Home(props({ task: id, as }));
+      return findComponent(openSlot(tree), 'TaskPanel')?.props?.cells as ExtraCell[];
+    };
+
+    const label = '섭외 / 출연자 연락처 (내부용)';
+    const asMember = (await cellsFor('member')).find((cell) => cell.label === label);
+    const asAdmin = (await cellsFor('admin')).find((cell) => cell.label === label);
+
+    expect(asMember).toMatchObject({ masked: true, text: '(비공개)' });
+    expect(asAdmin?.masked).toBe(false);
+    expect(asAdmin?.text).not.toBe('(비공개)');
+    // 키는 양쪽 모두 남는다 — 무엇이 가려졌는지 보여야 한다
+    expect((await cellsFor('member')).length).toBe((await cellsFor('admin')).length);
+  });
+
+  it('없는 id는 에러가 아니라 안내 한 줄이다 — 패널을 열지 않는다', async () => {
+    await seed();
+
+    const rendered = openSlot(await Home(props({ task: '없는-id' })));
+
+    expect(findComponent(rendered, 'TaskPanel')).toBeNull();
+    expect(textOf(rendered)).toContain('찾을 수 없습니다');
+  });
+
+  /** 필터에 걸려 빠진 경우에는 되돌릴 길을 함께 준다 — 아무 반응이 없으면 링크가 고장 나 보인다 */
+  it('필터 밖으로 밀려난 업무는 초기화 링크와 함께 알린다', async () => {
+    await seed();
+
+    const rendered = openSlot(
+      await Home(props({ task: await idOf('edit'), display: 'overdue' }))
+    );
+    const text = textOf(rendered);
+
+    expect(findComponent(rendered, 'TaskPanel')).toBeNull();
+    expect(text).toContain('필터 밖에 있습니다');
+    expect(text).toContain('필터 초기화');
+  });
+
+  it('슬롯이 보는 목록은 표와 같다 — 칩으로 가린 업무의 패널이 열리지 않는다', async () => {
+    await seed();
+
+    const tree = await Home(props({ display: 'overdue' }));
+
+    expect(findComponent(tree, 'TaskPanelSlot')?.props?.tasks).toBe(
+      findComponent(tree, 'TaskTable')?.props?.tasks
+    );
+  });
+});
+
+describe('/ — 알림 패널 (요구 3번 · 완료 기준 2)', () => {
+  /**
+   * **0건인 묶음도 남는다.** 사라지면 「그 문제가 없는 것」과 「그 검사를 안 한 것」이 같은
+   * 화면이 되고, 특히 `기한 미설정`은 마감 없는 업무의 유일한 노출 경로다.
+   */
+  it('묶음 4종 + 보조 1종이 항상 그려진다', async () => {
+    await seed();
+
+    const groups = findComponent(await Home(props()), 'AlertPanel')?.props
+      ?.groups as AlertGroup[];
+
+    expect(groups.map((group) => group.label)).toEqual(Object.values(ALERT_LABELS));
+    expect(groups.map((group) => group.label)).toContain('기한 미설정');
+    expect(groups.length).toBe(5);
+  });
+
+  /**
+   * `Alert`에는 업무명이 없다 — 그 응답이 화면 밖으로도 나가기 때문이다 (`S6`).
+   * 이름은 화면이 자기 목록에서 붙이고, 링크는 `?task=` 딥링크다.
+   */
+  it('이름과 링크를 화면이 붙인다 — 알림 객체에는 둘 다 없다', async () => {
+    await seed();
+
+    const tree = await Home(props());
+    const panel = findComponent(tree, 'AlertPanel');
+    const groups = panel?.props?.groups as AlertGroup[];
+    const listed = findComponent(tree, 'TaskTable')?.props?.tasks as TaskResponse[];
+
+    const alert = groups.flatMap((group) => group.items)[0];
+    expect(alert).toBeDefined();
+    expect(alert).not.toHaveProperty('title');
+
+    const titleOf = panel?.props?.titleOf as (id: string) => string;
+    const hrefOf = panel?.props?.hrefOf as (id: string) => string;
+    const task = listed.find((item) => item.id === alert.taskId);
+
+    expect(titleOf(alert.taskId)).toBe(task?.title);
+    expect(hrefOf(alert.taskId)).toBe(`/?task=${encodeURIComponent(alert.taskId)}`);
+  });
+
+  /** 이름을 못 붙이는 항목은 클릭할 수 없는 줄이 된다 */
+  it('표에 없는 업무의 알림은 남기지 않는다', async () => {
+    await seed();
+
+    const tree = await Home(props({ display: 'overdue' }));
+    const visible = new Set(
+      (findComponent(tree, 'TaskTable')?.props?.tasks as TaskResponse[]).map((task) => task.id)
+    );
+    const groups = findComponent(tree, 'AlertPanel')?.props?.groups as AlertGroup[];
+
+    for (const item of groups.flatMap((group) => group.items)) {
+      expect(visible.has(item.taskId)).toBe(true);
+    }
+  });
+
+  /** 「승인 대기」 타일에 숫자만 있고 목록이 없어서 만든 화면이다 (`UC-09`) */
+  it('승인 대기함 건수가 KPI 타일과 같다', async () => {
+    await seed();
+
+    const tree = await Home(props());
+    const tiles = findComponent(tree, 'KpiStrip')?.props?.tiles as KpiTile[];
+    const items = findComponent(tree, 'ApprovalQueue')?.props?.items as WaitingItem[];
+
+    const tile = tiles.find((entry) => entry.key === 'approval_waiting');
+    expect(items).toHaveLength(tile?.value ?? -1);
+  });
+});
+
+describe('/ — 목표 대비 성과 (요구 4번 · 완료 기준 3)', () => {
+  /** 섹션이 사라지면 요구 4번이 미구현으로 보인다 */
+  it('지표가 0건이어도 섹션이 남는다', async () => {
+    await seed();
+
+    const section = findComponent(await Home(props()), 'GoalSection');
+
+    expect(section).not.toBeNull();
+    expect(section?.props?.rows).toEqual([]);
+  });
+
+  it('목표 → 실적 → 달성률이 한 행에 있고 직전 대비가 원문 그대로다', async () => {
+    await seed();
+    await seedGoals();
+
+    const rows = findComponent(await Home(props()), 'GoalSection')?.props?.rows as GoalRow[];
+    const row = rows.find((entry) => entry.rate === '120%');
+
+    expect(rows.length).toBeGreaterThan(0);
+    expect(row).toMatchObject({ target: '100', actual: '120', delta: '+18%' });
+    // 120%는 이상값이 아니라 정상값이다 — 미달로 칠하지 않는다
+    expect(row?.belowTarget).toBe(false);
+  });
+
+  /** 성과 지표는 업무가 아니라 목표값 대 실적값 축이라 같은 필터가 성립하지 않는다 (`ADR-002`) */
+  it('업무 필터가 목표 섹션을 좁히지 않는다', async () => {
+    await seed();
+    await seedGoals();
+
+    const all = findComponent(await Home(props()), 'GoalSection')?.props?.rows as GoalRow[];
+    const filtered = findComponent(await Home(props({ display: 'overdue' })), 'GoalSection')?.props
+      ?.rows as GoalRow[];
+
+    expect(filtered).toEqual(all);
   });
 });
