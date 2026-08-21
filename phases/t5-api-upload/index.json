@@ -24,7 +24,10 @@
       "step": 2,
       "name": "upload-preview",
       "commit": "feat: 업로드 미리보기 산출 upload-preview 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-21T22:57:01+0900",
+      "completed_at": "2026-08-21T23:06:34+0900",
+      "summary": "src/lib/upload/upload-mapper.ts(TEAM_DEPARTMENT·toTaskUpsertInputs·toGoalMetricUpsertInputs·collectDuplicateKeyWarnings)와 upload-preview.ts(buildUploadPreview)를 신설. [미리보기=확정] 신규/변경/유지를 여기서 다시 정의하지 않고 T4의 taskUpsertKey로 인덱싱해 diffTaskFields(prev,next)의 결과가 비었는지로만 가른다 — 저장소가 쓰는 함수와 같은 함수라서 숫자가 갈라질 수 없다. 배열 안 중복 키는 저장소와 같이 '뒤엣것이 이긴다'로 접고 진 쪽은 세지 않는다. 이 일치를 지키는 테스트가 '픽스처를 memory-task-store에 upsert한 뒤 listTasks()를 existing으로 다시 미리보기 → 전건 unchanged'이며, 같은 테스트에서 upsertTasks의 created/updated/unchanged와 미리보기 totals를 직접 비교한다(UC-03). [NO_KNOWN_TAB] teamKey!==null이면서 tasks나 goalMetrics가 하나라도 있는 탭이 0개면 중단이다 — 설정 탭만 든 파일, tabs:[], 행이 0인 팀 탭 셋 다 여기서 걸린다. sheet-pipeline.ts가 자기 주석에서 T5로 넘긴 판정을 여기서 내렸다(X2). 빈 성공으로 기존 데이터를 0건으로 덮지 않는다. [부분 업로드 고지] payload.teamKeys는 실제로 행을 낸 팀만이고 untouchedTeams는 TEAM_KEYS(도메인의 것을 그대로 씀) - teamKeys다. 판별 실패 탭은 파이프라인이 결과를 만들지 않아 parsed.tabs에 없으므로 UNKNOWN_TAB·HEADER_BAND_NOT_FOUND·TAB_PARSE_FAILED 경고에서 시트 이름을 뽑아 skippedSheets와 skipped:true인 TabPreview로 합성한다(완료 기준 8). 설정 탭·00_통합 대시보드는 원래 읽지 않는 탭이라 넣지 않는다. [경고 접기] parsed.warnings + 각 tab.warnings + settings.warnings + 중복키 경고를 code+sheet로 묶어 count와 firstRow(최솟값)만 남긴다. 접기 전 원본은 결과에 넣지 않는다(행 수만큼 커진다). 경고·미리보기에 셀 값·업무명·담당자·sourceKey를 담지 않으며, 그 사실을 JSON.stringify로 검사하는 테스트가 양쪽에 하나씩 있다. extras·raw는 마스킹하지 않고 그대로 옮긴다 — 마스킹은 응답 계층(step 5·6)이다. ownerMemberId는 항상 null(이름→구성원 해석은 T8). payload는 uploads.parse_result에 그대로 들어가므로 JSON 왕복 동일성을 테스트로 고정했다. docs/TICKETS.md T5 리스크·미결에 '설정 탭 enum·SLA는 T5에서 저장하지 않고 buildSemanticIndex(null) 내장 폴백을 쓴다'를 근거와 함께 추가했다. 테스트 23개 추가 — upload-mapper 10개, upload-preview 13개. 게이트 통과: lint·build·test 555개(이전 532개). [함정 하나] 처음 쓴 파일에 NUL 바이트가 섞여 grep이 binary로 취급했다. 경고 접기 키를 JSON.stringify([code, sheet])로 바꿔 제거했다."
     },
     {
       "step": 3,
