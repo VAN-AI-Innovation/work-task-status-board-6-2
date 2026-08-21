@@ -317,6 +317,26 @@ describe('getStorage — 한 번만 만들고 재사용한다', () => {
 
     resetStorage();
   });
+
+  /**
+   * Next.js는 페이지(RSC)와 라우트 핸들러를 **서로 다른 서버 번들로** 만든다. 캐시를 모듈
+   * 지역 변수에만 두면 두 번들이 각자의 저장소를 갖고, 메모리 드라이버에서 API로 확정한
+   * 업로드를 화면이 못 본다 — 실제로 「마지막 반영」이 확정 뒤에도 「기록 없음」에 머물렀다.
+   * `Symbol.for`는 전역 심볼 레지스트리를 쓰므로 번들이 갈라져도 같은 키가 된다.
+   */
+  it('캐시가 globalThis의 전역 심볼에 걸린다 — 번들이 갈라져도 같은 인스턴스다', async () => {
+    resetStorage();
+    const handle = await getStorage();
+
+    const key = Symbol.for('work-task-status-board.storage');
+    const host = globalThis as unknown as Record<symbol, Promise<unknown> | null | undefined>;
+
+    expect(host[key]).toBeTruthy();
+    await expect(host[key]).resolves.toBe(handle);
+
+    resetStorage();
+    expect(host[key]).toBeFalsy();
+  });
 });
 
 /**
