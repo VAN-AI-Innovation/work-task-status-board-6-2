@@ -47,7 +47,14 @@
       "step": 4,
       "name": "dashboard-charts",
       "commit": "feat: 팀별 상태 도넛과 완료율 바 차트 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-22T03:17:00+0900",
+      "completed_at": "2026-08-22T03:24:59+0900",
+      "summary": "차트를 도넛·바 둘로 못박고 계산과 그리기를 갈랐다. 신설 src/lib/view/chart-series.ts — buildStatusDonut(tasks)·buildCompletionBars(teams)·unmeasurableTeams(teams) + ChartSeries{labels,values,colors} + STATUS_COLORS·DONUT_ORDER·CHART_GRID·CHART_AXIS. 계열색 6개를 확정했다: 지연 #ef4444 · 진행 #e8eaed · 검토 #9aa1ab · 예정 #4b535f · 완료 #2b313a · 기타 #1f242b(5색에 없어 가장 어둡게), 격자선 #262b33 · 축 라벨 #9aa1ab. muted(기타)를 도넛에 넣은 이유는 빼면 조각 합이 전체와 달라져 「무엇의 100%인가」가 무너지기 때문이고, 테스트가 합 == 입력 건수로 그것을 잡는다. 조각 순서는 DONUT_ORDER로 고정(지연→진행→검토→예정→완료→기타)이고 건수 0인 칸도 배열에 남는다 — 칸이 사라지면 색의 뜻이 매번 달라진다. 라벨은 DISPLAY_STATUS_LABELS에서 오므로 배지와 도넛이 같은 한글을 쓴다. completionRate가 null인 팀은 막대를 만들지 않고 unmeasurableTeams로 빠져 화면이 「완료율 — (모수 0)」로 적는다 — 0%로 그리면 「완료가 없는 팀」과 「셀 것이 없는 팀」이 같은 그림이 된다. 막대 색은 상태 계열색을 재사용하지 않고 무채색 한 가지(#9aa1ab)다(완료율은 상태가 아니라 크기다). 신설 src/components/charts/ 3개 — chart-registry.ts(registerCharts()가 ArcElement·BarElement·두 축·Legend·Tooltip을 등록하는 유일한 곳. 두 차트가 각자 등록하면 로드 순서에 따라 동작이 갈린다) · status-donut.tsx('use client', cutout 62%, 중앙 숫자 없음 — 같은 값이 이미 KPI 타일에 있다) · completion-bars.tsx('use client', indexAxis:'y', x축 0~100 고정으로 팀 간 막대 길이를 눈으로 비교할 수 있게 했다). 공통 옵션은 animation:false·maintainAspectRatio:false + h-[240px] 고정 컨테이너(없으면 리사이즈마다 높이가 자란다), 범례는 하단 좌측, 툴팁은 기본값이다. page.tsx는 teams를 한 번만 만들고 toTaskListResponse로 displayStatus를 얻어 넘긴다(조회 API와 같은 함수라 판정이 갈리지 않는다) — 클라이언트로는 ChartSeries만 가고 업무 배열 전량은 넘어가지 않는다. 팀 한글 라벨은 이 step에서 짓지 않았다: buildCompletionBars가 TeamKey('edit'·'shoot'·'marketing')를 그대로 라벨로 내고, 그래서 지금 화면의 바 축과 「—」 안내문에 영문 키가 보인다. step 6이 team-slug.ts를 만들 때 그 함수와 completion-bars.tsx의 안내문을 함께 고친다 — 지금 임시 표를 두면 team-summary-table.tsx의 TEAM_LABELS와 합쳐 세 곳이 되어 갈라진다(파일 주석에 남겼다). 테스트 신규 19건(chart-series 15 · page.test.ts 4 — 도넛 합==조회 건수 · 막대==buildCompletionBars(표의 teams) · null 팀이 0%로 안 그려짐 · 클라이언트에 series만 감). AC 전부 통과 — charts/*.tsx에 reduce·filter 0건, animation:false 2건, 금지 차트 타입 0건, 그라데이션·그림자 0건, register 파일 1개, 안티패턴 0건, 라이트 팔레트 0건, npx vitest run src/lib/view src/app 149건, src/lib 813건, 게이트 lint·build·test 893건. 실측 대조(STORAGE_DRIVER=memory, / 렌더): 도넛 [3,0,0,0,0,6] 합 9 = 팀 요약표 전체 합 9이고 지연 3도 표의 0+1+2와 같다. 바는 [0,0,0]으로 표의 완료율 0%·0%·0%와 일치. ?team=edit에서 라벨이 ['edit'] 하나만 남고 unmeasurable이 ['shoot','marketing']로 잡혀 「완료율 — (모수 0): shoot, marketing」이 찍힌다. dev 로그에 에러·경고 0건.",
+      "notes": [
+        "npx vitest run src/lib 첫 실행에서 1건이 실패했다가 재실행에서 813건 전부 통과했다. 실패한 것은 원격 Supabase 계약 테스트이며 (step 0이 남긴 것과 같은 격리 문제 — 계약 테스트가 listTasks() 전체 건수로 단언하는데 reset은 contract::%만 지운다) 이 step의 코드와 무관하다. 게이트(npm run test) 893건은 통과했다.",
+        "팀 한글 라벨이 아직 없어 완료율 바의 축 라벨과 「—」 안내문에 영문 TeamKey가 보인다. step 지시가 명시적으로 미뤄 둔 것이며 step 6의 team-slug.ts가 진다."
+      ]
     },
     {
       "step": 5,
