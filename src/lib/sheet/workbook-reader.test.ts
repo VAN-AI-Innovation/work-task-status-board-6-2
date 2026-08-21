@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { toProgress, unwrapCellValue } from '@/lib/sheet/cell-normalizer';
-import { readWorkbook, WorkbookReadError } from '@/lib/sheet/workbook-reader';
+import { ArchiveLimitError, readWorkbook, WorkbookReadError } from '@/lib/sheet/workbook-reader';
+import { WORKBOOK_LIMITS, type WorkbookLimits } from '@/lib/upload/upload-limits';
 import type { SheetGrid, WorkbookGrid } from '@/types/sheet';
 
 const FIXTURE = fileURLToPath(new URL('../fixtures/sample-workbook.xlsx', import.meta.url));
@@ -127,5 +128,56 @@ describe('readWorkbook — 손상된 워크북', () => {
     const message = (err as WorkbookReadError).message;
     expect((err as WorkbookReadError).code).toBe('WORKBOOK_CORRUPT');
     expect(message).not.toMatch(/https?:|\/|\\|zip|jszip|Error:/i);
+  });
+});
+
+/**
+ * 한도는 **셀 배열을 만들기 전에** 걸려야 의미가 있다 (S2). `dimensions`는 워크북 XML 안의
+ * 속성이라 위조할 수 있고, 위조된 사각형을 믿고 배열을 할당하면 수 KB 파일 하나로 프로세스가
+ * 죽는다 — step 0의 해제 총량 상한은 실제 데이터의 부피만 막는다.
+ *
+ * 숫자는 여기 적지 않는다. 정책은 `upload-limits.ts` 한 곳이고 리더는 받은 숫자를 지킬 뿐이다.
+ */
+describe('readWorkbook — 한도 (T5 완료 기준 6)', () => {
+  const bytes = () => readFileSync(FIXTURE);
+  const catchCode = async (limits: WorkbookLimits): Promise<unknown> =>
+    readWorkbook(bytes(), limits).then(
+      () => null,
+      (e: unknown) => e
+    );
+
+  it('limits 없이 부르면 지금과 똑같이 읽힌다', async () => {
+    const plain = await readWorkbook(bytes());
+    expect(plain.sheets.map((s) => s.name)).toEqual(wb.sheets.map((s) => s.name));
+    expect(plain.warnings).toEqual([]);
+  });
+
+  it('실제 상한(WORKBOOK_LIMITS)으로 부르면 픽스처가 통과한다', async () => {
+    // 오탐 회귀 — 정상 업무 파일을 거부하는 방어는 방어가 아니라 장애다 (T1)
+    const guarded = await readWorkbook(bytes(), WORKBOOK_LIMITS);
+    expect(guarded.sheets).toHaveLength(5);
+  });
+
+  it('시트 수 초과를 시트 순회 전에 잡는다', async () => {
+    const err = await catchCode({ ...WORKBOOK_LIMITS, maxSheets: 1 });
+    expect(err).toBeInstanceOf(ArchiveLimitError);
+    expect((err as ArchiveLimitError).code).toBe('ARCHIVE_LIMIT_EXCEEDED');
+  });
+
+  it('시트당 셀 수 초과를 잡는다', async () => {
+    const err = await catchCode({ ...WORKBOOK_LIMITS, maxCellsPerSheet: 10 });
+    expect(err).toBeInstanceOf(ArchiveLimitError);
+  });
+
+  it('시트별로는 통과해도 워크북 합계에서 잡는다', async () => {
+    // 픽스처 최대 시트는 2,485셀이라 시트당 상한에는 걸리지 않는다
+    const err = await catchCode({ maxSheets: 20, maxCellsPerSheet: 100_000, maxCellsPerWorkbook: 1_000 });
+    expect(err).toBeInstanceOf(ArchiveLimitError);
+  });
+
+  it('한도 메시지에 시트 이름·셀 수·내부 경로가 없다', async () => {
+    const err = await catchCode({ ...WORKBOOK_LIMITS, maxSheets: 1 });
+    const message = (err as ArchiveLimitError).message;
+    expect(message).not.toMatch(/촬영|편집|설정|대시보드|\d|https?:|\/src\/|Error:/);
   });
 });

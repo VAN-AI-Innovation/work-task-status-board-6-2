@@ -10,6 +10,7 @@
 
 import ExcelJS from 'exceljs';
 
+import type { WorkbookLimits } from '@/lib/upload/upload-limits';
 import type {
   MergeRange,
   ParseWarning,
@@ -32,6 +33,21 @@ export class WorkbookReadError extends Error {
   }
 }
 
+/**
+ * 한도 초과. 「중단」 강도다 (ARCHITECTURE.md 실패 강도 표).
+ *
+ * 세 갈래(시트 수·시트당 셀·워크북 합계)를 메시지로 구분하지 않는다 —
+ * 사용자가 할 수 있는 일이 같다(파일을 줄여서 다시 올린다).
+ */
+export class ArchiveLimitError extends Error {
+  readonly code = 'ARCHIVE_LIMIT_EXCEEDED';
+
+  constructor() {
+    super('파일이 처리 한도를 넘습니다. 시트나 행·열을 줄여 다시 올려 주세요.');
+    this.name = 'ArchiveLimitError';
+  }
+}
+
 /** `A` → 0, `BS` → 70 */
 function columnIndex(letters: string): number {
   let index = 0;
@@ -51,12 +67,21 @@ function toMergeRange(address: string): MergeRange | null {
   };
 }
 
-function readSheet(worksheet: ExcelJS.Worksheet, warnings: ParseWarning[]): SheetGrid {
+function readSheet(
+  worksheet: ExcelJS.Worksheet,
+  warnings: ParseWarning[],
+  limits?: WorkbookLimits
+): SheetGrid {
   // exceljs의 `rowCount`는 서식만 있는 행까지 세서 부풀어 오른다 — 실측에서 1001까지 갔다.
   // 범위는 반드시 `dimensions`로 잡는다 (A7).
   const dimensions = worksheet.dimensions;
   const rowCount = dimensions?.bottom ?? 0;
   const columnCount = dimensions?.right ?? 0;
+
+  // `dimensions`는 워크북 XML 안의 속성이라 위조할 수 있다. 수백만 셀짜리 사각형을 신고하는 `<dimension>` 한 줄은
+  // 40바이트도 안 되는데 그 사각형을 믿고 배열을 할당하면 프로세스가 죽는다 — 그래서 검사는
+  // 반드시 `cells`를 만들기 **전**이다. 뒤에 두면 그때는 이미 메모리를 다 썼다 (S2).
+  if (limits && rowCount * columnCount > limits.maxCellsPerSheet) throw new ArchiveLimitError();
 
   const cells: SheetCell[][] = [];
   for (let r = 1; r <= rowCount; r += 1) {
@@ -101,8 +126,17 @@ function readSheet(worksheet: ExcelJS.Worksheet, warnings: ParseWarning[]): Shee
   return { name: worksheet.name, rowCount, columnCount, cells, merges, hiddenRows, hiddenColumns };
 }
 
-/** 워크북 바이트를 시트별 격자로 옮긴다. 시트는 파일에 있는 순서 그대로다 */
-export async function readWorkbook(input: Buffer | ArrayBuffer): Promise<WorkbookGrid> {
+/**
+ * 워크북 바이트를 시트별 격자로 옮긴다. 시트는 파일에 있는 순서 그대로다.
+ *
+ * `limits`는 **정책이 아니라 인자**다. 숫자는 `upload-limits.ts` 한 곳에 있고 리더는 받은 값을
+ * 지킬 뿐이다 — 리더가 숫자를 알면 정책이 두 곳에 생겨 하나만 고쳐진다.
+ * 넘기지 않으면 검사를 전부 건너뛴다.
+ */
+export async function readWorkbook(
+  input: Buffer | ArrayBuffer,
+  limits?: WorkbookLimits
+): Promise<WorkbookGrid> {
   const workbook = new ExcelJS.Workbook();
   try {
     // exceljs의 타입 선언이 전역 `Buffer`를 `interface Buffer extends ArrayBuffer {}`로 병합해 둬서
@@ -113,7 +147,17 @@ export async function readWorkbook(input: Buffer | ArrayBuffer): Promise<Workboo
     throw new WorkbookReadError();
   }
 
+  if (limits && workbook.worksheets.length > limits.maxSheets) throw new ArchiveLimitError();
+
   const warnings: ParseWarning[] = [];
-  const sheets = workbook.worksheets.map((worksheet) => readSheet(worksheet, warnings));
+  const sheets: SheetGrid[] = [];
+  let cellTotal = 0;
+  for (const worksheet of workbook.worksheets) {
+    const grid = readSheet(worksheet, warnings, limits);
+    // 시트당 상한만으로는 20 × 100,000이 통과한다. 합계는 시트를 하나 끝낼 때마다 조인다.
+    cellTotal += grid.rowCount * grid.columnCount;
+    if (limits && cellTotal > limits.maxCellsPerWorkbook) throw new ArchiveLimitError();
+    sheets.push(grid);
+  }
   return { sheets, warnings };
 }

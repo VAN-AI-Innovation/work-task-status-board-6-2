@@ -9,8 +9,9 @@
  *   건너뛴 사실에 경고도 남기지 않는다 — 매 업로드마다 뜨는 잡음이 된다.
  * - 오늘 날짜를 읽지 않는다. `baseYear`는 호출자가 주입한다 (CLAUDE.md CRITICAL).
  *
- * **예외를 던지지 않는다.** `readWorkbook`의 `WorkbookReadError`만 그대로 통과시킨다 —
- * 워크북이 안 열리면 파싱할 것이 없다. 어댑터가 던지면 그 탭만 경고로 바꾸고 나머지를 계속한다.
+ * **예외를 던지지 않는다.** `readWorkbook`의 「중단」 둘(`WorkbookReadError`·`ArchiveLimitError`)만
+ * 그대로 통과시킨다 — 워크북이 안 열리거나 한도를 넘으면 파싱할 것이 없다.
+ * 어댑터가 던지면 그 탭만 경고로 바꾸고 나머지를 계속한다.
  * 엑셀 라이브러리를 import하지 않는다 (ADR-003).
  */
 
@@ -20,6 +21,7 @@ import { parseSettingsTab } from '@/lib/sheet/adapter-settings-tab';
 import { parseShootTeamTab } from '@/lib/sheet/adapter-shoot-team';
 import { detectTab } from '@/lib/sheet/tab-detector';
 import { readWorkbook } from '@/lib/sheet/workbook-reader';
+import type { WorkbookLimits } from '@/lib/upload/upload-limits';
 import type {
   HeaderBand,
   ParseWarning,
@@ -30,8 +32,10 @@ import type {
 } from '@/types/sheet';
 import type { TabParseResult, WorkbookParseResult } from '@/types/task';
 
-interface ParseContext {
+export interface ParseContext {
   baseYear: number;
+  /** 리더에 그대로 넘긴다. 어댑터는 한도를 모른다 (`ctx: { baseYear }`만 선언한다) */
+  limits?: WorkbookLimits;
 }
 
 type BandTabParser = (sheet: SheetGrid, band: HeaderBand, ctx: ParseContext) => TabParseResult;
@@ -139,7 +143,7 @@ export async function parseWorkbook(
   input: Buffer | ArrayBuffer,
   ctx: ParseContext
 ): Promise<WorkbookParseResult> {
-  const workbook = await readWorkbook(input);
+  const workbook = await readWorkbook(input, ctx.limits);
 
   // 리더 경고(숨김 열 등)를 버리지 않는다. 이 파이프라인이 유일한 호출자다.
   const warnings: ParseWarning[] = [...workbook.warnings];
