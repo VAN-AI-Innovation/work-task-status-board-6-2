@@ -6,18 +6,19 @@
       "step": 0,
       "name": "design-tokens",
       "commit": "style: 다크 테마 디자인 토큰과 UI 가이드 개정",
-      "status": "error",
+      "status": "completed",
       "started_at": "2026-08-22T01:37:18+0900",
-      "completed_at": "2026-08-22T01:42:18+0900",
-      "summary": "다크 테마 토큰 15개를 src/app/globals.css의 @theme에 확정했다 — 배경·테두리 canvas·panel·raise·line·line-strong, 텍스트 ink·ink-body·ink-muted·ink-faint, 시맨틱 late·late-bg·late-line·warn·warn-bg·warn-line. Tailwind v4가 이 이름으로 bg-*/text-*/border-* 유틸리티를 만들므로 이후 화면 코드는 neutral-·red-·amber-·white 팔레트 클래스를 쓰지 않는다. 다크에서 명도 방향이 뒤집혔다 — 라이트의 「진행 = 가장 진한 무채색」은 어두운 배경에 묻히므로, 다크에서 가장 눈에 띄는 무채색인 가장 밝은 것(bg-ink text-canvas 반전 배지)이 「진행」이 된다. 시맨틱은 여전히 2색이고 액센트를 하나도 추가하지 않았다(참고 이미지의 보라는 구조만 참고하고 색은 채택하지 않음). 목표 미달은 빨강이 아니라 text-warn으로 정했다 — 빨강은 업무 지연 전용이라 두 뜻이 되면 지연이 묻힌다. 고친 문서 3곳: docs/UI_GUIDE.md(머리말 톤 전환 근거·안티패턴 표 아래 다크 특유 유혹 2건·색상 절 토큰표·상태 5색 표·컴포넌트 클래스·차트 계열색·앱 셸 규격·목표 대비 성과의 톤 신설), docs/PLAN.md 37행, docs/PRD.md 디자인 절. 안티패턴 표는 한 줄도 지우지 않았고 T6 완료 기준 10번은 그대로 유효하다. globals.css의 보일러플레이트 잔재(--background/--foreground·@theme inline·prefers-color-scheme 블록·기본 산세리프 font-family)를 제거하고 color-scheme: dark를 선언했다(다크 단일이라 OS 설정에 따라 판정이 갈리면 안 됨). [AC 조정] AC의 `grep -c -- \"--color-\"`는 15를 요구하는데 step 지시문의 CSS 예시는 body에서 var(--color-canvas)·var(--color-ink)를 불러 17이 된다. 배경·전경을 layout.tsx의 bg-canvas text-ink(step 지시 4번이 요구한 것)에 맡기고 globals.css의 body는 폰트만 고정해 정의 15개로 맞췄다 — 값의 출처는 여전히 한 곳이다. 게이트: lint·build 통과, test 807 passed / 10 failed. 실패 10건은 전부 src/lib/store/supabase-task-store.test.ts의 라이브 Supabase 계약 테스트로, 원격 DB에 이전 실행의 잔여 행 9건이 남아 「빈 저장소」 전제가 깨진 것이다. 이 step의 변경(문서·CSS·layout)을 git stash로 빼고 재실행해도 동일하게 10건이 실패해 사전 존재 실패임을 확인했다.",
-      "error_message": "[3회 시도 후 실패] Step did not update status",
-      "failed_at": "2026-08-22T01:44:08+0900"
+      "completed_at": "2026-08-22T02:47:00+0900",
+      "summary": "다크 단일 테마를 확정했다. globals.css의 @theme에 색 토큰 15종을 깔았다 — canvas #0b0d10 / panel #14171c / raise #1a1e24 / line #262b33 / line-strong #3a424e, ink #e8eaed·ink-body·ink-muted·ink-faint, 시맨틱 2색(late #f87171·warn #fbbf24 각각 bg·line 포함). 화면 코드는 bg-canvas·text-ink 같은 토큰 클래스로만 색을 부르고 Tailwind 팔레트 클래스를 쓰지 않는다. 다크에서 명도 방향이 뒤집혀 「진행」 배지가 bg-ink text-canvas(가장 밝은 것이 가장 눈에 띈다)가 됐고, 차트 계열색도 패널 위에서 구분되도록 예정 #4b535f·진행 #e8eaed·검토 #9aa1ab·완료 #2b313a·지연 #ef4444로 다시 잡았다. 안티패턴 표는 한 줄도 지우지 않았고 다크에서 유혹이 커지는 글로우·보라 액센트를 명시로 덧붙였다(참고 이미지가 보라였으나 채택하지 않음). 목표 미달은 빨강이 아니라 앰버로 둔다는 규칙을 새 소절로 확정했다(빨강은 업무 지연 전용). 레이아웃에 앱 셸 규격(사이드바 w-[220px]·1024px 미만 w-14, 상단 바 h-14)을 추가했다. 문서 3곳(UI_GUIDE.md 전면 개정 · PLAN.md 37행 · PRD.md 디자인)을 같은 표기로 맞췄다. [주의] 이 step의 3번째 세션은 사용량 한도로 즉시 종료됐고(api_error, 토큰 0), 게이트 실패는 이 step의 코드가 아니라 원격 Supabase에 남아 있던 시드 9행 + 잔여 contract 1행 때문이었다 — 계약 테스트가 listTasks() 전체 건수로 단언하는데 자기 reset은 contract::%만 지운다. 사용자 승인 후 원격 잔여 행을 지웠고 게이트(lint·build·test 817건)를 재실행해 통과를 확인한 뒤 completed로 표시했다. 계약 테스트 격리는 별도 이슈로 남겼다."
     },
     {
       "step": 1,
       "name": "dashboard-query",
       "commit": "feat: URL 화면 상태 dashboard-query 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-22T02:47:51+0900",
+      "completed_at": "2026-08-22T02:54:43+0900",
+      "summary": "URL ↔ 화면 상태 변환을 순수 함수 2파일로 확정했다 (화면은 만들지 않았다). src/lib/view/dashboard-query.ts — parseDashboardQuery·toSearchParams·buildHref·applyDisplayFilter·toURLSearchParams + DEFAULT_SORT('due', 마감 임박순)·DashboardQuery·DashboardQueryPatch·SortKey. src/lib/view/task-sort.ts — sortTasks·SORT_LABELS. 5색 칩에 ?status=가 아니라 ?display=를 새로 만든 이유: read-context의 ?status=는 시트 원문 문자열('진행 중')이고 저장소가 그대로 비교하는데, 칩이 ?status=in_progress를 보내면 조용히 0건이 되어 사용자가 필터가 아니라 데이터를 의심한다. 두 축이 다른 것이라 ?status=는 저장소가, ?display=는 판정을 거친 뒤 화면이 거른다(ADR-006). ?overdue=1도 ?display=overdue와 합치지 않았다 — 앞은 buildReadContext의 판정 필터, 뒤는 칩이라 합치면 기존 UC-11 링크와 칩 UI가 서로를 덮어쓴다. 기본값은 URL에 싣지 않고(sort=due 생략), 모르는 값은 던지지 않고 버리며(?display=purple 무시), 키 순서와 다중 값 순서가 고정이라 같은 상태가 항상 같은 문자열이 된다(왕복 테스트가 완료 기준 5의 실체). buildHref의 patch에서 null='그 키를 지운다'/undefined='건드리지 않는다'. 정렬 기본값은 due(마감 임박순, null은 맨 뒤)이고 status는 지연이 맨 위, 모든 키의 마지막 동률 판정은 id 비교라 표가 흔들리지 않는다. 로캘 의존 문자열 비교 함수는 쓰지 않고 코드포인트로 고정했다. 테스트 34건(dashboard-query 24 · task-sort 10) 신규, 게이트 lint·build·test 851건 통과."
     },
     {
       "step": 2,
