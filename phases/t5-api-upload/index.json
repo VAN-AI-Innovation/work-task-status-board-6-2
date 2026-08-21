@@ -6,10 +6,10 @@
       "step": 0,
       "name": "upload-guard",
       "commit": "feat: 업로드 한도와 파일 검증 upload-guard 추가",
-      "status": "error",
+      "status": "completed",
       "started_at": "2026-08-21T21:28:09+0900",
-      "error_message": "[3회 시도 후 실패] Step did not update status",
-      "failed_at": "2026-08-21T22:22:07+0900"
+      "completed_at": "2026-08-21T22:49:49+0900",
+      "summary": "src/lib/upload/upload-limits.ts(MAX_UPLOAD_BYTES 4MB·MAX_ARCHIVE_UNCOMPRESSED_BYTES 50MB·MAX_ARCHIVE_ENTRIES 512·WORKBOOK_LIMITS·PARSE_TIMEOUT_MS 8000)와 zip-inspector.ts(inspectZip)를 신설. T5 완료 기준 6의 셀 상한을 확정했다 — 세는 기준은 dimensions 사각형(SheetGrid.rowCount×columnCount, workbook-reader가 이미 잡는 값)이고 상한은 시트당 100,000 / 워크북 300,000이다. 근거: 실측 최대 시트 4,260셀의 23배이고, Google Sheets 기본 그리드 26,000셀이 통과해야 하므로 원안 20,000은 성립하지 않는다(T1에서 정상 파일 26,026으로 오탐). 워크북 합계 상한을 따로 둔 이유는 시트당 상한만으로는 20×100,000=2,000,000이 통과하기 때문. dimensions는 위조 가능하므로 이 상한 하나에 기대지 않고 4MB 압축 상한 + 50MB 해제 총량이 뒷받침한다. docs/PLAN.md S2와 docs/TICKETS.md T5 완료 기준 6을 같은 숫자로 갱신했고 T1 실측 기록은 지우지 않았다. [주의] 이 step의 세션은 맥 절전으로 3회 비정상 종료해(API Error: computer went to sleep) 상태를 적지 못했다. 코드는 하네스가 커밋했고 게이트(lint·test 520개)를 재실행해 통과를 확인한 뒤 completed로 표시했다. 이후 실행은 caffeinate로 절전을 막는다."
     },
     {
       "step": 1,
