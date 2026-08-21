@@ -7,6 +7,7 @@
  */
 
 import { SheetUploadPanel } from '@/components/upload/sheet-upload-panel';
+import { StorageBanner } from '@/components/upload/storage-banner';
 import { getStorage } from '@/lib/store/store-factory';
 
 /**
@@ -21,20 +22,7 @@ export default async function UploadPage() {
 
   return (
     <main className="flex-1 bg-neutral-50">
-      {/*
-        두 배너의 문구와 색을 **절대 섞지 않는다** — 하나는 사고고 하나는 의도다
-        (`ADR-005`·`UI_GUIDE.md`). 섞이면 사용자가 장애를 데모로 읽는다.
-      */}
-      {mode === 'fallback' && (
-        <div className="border-b border-amber-600 bg-amber-50 px-6 py-2 text-sm text-amber-700">
-          읽기 전용 — 저장소 연결 실패
-        </div>
-      )}
-      {mode === 'demo' && (
-        <div className="border-b border-neutral-300 bg-neutral-100 px-6 py-2 text-sm text-neutral-600">
-          샘플 데이터 모드
-        </div>
-      )}
+      <StorageBanner mode={mode} />
 
       <div className="mx-auto max-w-[1280px] px-6 py-8">
         <h1 className="text-xl font-semibold text-neutral-900">시트 업로드</h1>

@@ -27,7 +27,7 @@ src/
 │   ├── upload/page.tsx               # 엑셀 업로드 + 미리보기
 │   ├── extract/page.tsx              # 독스 → 배정표
 │   ├── error.tsx                     # 조회 실패 바운더리 (teams/ 에도 둔다)
-│   └── api/  uploads/sheet · uploads/[id]/commit · uploads/doc
+│   └── api/  uploads/sheet · uploads/[id]/commit · uploads/seed · uploads/doc
 │             export/assignment · tasks · tasks/[id] · stats · alerts
 │             goals · report/weekly · health
 ├── components/   dashboard/ charts/ tasks/ goals/ upload/ ui/   # props 받아 JSX만. 계산 금지

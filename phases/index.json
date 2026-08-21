@@ -27,8 +27,8 @@
     },
     {
       "dir": "t5-api-upload",
-      "status": "error",
-      "failed_at": "2026-08-21T22:22:07+0900"
+      "status": "completed",
+      "completed_at": "2026-08-22T00:32:00+0900"
     }
   ]
 }
