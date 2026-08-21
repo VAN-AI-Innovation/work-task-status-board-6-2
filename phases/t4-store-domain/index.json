@@ -96,11 +96,12 @@
       "step": 10,
       "name": "store-factory",
       "commit": "feat: 저장소 선택과 읽기 전용 폴백 store-factory 추가",
-      "status": "error",
+      "status": "completed",
       "started_at": "2026-08-21T17:57:41+0900",
-      "error_message": "[3회 시도 후 실패] Step did not update status",
-      "failed_at": "2026-08-21T20:46:59+0900"
+      "completed_at": "2026-08-21T21:04:56+0900",
+      "summary": "src/lib/store/store-factory.ts(StorageDriver·StorageMode·StorageHandle·StorageReadOnlyError·createStorage(env)·getStorage·resetStorage) + scripts/fixtures/build-seed-tasks.ts + src/lib/fixtures/seed-tasks.json + .env.example 신설. 드라이버 판정은 표 하나 — memory는 demo(쓰기 허용), supabase 연결 성공은 live, 실패는 memory+fallback+readOnly. readOnly에서 쓰기 3종은 StorageReadOnlyError(code STORAGE_READONLY)를 던지고 읽기는 그대로 동작한다(ADR-005 — 폴백이 쓰기를 삼키면 조용한 데이터 유실). demo와 fallback을 다른 mode 값으로 구분해 배너 문구(T6)가 갈릴 근거를 남기고 문구 자체는 넣지 않았다. 시드는 parseWorkbook을 실제로 돌려 만든 산출물이며 id는 결정적이라 재생성해도 diff가 없고, raw는 빼고 extras는 남겼다(마스킹은 응답 계층의 일). 실측: tasks 9건(edit 5·shoot 1·marketing 3), stages 15건, goalMetrics 3건, raw 키 0건. 완료 기준 9는 STORAGE_DRIVER=memory에서 시드 로드로 검증. [주의] 이 step의 세션은 산출물을 전부 만든 뒤 API 에러로 3회 비정상 종료해 index.json 상태를 적지 못했다. 코드는 하네스가 커밋했고, 게이트(lint·build·test 509개)를 사람이 직접 재실행해 통과를 확인한 뒤 이 항목을 completed로 표시했다."
     }
   ],
-  "created_at": "2026-08-18T10:40:19+0900"
+  "created_at": "2026-08-18T10:40:19+0900",
+  "completed_at": "2026-08-21T21:04:56+0900"
 }

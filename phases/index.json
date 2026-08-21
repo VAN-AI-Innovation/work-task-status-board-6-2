@@ -22,7 +22,8 @@
     },
     {
       "dir": "t4-store-domain",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-08-21T21:04:56+0900"
     }
   ]
 }
