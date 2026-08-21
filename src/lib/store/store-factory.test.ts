@@ -19,6 +19,7 @@ import {
   type StorageHandle,
 } from '@/lib/store/store-factory';
 import type { TaskUpsertInput } from '@/lib/store/task-repository';
+import type { UploadSummary } from '@/lib/store/upload-record-store';
 
 const SEED_PATH = fileURLToPath(new URL('../fixtures/seed-tasks.json', import.meta.url));
 
@@ -235,6 +236,63 @@ describe('시드 — 키 없이 데이터가 뜬다 (T4 완료 기준 9)', () =>
   });
 });
 
+/**
+ * 업로드 레코드 저장소는 `TaskRepository`와 **다른 축**이다 (`ADR-008`). 모드마다 올바른
+ * 구현이 실렸는지, 그리고 `fallback`에서 여기가 쓰기를 **따로 막지 않는지**를 고정한다 —
+ * 읽기 전용 방어는 라우트 한 곳(step 7)에만 둔다.
+ */
+describe('uploads — 모드별 구현 (ADR-008)', () => {
+  /** 메모리 구현만 `clear()`를 갖는다. 구현을 가리는 데 이보다 싼 표식이 없다 */
+  const isMemoryUploads = (handle: StorageHandle) => 'clear' in handle.uploads;
+
+  const UPLOAD_SUMMARY: UploadSummary = {
+    created: 1,
+    updated: 0,
+    unchanged: 0,
+    goalMetricsCreated: 0,
+    goalMetricsUpdated: 0,
+    warningCount: 0,
+    teamKeys: ['edit'],
+  };
+
+  const PAYLOAD = { tasks: [TASK], goalMetrics: [], teamKeys: ['edit' as const] };
+
+  it('demo는 메모리 업로드 저장소를 쓴다', async () => {
+    expect(isMemoryUploads(await createStorage(MEMORY))).toBe(true);
+  });
+
+  it('fallback도 메모리 업로드 저장소를 쓴다', async () => {
+    expect(isMemoryUploads(await fallbackHandle())).toBe(true);
+  });
+
+  it('fallback에서 업로드 레코드 쓰기를 따로 막지 않는다 — 방어는 라우트 한 곳뿐이다', async () => {
+    const { uploads } = await fallbackHandle();
+
+    const record = await uploads.create({
+      kind: 'sheet',
+      filename: 'factory-probe.xlsx',
+      parseResult: PAYLOAD,
+      createdAt: UPLOAD_AT,
+    });
+
+    expect(record.status).toBe('previewing');
+    expect((await uploads.markCommitted(record.id, UPLOAD_SUMMARY))?.parseResult).toBeNull();
+  });
+
+  it('업로드 저장소도 인스턴스마다 새로 만들어진다', async () => {
+    const first = await createStorage(MEMORY);
+    const created = await first.uploads.create({
+      kind: 'sheet',
+      filename: null,
+      parseResult: PAYLOAD,
+      createdAt: UPLOAD_AT,
+    });
+
+    const second = await createStorage(MEMORY);
+    expect(await second.uploads.get(created.id)).toBeNull();
+  });
+});
+
 describe('getStorage — 한 번만 만들고 재사용한다', () => {
   it('두 번 불러도 같은 인스턴스다', async () => {
     resetStorage();
@@ -281,5 +339,11 @@ describe.skipIf(!canRunLive)('createStorage — 실제 Supabase', () => {
     expect(handle.driver).toBe('supabase');
     expect(handle.mode).toBe('live');
     expect(handle.readOnly).toBe(false);
+  });
+
+  it('live에서는 업로드 저장소도 supabase 구현이다 (메모리 표식인 clear가 없다)', async () => {
+    const handle = await createStorage(process.env);
+
+    expect('clear' in handle.uploads).toBe(false);
   });
 });

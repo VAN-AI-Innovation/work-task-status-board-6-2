@@ -44,7 +44,7 @@ src/
 │   ├── domain/  task-semantic · display-status · task-derive · kst-today
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
 │   ├── store/   task-repository · repository-contract · memory-task-store
-│   │            supabase-task-store · store-factory
+│   │            supabase-task-store · upload-record-store · store-factory
 │   └── fixtures/  sample-workbook.xlsx · sample-workload.md · seed-tasks.json
 ├── supabase/migrations/   *.sql        # 스키마 단일 소스 (T4부터)
 └── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts
