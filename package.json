@@ -9,6 +9,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "seed:build": "vite-node -c vitest.config.ts scripts/fixtures/build-seed-tasks.ts",
     "test": "vitest run"
   },
   "dependencies": {
