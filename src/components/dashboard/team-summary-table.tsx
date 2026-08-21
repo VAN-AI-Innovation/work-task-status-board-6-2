@@ -13,8 +13,14 @@ import type { TeamSummary } from '@/lib/domain/progress-stats';
 import { formatCount, formatPercent } from '@/lib/view/kpi-format';
 import type { TeamKey } from '@/types/task';
 
-/** 가운뎃점은 `·`(U+00B7)로 시트 원문과 같다 */
-const TEAM_LABELS: Readonly<Record<TeamKey, string>> = {
+/**
+ * 가운뎃점은 `·`(U+00B7)로 시트 원문과 같다.
+ *
+ * ⚠ **팀 한글 이름의 현재 단일 소스다.** 업무 표·필터 바가 여기서 가져다 쓴다 —
+ * 각자 적으면 같은 팀이 화면마다 다른 이름으로 뜬다. step 6이 `team-slug.ts`를 만들 때
+ * 이 표를 그리로 옮기고 `chart-series.ts`의 라벨까지 한 곳으로 모은다.
+ */
+export const TEAM_LABELS: Readonly<Record<TeamKey, string>> = {
   edit: '편집팀',
   shoot: '촬영·기획팀',
   marketing: '마케팅·관리팀',

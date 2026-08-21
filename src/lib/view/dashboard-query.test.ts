@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   applyDisplayFilter,
   buildHref,
+  countActiveFilters,
   DEFAULT_SORT,
+  FILTER_RESET_PATCH,
   parseDashboardQuery,
   toSearchParams,
   toURLSearchParams,
@@ -186,5 +188,38 @@ describe('toURLSearchParams', () => {
     const query = parseDashboardQuery(toURLSearchParams({ team: ['edit'], overdue: '1' }));
     expect(query.team).toEqual(['edit']);
     expect(query.overdue).toBe(true);
+  });
+});
+
+describe('countActiveFilters · FILTER_RESET_PATCH', () => {
+  /**
+   * 이 숫자가 필요한 이유는 화면 사고 하나다 — 필터가 걸린 줄 모르고 「데이터가 없다」고
+   * 오해하는 것. 그래서 「지금 몇 개가 걸려 있는가」가 화면에 보여야 한다.
+   */
+  it('기본 화면은 0개다', () => {
+    expect(countActiveFilters(parse(''))).toBe(0);
+  });
+
+  it('정렬·역할·열린 패널은 필터가 아니다', () => {
+    expect(countActiveFilters(parse('sort=team&as=admin&task=t-1'))).toBe(0);
+  });
+
+  it('다중 값 하나는 필터 하나로 센다 — 칩 개수가 아니라 조건 개수다', () => {
+    expect(countActiveFilters(parse('team=edit&team=shoot'))).toBe(1);
+    expect(countActiveFilters(parse('display=overdue&display=done'))).toBe(1);
+  });
+
+  it('조건이 늘면 그만큼 는다', () => {
+    expect(countActiveFilters(parse('team=edit&owner=김편집&overdue=1&search=촬영'))).toBe(4);
+  });
+
+  it('초기화는 필터만 지우고 역할·정렬·열린 패널은 남긴다', () => {
+    const query = parse('team=edit&display=done&owner=김편집&overdue=1&sort=team&as=admin&task=t-1');
+    const href = buildHref('/', query, FILTER_RESET_PATCH);
+
+    expect(countActiveFilters(parseDashboardQuery(new URLSearchParams(href.split('?')[1])))).toBe(0);
+    expect(href).toContain('sort=team');
+    expect(href).toContain('as=admin');
+    expect(href).toContain('task=t-1');
   });
 });

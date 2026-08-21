@@ -169,6 +169,33 @@ export function buildHref(
 }
 
 /**
+ * 「필터」로 세는 키. `sort`·`as`·`task`는 필터가 아니라 각각 보기 방식·역할·열린 패널이라
+ * 초기화에서도 살아남는다 — 지연만 보다가 초기화했더니 역할까지 부원으로 돌아가면
+ * 사용자는 화면이 고장 났다고 본다.
+ */
+const FILTER_KEYS = ['team', 'display', 'owner', 'dueFrom', 'dueTo', 'search', 'overdue'] as const;
+
+/** [필터 초기화] 링크의 patch. 화면 두 곳(필터 바·필터 0건 안내)이 같은 것을 써야 한다 */
+export const FILTER_RESET_PATCH: DashboardQueryPatch = Object.fromEntries(
+  FILTER_KEYS.map((key) => [key, null])
+);
+
+/**
+ * 걸려 있는 필터 **조건**의 수. 칩 개수가 아니라 조건 개수다 — 팀 둘을 골라도 「팀 필터 1개」다.
+ *
+ * 화면이 이 숫자를 쓰는 이유는 이 화면의 가장 흔한 사고 때문이다. 필터가 걸린 줄 모르고
+ * 「데이터가 없다」고 오해한 사용자는 업로드하러 간다 (`X3`).
+ *
+ * 세는 방법이 `toSearchParams`인 것도 의도다 — 「URL에 적히는 것」과 「필터로 세는 것」이
+ * 같은 함수에서 나오면 둘이 갈라질 수 없다.
+ */
+export function countActiveFilters(query: DashboardQuery): number {
+  const params = toSearchParams({ ...query, sort: DEFAULT_SORT, as: null, task: null });
+
+  return FILTER_KEYS.filter((key) => params.has(key)).length;
+}
+
+/**
  * 5색 칩 필터. **저장소가 거를 수 없는 축**이라 여기서 건다 (파일 머리말).
  *
  * `display`가 비면 입력을 그대로 돌려준다. 빈 배열을 「아무것도 안 보임」으로 해석하면

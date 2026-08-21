@@ -9,6 +9,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
 import { buildKpiStrip, type KpiTile, type TeamSummary } from '@/lib/domain/progress-stats';
 import { kstToday } from '@/lib/domain/kst-today';
 import { buildSemanticIndex } from '@/lib/domain/task-semantic';
@@ -17,6 +18,9 @@ import { createMemoryUploadStore } from '@/lib/store/upload-record-store';
 import type { StorageHandle } from '@/lib/store/store-factory';
 import { buildSeedPayload } from '@/lib/upload/seed-loader';
 import { buildCompletionBars, type ChartSeries } from '@/lib/view/chart-series';
+import type { DashboardQuery } from '@/lib/view/dashboard-query';
+import { sortTasks } from '@/lib/view/task-sort';
+import type { TaskResponse } from '@/types/api';
 
 let handle: StorageHandle;
 
@@ -256,5 +260,90 @@ describe('/ — 차트 (T6 범위 In「Chart.js 도넛·바」)', () => {
       'labels',
       'values',
     ]);
+  });
+});
+
+describe('/ — 업무 표 (T6 완료 기준 2·5·14)', () => {
+  /**
+   * **화면이 판정하지 않는다는 것의 검증면이다.** 표에 넘어간 목록이 조회 응답
+   * (`toTaskListResponse`)을 거친 것이어야 한다 — `read.tasks`(저장 모델)를 그냥 넘기면
+   * 감사용 원본 행이 화면 트리에 들어오고, 그 안에 실명·연락처가 있다 (`S6`).
+   */
+  it('저장 모델이 아니라 조회 응답을 넘긴다 — 원본 행이 표에 없다', async () => {
+    await seed();
+
+    const tasks = findComponent(await Home(props()), 'TaskTable')?.props?.tasks as TaskResponse[];
+
+    expect(tasks.length).toBeGreaterThan(0);
+    for (const task of tasks) {
+      expect(task).not.toHaveProperty('raw');
+      expect(task.displayStatus).toBeTypeOf('string');
+      expect(task.statusLabel).toBe(DISPLAY_STATUS_LABELS[task.displayStatus]);
+    }
+  });
+
+  it('정렬은 기본이 마감 임박순이고 `?sort=`가 그것을 바꾼다', async () => {
+    await seed();
+
+    const listed = (await Home(props())) as unknown;
+    const byDue = findComponent(listed, 'TaskTable')?.props?.tasks as TaskResponse[];
+    const byStatus = findComponent(await Home(props({ sort: 'status' })), 'TaskTable')?.props
+      ?.tasks as TaskResponse[];
+
+    expect(byDue).toEqual(sortTasks(byDue, 'due'));
+    expect(byStatus).toEqual(sortTasks(byDue, 'status'));
+  });
+
+  /** 5색 칩은 저장소가 아니라 화면이 거른다 (`ADR-006`) — 그 경로가 실제로 도는지 본다 */
+  it('`?display=` 칩이 표를 거른다', async () => {
+    await seed();
+
+    const all = findComponent(await Home(props()), 'TaskTable')?.props?.tasks as TaskResponse[];
+    const overdue = findComponent(await Home(props({ display: 'overdue' })), 'TaskTable')?.props
+      ?.tasks as TaskResponse[];
+
+    expect(overdue.length).toBeGreaterThan(0);
+    expect(overdue.length).toBeLessThan(all.length);
+    expect(overdue.every((task) => task.displayStatus === 'overdue')).toBe(true);
+  });
+
+  /**
+   * **완료 기준 14의 핵심.** 필터 0건에서 「데이터가 없습니다」가 뜨면 사용자는 멀쩡한
+   * 데이터를 두고 업로드하러 간다. 표가 사라지고 초기화 링크가 대신 뜨는지를 본다.
+   */
+  it('필터 0건은 데이터 없음과 다른 화면이다 — 표 대신 초기화 링크', async () => {
+    await seed();
+
+    // 시드에 없는 담당자로 좁히면 조회가 0건이 된다
+    const tree = await Home(props({ owner: '없는사람' }));
+    const empty = findComponent(tree, 'EmptyState');
+
+    expect(findComponent(tree, 'TaskTable')).toBeNull();
+    expect(empty?.props?.kind).toBe('no-match');
+    expect(empty?.props?.resetHref).toBe('/');
+    expect(textOf(tree)).not.toContain('아직 데이터가 없습니다');
+  });
+
+  it('초기화 링크는 역할과 정렬을 남긴다 — 필터만 지운다', async () => {
+    await seed();
+
+    const tree = await Home(props({ owner: '없는사람', as: 'admin', sort: 'team' }));
+    const resetHref = findComponent(tree, 'EmptyState')?.props?.resetHref as string;
+
+    expect(resetHref).toContain('as=admin');
+    expect(resetHref).toContain('sort=team');
+    expect(resetHref).not.toContain('owner=');
+  });
+
+  it('필터 바가 표와 같은 쿼리를 본다 — 링크가 필터를 잃지 않는다', async () => {
+    await seed();
+
+    const tree = await Home(props({ team: 'marketing', display: 'overdue' }));
+    const bar = findComponent(tree, 'FilterBar');
+
+    expect(bar?.props?.pathname).toBe('/');
+    expect((bar?.props?.query as DashboardQuery).team).toEqual(['marketing']);
+    expect((bar?.props?.query as DashboardQuery).display).toEqual(['overdue']);
+    expect(findComponent(tree, 'TaskTable')?.props?.query).toBe(bar?.props?.query);
   });
 });

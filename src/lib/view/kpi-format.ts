@@ -10,8 +10,8 @@
 
 import type { KpiTile } from '@/lib/domain/progress-stats';
 
-/** 값이 없다는 표기. 화면 전체가 이 글자 하나를 쓴다 */
-const EMPTY = '—';
+/** 값이 없다는 표기. 화면 전체가 이 글자 하나를 쓴다 — 표의 빈 칸도 여기서 가져다 쓴다 */
+export const EMPTY = '—';
 
 /** `null` → `—`. 천 단위 구분자를 넣는다 */
 export function formatCount(value: number | null): string {
