@@ -319,6 +319,11 @@ API 9종 / `/upload` 화면(드롭존·미리보기 표·경고 목록) / 미리
 - Next 16에서 동적 세그먼트 `params`는 Promise다 (`const { id } = await params`).
 - Route Handler에는 프레임워크 본문 크기 제한이 없으므로 **4MB 제한을 직접 구현**해야 한다.
 - 부분 업로드는 사용자 확정 요구사항이므로 **완료 기준 4번은 타협 대상이 아니다.**
+- **설정 탭의 enum·SLA 레지스트리는 T5에서 저장하지 않는다.** `TaskRepository`에 그 메서드가
+  없고, 추가하면 계약 테스트·두 구현·마이그레이션까지 번져 T5(M)를 넘긴다. 조회 API의
+  `semanticIndex`는 `buildSemanticIndex(null)`의 **도메인 내장 폴백**을 쓴다(T4에서 만들어 뒀다).
+  대신 파싱 시점의 설정 탭 경고(`settings.warnings`)는 미리보기에 실어 사용자가 본다.
+  저장이 필요해지면 T8에서 `enum_options`·`sla_rules` 쓰기와 함께 다시 본다.
 
 ---
 
