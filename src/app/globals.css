@@ -1,26 +1,39 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@theme {
+  /* 배경·테두리 */
+  --color-canvas: #0b0d10;
+  --color-panel: #14171c;
+  --color-raise: #1a1e24;
+  --color-line: #262b33;
+  --color-line-strong: #3a424e;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* 텍스트 */
+  --color-ink: #e8eaed;
+  --color-ink-body: #c3c8d0;
+  --color-ink-muted: #9aa1ab;
+  --color-ink-faint: #6d747e;
+
+  /* 시맨틱 — 2색뿐 (지연·주의) */
+  --color-late: #f87171;
+  --color-late-bg: #2a1416;
+  --color-late-line: #ef4444;
+  --color-warn: #fbbf24;
+  --color-warn-bg: #2a2113;
+  --color-warn-line: #d97706;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* 다크 단일. OS 설정에 따라 톤이 갈리면 스크린샷·리뷰 판정이 매번 달라진다. */
+html {
+  color-scheme: dark;
 }
 
+/* 배경·전경은 layout.tsx의 `bg-canvas text-ink`가 준다 (토큰 클래스 경유 원칙).
+   여기서는 폰트만 고정한다 — Next 보일러플레이트의 기본 산세리프가 Geist를 덮어쓰고 있었고,
+   `tabular-nums`가 화면 규칙이라 폰트가 흔들리면 표가 어긋난다. */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
