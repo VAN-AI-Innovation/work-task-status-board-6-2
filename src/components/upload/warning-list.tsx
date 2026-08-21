@@ -28,15 +28,15 @@ export function WarningList({ warnings }: { warnings: readonly PreviewWarning[] 
   if (warnings.length === 0) return null;
 
   return (
-    <section className="rounded-md border border-neutral-200 bg-white p-5">
-      <h2 className="text-sm font-semibold text-neutral-900">경고</h2>
-      <p className="mt-1 text-xs text-neutral-500">
+    <section className="rounded-md border border-line bg-panel p-5">
+      <h2 className="text-sm font-semibold text-ink">경고</h2>
+      <p className="mt-1 text-xs text-ink-muted">
         값은 그대로 보존됩니다. 확정을 막지 않습니다.
       </p>
 
       <table className="mt-3 w-full border-collapse text-sm">
         <thead>
-          <tr className="bg-neutral-100 text-xs font-medium text-neutral-500">
+          <tr className="bg-raise text-xs font-medium text-ink-muted">
             <th className="px-3 py-2 text-left">코드</th>
             <th className="px-3 py-2 text-left">설명</th>
             <th className="px-3 py-2 text-left">시트</th>
@@ -48,17 +48,17 @@ export function WarningList({ warnings }: { warnings: readonly PreviewWarning[] 
           {warnings.map((warning) => (
             <tr
               key={`${warning.code}:${warning.sheet}`}
-              className="h-10 border-b border-neutral-200 hover:bg-neutral-50"
+              className="h-10 border-b border-line hover:bg-raise"
             >
-              <td className="px-3 py-2 text-neutral-700">{warning.code}</td>
-              <td className="px-3 py-2 text-neutral-700">
+              <td className="px-3 py-2 text-ink-body">{warning.code}</td>
+              <td className="px-3 py-2 text-ink-body">
                 {WARNING_LABELS[warning.code] ?? warning.code}
               </td>
-              <td className="px-3 py-2 text-neutral-700">{warning.sheet || '—'}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-neutral-900">
+              <td className="px-3 py-2 text-ink-body">{warning.sheet || '—'}</td>
+              <td className="px-3 py-2 text-right tabular-nums text-ink">
                 {warning.count}
               </td>
-              <td className="px-3 py-2 text-right tabular-nums text-neutral-500">
+              <td className="px-3 py-2 text-right tabular-nums text-ink-muted">
                 {warning.firstRow ?? '—'}
               </td>
             </tr>

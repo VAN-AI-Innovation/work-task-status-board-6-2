@@ -114,12 +114,15 @@ describe('/ — 빈 상태와 최소 화면 (X3)', () => {
     expect(button?.props?.disabled).toBe(true);
   });
 
+  // 배너를 그리는 것은 이제 `PageShell`이다(모든 페이지가 같은 문구를 쓰게 하려고 한 곳으로
+  // 모았다). 트리를 렌더하지 않고 훑는 검사라 래퍼 **안쪽**은 보이지 않으므로, 화면이 모드를
+  // 섞지 않고 그대로 넘기는지는 셸에 실린 prop으로 본다 — 단언의 뜻은 그대로다
   it('폴백과 데모의 배너를 섞지 않는다 — 모드를 그대로 넘긴다', async () => {
     handle = emptyHandle({ mode: 'fallback', readOnly: true });
-    expect(findComponent(await Home(), 'StorageBanner')?.props?.mode).toBe('fallback');
+    expect(findComponent(await Home(), 'PageShell')?.props?.mode).toBe('fallback');
 
     handle = emptyHandle({ mode: 'demo' });
-    expect(findComponent(await Home(), 'StorageBanner')?.props?.mode).toBe('demo');
+    expect(findComponent(await Home(), 'PageShell')?.props?.mode).toBe('demo');
   });
 
   it('대시보드를 만들지 않았다 — 화면에 KPI·차트가 없다', async () => {

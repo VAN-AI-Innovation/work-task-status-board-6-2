@@ -21,9 +21,9 @@ const TEAM_LABELS: Readonly<Record<TeamKey, string>> = {
 
 function Tile({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded border border-neutral-200 bg-white p-4">
-      <div className="text-2xl font-semibold tabular-nums text-neutral-900">{value}</div>
-      <div className="text-xs text-neutral-500">{label}</div>
+    <div className="rounded border border-line bg-panel p-4">
+      <div className="text-2xl font-semibold tabular-nums text-ink">{value}</div>
+      <div className="text-xs text-ink-muted">{label}</div>
     </div>
   );
 }
@@ -36,7 +36,7 @@ export function PreviewSummary({ preview }: { preview: UploadPreview }) {
       {/* 신규 건수가 예상보다 크면 사람이 알아채야 한다 (`E5`·`H5`). 크게 보여 주는 것이
           그 장치의 전부이고, 임계값 경고를 자동으로 만들지 않는다 — 기준이 없다 */}
       <section>
-        <h2 className="text-sm font-semibold text-neutral-900">
+        <h2 className="text-sm font-semibold text-ink">
           미리보기 · 업무 {totals.taskCount}건
         </h2>
         <div className="mt-3 grid grid-cols-4 gap-3">
@@ -48,23 +48,23 @@ export function PreviewSummary({ preview }: { preview: UploadPreview }) {
       </section>
 
       {preview.skippedSheets.length > 0 && (
-        <p className="rounded border border-amber-600 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        <p className="rounded border border-warn-line bg-warn-bg px-3 py-2 text-sm text-warn">
           건너뛴 탭: {preview.skippedSheets.join(' · ')} — 이 탭의 내용은 반영되지 않습니다.
         </p>
       )}
 
       {preview.untouchedTeams.length > 0 && (
-        <p className="rounded border border-neutral-300 bg-neutral-100 px-3 py-2 text-sm text-neutral-600">
+        <p className="rounded border border-line bg-raise px-3 py-2 text-sm text-ink-muted">
           이번 업로드에 없는 팀: {preview.untouchedTeams.map((key) => TEAM_LABELS[key]).join(' · ')}{' '}
           (기존 데이터는 그대로 유지됩니다)
         </p>
       )}
 
-      <section className="rounded-md border border-neutral-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-neutral-900">탭별 내역</h2>
+      <section className="rounded-md border border-line bg-panel p-5">
+        <h2 className="text-sm font-semibold text-ink">탭별 내역</h2>
         <table className="mt-3 w-full border-collapse text-sm">
           <thead>
-            <tr className="bg-neutral-100 text-xs font-medium text-neutral-500">
+            <tr className="bg-raise text-xs font-medium text-ink-muted">
               <th className="px-3 py-2 text-left">시트</th>
               <th className="px-3 py-2 text-left">팀</th>
               <th className="px-3 py-2 text-right">업무</th>
@@ -76,21 +76,21 @@ export function PreviewSummary({ preview }: { preview: UploadPreview }) {
           </thead>
           <tbody>
             {preview.tabs.map((tab) => (
-              <tr key={tab.sheet} className="h-10 border-b border-neutral-200 hover:bg-neutral-50">
-                <td className="px-3 py-2 text-neutral-700">{tab.sheet}</td>
-                <td className="px-3 py-2 text-neutral-700">
+              <tr key={tab.sheet} className="h-10 border-b border-line hover:bg-raise">
+                <td className="px-3 py-2 text-ink-body">{tab.sheet}</td>
+                <td className="px-3 py-2 text-ink-body">
                   {tab.teamKey === null ? '—' : TEAM_LABELS[tab.teamKey]}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-neutral-900">
+                <td className="px-3 py-2 text-right tabular-nums text-ink">
                   {tab.taskCount}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-neutral-900">{tab.created}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-neutral-900">{tab.updated}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-neutral-500">
+                <td className="px-3 py-2 text-right tabular-nums text-ink">{tab.created}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink">{tab.updated}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-ink-muted">
                   {tab.unchanged}
                 </td>
                 <td
-                  className={`px-3 py-2 ${tab.skipped ? 'text-amber-700' : 'text-neutral-500'}`}
+                  className={`px-3 py-2 ${tab.skipped ? 'text-warn' : 'text-ink-muted'}`}
                 >
                   {tab.skipped ? '건너뜀' : '반영 예정'}
                 </td>

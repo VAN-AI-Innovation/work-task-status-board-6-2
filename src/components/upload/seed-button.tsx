@@ -46,14 +46,14 @@ export function SeedButton({ disabled }: { disabled: boolean }) {
         onClick={load}
         // 읽기 전용에서 비활성이지만 **그것이 방어는 아니다** — 서버가 503으로 거부한다
         disabled={disabled || pending}
-        className={`rounded bg-neutral-900 px-4 py-2 text-sm text-white ${
-          disabled || pending ? 'cursor-not-allowed opacity-50' : 'hover:bg-neutral-700'
+        className={`rounded bg-ink text-canvas px-4 py-2 text-sm ${
+          disabled || pending ? 'cursor-not-allowed opacity-50' : 'hover:bg-ink-body'
         }`}
       >
         {pending ? '불러오는 중…' : '샘플 데이터 불러오기'}
       </button>
 
-      {message !== null && <p className="mt-3 text-sm text-red-700">{message}</p>}
+      {message !== null && <p className="mt-3 text-sm text-late">{message}</p>}
     </div>
   );
 }
