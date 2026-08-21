@@ -87,7 +87,10 @@
       "step": 9,
       "name": "supabase-task-store",
       "commit": "feat: Supabase 저장소 supabase-task-store 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-18T11:29:34+0900",
+      "summary": "src/lib/store/supabase-task-store.ts·supabase-task-store.test.ts 신설(의존성은 @supabase/supabase-js 하나만 추가). 계약 항목 19개가 memory·supabase 두 이름으로 각각 19개씩 통과 — skip 0건이고, 이것이 T4 완료 기준 8의 증거다. createServiceRoleClient는 환경변수가 하나라도 없으면 예외 대신 null(폴백 판단은 step 10 store-factory의 몫)이고 persistSession·autoRefreshToken을 끈다. 컬럼 대응은 toTask/toTaskRow·toGoalMetric/toGoalMetricRow 네 매퍼에만 두어 컬럼 이름이 흩어지지 않게 했고, date는 문자열 그대로 두고 numeric만 Number로 바꾸되 null과 0을 구분한다. 분류는 diffTaskFields를 그대로 호출해 두 구현이 갈라질 지점을 없앴고, 기존 행은 in 필터로 한 번에 조회해 건별 왕복을 없앴다. listTasks 필터는 eq·in·gte·lte·ilike·limit로 서버에서 걸고(전건 로드 금지 — limit 의미가 달라져 계약 10이 깨진다) search는 escapeSearchTerm으로 ,·)·%·역슬래시를 막는다. 판정·집계는 새지 않았다(isOverdue|completionRate|toSemantic|group by|.rpc 전부 빈 출력, ADR-006). 1차 시도가 남긴 실패 2건을 실제로 고쳤다. (1) reset이 tasks만 지워 앞 케이스의 goal_metrics가 다음 케이스에 보이던 문제 — 이제 tasks(source_key like 'contract::%')와 goal_metrics(period_label like 'contract::%')를 필터 걸어 지우고, 단계·이벤트가 on delete cascade로 실제로 0건이 되는지 부모 id로 세어 확인하는 테스트('계약 정리(reset)')를 넣었다. 필터 없는 delete()는 없다. (2) getLastSyncedAt의 의미가 두 구현에서 갈리던 문제 — 계약 17번을 '마지막으로 업로드가 돌아간 시각'으로 규정하고 무변경 업로드·목표 지표만인 업로드·빈 배열 세 갈래를 케이스로 추가했다. 추가 직후 supabase만 실패해(목표 지표만 올리면 tasks만 보느라 시각이 멈춤) 갈라짐을 재현한 뒤, tasks와 goal_metrics 두 테이블의 최신 updated_at 중 큰 값을 쓰도록 고쳐 통과시켰다(정렬 1행 조회 2회, max() 집계 SQL 아님). ⚠ 단, 무변경 건에도 UPDATE는 계속 보낸다 — step 7이 정한 '무변경 건도 감사 필드(업로드 id·행 번호·시트 탭)는 최신 업로드로 갱신한다'를 지키려면 쓰기가 필요하기 때문이고, lastProgressAt은 기존 값을 그대로 실어 보내 계약 3·5번이 깨지지 않는다. 별도 동기화 테이블(0003 마이그레이션)을 두는 대안은 이 세션에서 DDL을 적용할 수단이 없어(Studio 수동 실행 필요) 택하지 않았다. 게이트: lint 경고 0·build 통과·전체 490개 통과(store 96개). 테스트가 만든 행은 정리돼 DB에 남지 않는다(uploads 픽스처 2행은 외래키 대상이라 참조만 하고 지우지 않는다).",
+      "completed_at": "2026-08-21T17:57:12+0900"
     },
     {
       "step": 10,
