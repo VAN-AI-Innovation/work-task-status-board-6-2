@@ -21,18 +21,30 @@
  * ```
  *
  * 「조회 실패」는 `error.tsx`가, 「필터 결과 0건」은 업무 표(step 5)가 진다.
- * 차트·업무 표·알림·목표 섹션은 아직 없다 — 각각 뒤 step의 몫이라 자리를 비워 둔다.
+ * 업무 표·알림·목표 섹션은 아직 없다 — 각각 뒤 step의 몫이라 자리를 비워 둔다.
+ *
+ * 차트도 여기서 세지 않는다. `buildStatusDonut`·`buildCompletionBars`가 만든 배열만
+ * 클라이언트 컴포넌트로 넘어간다 — 업무 배열 전량을 넘기면 직렬화 비용을 치르고 클라이언트
+ * 번들에 업무 데이터가 통째로 들어간다.
  */
 
 import Link from 'next/link';
 
+import { CompletionBars } from '@/components/charts/completion-bars';
+import { StatusDonut } from '@/components/charts/status-donut';
 import { KpiStrip } from '@/components/dashboard/kpi-strip';
 import { TeamSummaryTable } from '@/components/dashboard/team-summary-table';
 import { PageShell } from '@/components/shell/page-shell';
 import { SeedButton } from '@/components/upload/seed-button';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
+import { toTaskListResponse } from '@/lib/api/task-response';
 import { buildKpiStrip, summarizeAllTeams } from '@/lib/domain/progress-stats';
 import { getStorage } from '@/lib/store/store-factory';
+import {
+  buildCompletionBars,
+  buildStatusDonut,
+  unmeasurableTeams,
+} from '@/lib/view/chart-series';
 import { parseDashboardQuery, toURLSearchParams } from '@/lib/view/dashboard-query';
 import { describeSync } from '@/lib/view/sync-freshness';
 
@@ -54,6 +66,12 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   });
 
   const freshness = describeSync(read.meta.lastSyncedAt, read.meta.today);
+  const teams = summarizeAllTeams(read.tasks, read.ctx);
+  /*
+   * 도넛이 세는 `displayStatus`는 조회 응답과 **같은 함수**가 만든 것이다. 화면이 여기서
+   * `toDisplayStatus`를 다시 부르면 마스킹·판정 규칙이 API와 갈라진다 (`ADR-006`).
+   */
+  const listed = toTaskListResponse(read.tasks, read.ctx.flags, read.role);
 
   return (
     <PageShell mode={read.meta.mode} freshness={freshness} role={read.role} query={query}>
@@ -82,7 +100,30 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       ) : (
         <div className="mt-6 space-y-6">
           <KpiStrip tiles={buildKpiStrip(read.tasks, read.ctx)} />
-          <TeamSummaryTable teams={summarizeAllTeams(read.tasks, read.ctx)} />
+          <TeamSummaryTable teams={teams} />
+
+          <div className="grid grid-cols-12 gap-6">
+            <section className="border-line bg-panel col-span-5 rounded-md border p-5">
+              <h2 className="text-ink text-sm font-semibold">상태 분포</h2>
+              <p className="text-ink-muted mt-1 text-xs">
+                지연이 다른 상태를 덮어쓴다 · 「기타」는 보류·취소·미등록
+              </p>
+              <div className="mt-3">
+                <StatusDonut series={buildStatusDonut(listed)} />
+              </div>
+            </section>
+
+            <section className="border-line bg-panel col-span-7 rounded-md border p-5">
+              <h2 className="text-ink text-sm font-semibold">팀별 완료율</h2>
+              <p className="text-ink-muted mt-1 text-xs">완료 ÷ (전체 − 취소)</p>
+              <div className="mt-3">
+                <CompletionBars
+                  series={buildCompletionBars(teams)}
+                  unmeasurable={unmeasurableTeams(teams)}
+                />
+              </div>
+            </section>
+          </div>
         </div>
       )}
     </PageShell>

@@ -16,6 +16,7 @@ import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
 import { createMemoryUploadStore } from '@/lib/store/upload-record-store';
 import type { StorageHandle } from '@/lib/store/store-factory';
 import { buildSeedPayload } from '@/lib/upload/seed-loader';
+import { buildCompletionBars, type ChartSeries } from '@/lib/view/chart-series';
 
 let handle: StorageHandle;
 
@@ -200,5 +201,60 @@ describe('/ — 역할 (ADR-013)', () => {
       'admin'
     );
     expect(findComponent(await Home(props()), 'PageShell')?.props?.role).toBe('member');
+  });
+});
+
+describe('/ — 차트 (T6 범위 In「Chart.js 도넛·바」)', () => {
+  /**
+   * 차트가 지는 위험은 「그림이 안 예쁘다」가 아니라 **「표와 다른 숫자를 말한다」**다.
+   * 그래서 조각 합이 조회 건수와 같은지, 막대가 팀 요약표와 같은 값인지를 단언한다.
+   */
+  it('도넛 조각의 합이 조회된 업무 수와 같다 — 「무엇의 100%인가」가 성립한다', async () => {
+    await seed();
+
+    const series = findComponent(await Home(props()), 'StatusDonut')?.props
+      ?.series as ChartSeries;
+    const tasks = await handle.repo.listTasks();
+
+    expect(series.values).toHaveLength(6);
+    expect(series.values.reduce((acc, value) => acc + value, 0)).toBe(tasks.length);
+  });
+
+  it('완료율 막대가 팀 요약표와 같은 숫자다 — 두 곳에서 세면 갈라진다', async () => {
+    await seed();
+
+    const tree = await Home(props());
+    const teams = findComponent(tree, 'TeamSummaryTable')?.props?.teams as TeamSummary[];
+    const bars = findComponent(tree, 'CompletionBars')?.props?.series as ChartSeries;
+
+    expect(bars).toEqual(buildCompletionBars(teams));
+  });
+
+  it('완료율이 null인 팀은 0%로 그려지지 않고 「—」 목록으로 빠진다', async () => {
+    // 편집팀 것만 넣으면 나머지 두 팀은 모수가 0이라 완료율을 잴 수 없다
+    const payload = buildSeedPayload();
+    await handle.repo.upsertTasks(
+      payload.tasks.filter((task) => task.teamId === 'edit'),
+      { occurredAt: '2026-08-22T01:00:00.000Z' }
+    );
+
+    const chart = findComponent(await Home(props()), 'CompletionBars');
+    const series = chart?.props?.series as ChartSeries;
+
+    expect(series.labels).toEqual(['edit']);
+    expect(chart?.props?.unmeasurable).toEqual(['shoot', 'marketing']);
+  });
+
+  it('업무 배열 전량을 클라이언트 컴포넌트에 넘기지 않는다', async () => {
+    await seed();
+
+    const donut = findComponent(await Home(props()), 'StatusDonut');
+
+    expect(Object.keys(donut?.props ?? {})).toEqual(['series']);
+    expect(Object.keys((donut?.props?.series ?? {}) as object).sort()).toEqual([
+      'colors',
+      'labels',
+      'values',
+    ]);
   });
 });
