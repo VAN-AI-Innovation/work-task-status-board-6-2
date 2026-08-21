@@ -86,3 +86,79 @@ export interface WorkbookParseResult {
   /** 탭 하나에 귀속되지 않는 경고(미판별 탭 등) */
   warnings: ParseWarning[];
 }
+
+/** 시트 10단계 진행 상태를 감싼 안정 코드 (ADR-009). 판정 로직은 한글 문자열을 직접 모른다 */
+export type TaskSemantic =
+  | 'planned'
+  | 'in_progress'
+  | 'review'
+  | 'approval'
+  | 'rework'
+  | 'pending_release'
+  | 'done'
+  | 'hold'
+  | 'cancelled';
+
+/** 화면 5색 + 무채색. 한글 라벨은 `display-status.ts`가 따로 들고 있다 (UI_GUIDE.md) */
+export type DisplayStatus = 'planned' | 'in_progress' | 'review' | 'done' | 'overdue' | 'muted';
+
+/** 저장소에 들어갔다 나온 업무. `ParsedTask` + 신원(`id`)·소속·감사 필드 */
+export interface Task {
+  id: string;
+  /** `teams.id`. 이 프로젝트에서 팀 PK는 uuid가 아니라 `TeamKey` 문자열이다 (step 8) */
+  teamId: TeamKey;
+  departmentId: string | null;
+  sourceKey: string;
+  title: string | null;
+  /** `members.id`. T4에서는 항상 null이다 — 이름→구성원 해석은 T5 커밋의 일이다 */
+  ownerMemberId: string | null;
+  ownerNameRaw: string | null;
+  coOwnerNames: string[];
+  /** 시트 원문 그대로 보존. `semantic` 변환은 `task-semantic.ts`가 한다 */
+  status: string | null;
+  approvalStatus: string | null;
+  priority: string | null;
+  riskStatus: string | null;
+  /** 0~100 정수. **빈칸은 null이고 0과 반드시 구분된다** */
+  progress: number | null;
+  /** 전부 `YYYY-MM-DD` 또는 null */
+  assignedAt: string | null;
+  dueAt: string | null;
+  nextAction: string | null;
+  nextActionOwner: string | null;
+  nextActionDue: string | null;
+  delayReason: string | null;
+  note: string | null;
+  extras: Record<string, ExtraValue>;
+  /** **API 응답에 실으면 안 된다** (CLAUDE.md 보안 규칙) */
+  raw: Record<string, ExtraValue>;
+  /** ISO 8601 타임스탬프 또는 null. **실제로 값이 바뀐 업로드에서만** 갱신된다 (step 7) */
+  lastProgressAt: string | null;
+  sourceUploadId: string | null;
+  sourceSheetTab: string;
+  /** 1-based */
+  sourceRowIndex: number;
+}
+
+export interface TaskStage {
+  id: string;
+  taskId: string;
+  seq: number;
+  stageKey: string;
+  stageLabel: string;
+  plannedDate: string | null;
+  actualDate: string | null;
+  content: string | null;
+  confirmStatus: string | null;
+  slaDays: number | null;
+}
+
+export interface TaskEvent {
+  id: string;
+  taskId: string;
+  uploadId: string | null;
+  /** 바뀐 필드 **이름만**. 값을 담지 않는다 — 이력 테이블이 개인정보 사본이 되면 안 된다 */
+  changedFields: string[];
+  /** ISO 8601 */
+  occurredAt: string;
+}

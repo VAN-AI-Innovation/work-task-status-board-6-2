@@ -9,9 +9,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "seed:build": "vite-node -c vitest.config.ts scripts/fixtures/build-seed-tasks.ts",
     "test": "vitest run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "chart.js": "^4.5.1",
     "exceljs": "4.4.0",
     "mammoth": "^1.12.1",

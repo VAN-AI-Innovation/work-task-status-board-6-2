@@ -43,7 +43,7 @@ src/
 │   ├── xlsx/    assignment-writer
 │   ├── domain/  task-semantic · display-status · task-derive · kst-today
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
-│   ├── store/   task-repository · memory-task-store
+│   ├── store/   task-repository · repository-contract · memory-task-store
 │   │            supabase-task-store · store-factory
 │   └── fixtures/  sample-workbook.xlsx · sample-workload.md · seed-tasks.json
 ├── supabase/migrations/   *.sql        # 스키마 단일 소스 (T4부터)

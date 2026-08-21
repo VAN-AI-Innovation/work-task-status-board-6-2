@@ -67,6 +67,13 @@ class StepExecutor:
     MAX_RETRIES = 3
     TZ = timezone(timedelta(hours=9))
 
+    # step 하나에 허용하는 최대 시간(초). 저장소 계약 테스트처럼 네트워크를 타는 step은
+    # 30분을 넘긴다 (T4 step 9 실측).
+    STEP_TIMEOUT = 3600
+
+    # step이 completed를 적어도 그대로 믿지 않고 직접 돌려보는 게이트.
+    GATE_CMD = "npm run lint && npm run build && npm run test"
+
     # 커밋 메시지 컨벤션 `{type}: {설명}` (docs/TEAM_RULES.md 3.3).
     # scope 괄호(`feat(ui):`)는 Conventional Commits 형식이라 허용하지 않는다.
     COMMIT_RE = re.compile(r"^(feat|fix|docs|style|refactor|test|chore): \S.*$")
@@ -269,11 +276,23 @@ class StepExecutor:
         # 프롬프트는 stdin으로 넣는다 — 가드레일(docs 전량)이 붙어 수십 KB가 되므로
         # argv에 실으면 길이 제한에 걸릴 수 있다.
         prompt = preamble + step_file.read_text()
-        result = subprocess.run(
-            ["claude", "-p", "--permission-mode", "bypassPermissions", "--output-format", "json"],
-            cwd=self._root, capture_output=True, text=True, timeout=1800,
-            input=prompt, env=self._subscription_env(),
-        )
+        timed_out = False
+        try:
+            result = subprocess.run(
+                ["claude", "-p", "--permission-mode", "bypassPermissions", "--output-format", "json"],
+                cwd=self._root, capture_output=True, text=True, timeout=self.STEP_TIMEOUT,
+                input=prompt, env=self._subscription_env(),
+            )
+        except subprocess.TimeoutExpired as exc:
+            # 예외를 그대로 올리면 하네스가 죽고 그 step의 작업이 커밋되지 않은 채 남는다.
+            # 실패한 시도로 바꿔 재시도 경로를 타게 한다.
+            timed_out = True
+            result = subprocess.CompletedProcess(
+                exc.cmd, returncode=-1,
+                stdout=(exc.stdout or b"").decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or ""),
+                stderr=f"TIMEOUT: {self.STEP_TIMEOUT}초를 넘겨 중단됨",
+            )
+            print(f"\n  WARN: Step {step_num}이 {self.STEP_TIMEOUT}초를 넘겨 중단됐습니다.")
 
         if result.returncode != 0:
             print(f"\n  WARN: Claude가 비정상 종료됨 (code {result.returncode})")
@@ -283,6 +302,7 @@ class StepExecutor:
         output = {
             "step": step_num, "name": step_name,
             "exitCode": result.returncode,
+            "timedOut": timed_out,
             "stdout": result.stdout, "stderr": result.stderr,
         }
         out_path = self._phase_dir / f"step{step_num}-output.json"
@@ -290,6 +310,22 @@ class StepExecutor:
             json.dump(output, f, indent=2, ensure_ascii=False)
 
         return output
+
+    def _run_gate(self) -> tuple[bool, str]:
+        """lint·build·test를 직접 돌린다.
+
+        step 세션이 index.json에 completed를 적어도 그대로 믿지 않는다 — T4 step 9에서
+        계약 테스트 10건이 깨진 채로 completed가 적힌 일이 실제로 있었다. 깨진 코드를
+        커밋하면 다음 step이 그 위에 쌓여 되돌리기가 비싸진다.
+        """
+        r = subprocess.run(
+            self.GATE_CMD, shell=True, cwd=self._root,
+            capture_output=True, text=True, timeout=self.STEP_TIMEOUT,
+        )
+        if r.returncode == 0:
+            return True, ""
+        tail = (r.stdout or "")[-1500:] + (r.stderr or "")[-1500:]
+        return False, f"게이트 실패 (lint/build/test): {tail}"
 
     # --- 헤더 & 검증 ---
 
@@ -339,21 +375,32 @@ class StepExecutor:
                 tag += f" [retry {attempt}/{self.MAX_RETRIES}]"
 
             with progress_indicator(tag) as pi:
-                self._invoke_claude(step, preamble)
+                invocation = self._invoke_claude(step, preamble)
                 elapsed = int(pi.elapsed)
+            timed_out = bool(invocation.get("timedOut"))
 
             index = self._read_json(self._index_file)
             status = next((s.get("status", "pending") for s in index["steps"] if s["step"] == step_num), "pending")
             ts = self._stamp()
 
-            if status == "completed":
-                for s in index["steps"]:
-                    if s["step"] == step_num:
-                        s["completed_at"] = ts
-                self._write_json(self._index_file, index)
-                self._commit_step(step)
-                print(f"  ✓ Step {step_num}: {step_name} [{elapsed}s]")
-                return True
+            if status == "completed" and timed_out:
+                # 시간 초과로 잘린 세션의 completed 선언은 근거가 없다.
+                status = "pending"
+                gate_error = f"세션이 {self.STEP_TIMEOUT}초를 넘겨 중단됐다. completed 표시를 신뢰하지 않는다."
+            elif status == "completed":
+                ok, gate_error = self._run_gate()
+                if not ok:
+                    status = "pending"
+                else:
+                    for s in index["steps"]:
+                        if s["step"] == step_num:
+                            s["completed_at"] = ts
+                    self._write_json(self._index_file, index)
+                    self._commit_step(step)
+                    print(f"  ✓ Step {step_num}: {step_name} [{elapsed}s]")
+                    return True
+            else:
+                gate_error = None
 
             if status == "blocked":
                 for s in index["steps"]:
@@ -366,7 +413,7 @@ class StepExecutor:
                 self._update_top_index("blocked")
                 sys.exit(2)
 
-            err_msg = next(
+            err_msg = gate_error or next(
                 (s.get("error_message", "Step did not update status") for s in index["steps"] if s["step"] == step_num),
                 "Step did not update status",
             )
