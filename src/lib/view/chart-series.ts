@@ -11,14 +11,13 @@
  *   같은 상태를 다른 말로 부른다 (`UI_GUIDE.md`「상태 5색 구분」).
  * - **`muted`(기타)를 도넛에서 빼지 않는다.** 5색에 속하지 않지만 건수는 존재하고, 빼면
  *   조각의 합이 전체와 달라져 「이 그림은 무엇의 100%인가」를 아무도 모르게 된다.
- *
- * ⚠ **팀 한글 이름을 여기서 짓지 않는다.** `buildCompletionBars`는 `TeamKey`를 라벨로 낸다.
- * 한글 이름의 단일 소스는 step 6이 만들 `team-slug.ts`이고, 지금 여기에 임시 표를 두면
- * 그때 두 곳이 되어 갈라진다. **step 6이 이 함수의 라벨을 `team-slug.ts`로 바꾼다.**
+ * - **팀 한글 이름을 여기서 짓지 않는다.** `teamLabel`에서 가져온다 — 차트가 자기 표를 들면
+ *   같은 팀이 축과 표에서 다른 이름으로 뜬다.
  */
 
 import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
 import type { TeamSummary } from '@/lib/domain/progress-stats';
+import { teamLabel } from '@/lib/view/team-slug';
 import type { DisplayStatus, TeamKey } from '@/types/task';
 
 export interface ChartSeries {
@@ -88,7 +87,7 @@ export function buildCompletionBars(teams: readonly TeamSummary[]): ChartSeries 
   const measurable = teams.filter((team) => team.completionRate !== null);
 
   return {
-    labels: measurable.map((team) => team.teamKey),
+    labels: measurable.map((team) => teamLabel(team.teamKey)),
     values: measurable.map((team) => team.completionRate ?? 0),
     colors: measurable.map(() => BAR_COLOR),
   };

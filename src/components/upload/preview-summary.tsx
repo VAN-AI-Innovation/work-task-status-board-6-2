@@ -6,18 +6,7 @@
 
 import { WarningList } from '@/components/upload/warning-list';
 import type { UploadPreview } from '@/lib/upload/upload-preview';
-import type { TeamKey } from '@/types/task';
-
-/**
- * 팀 이름. 가운뎃점은 `·`(U+00B7)로 시트 원문과 같다.
- * T6이 대시보드에서 같은 이름을 쓰게 되면 그때 `lib/`으로 올린다 — 지금은 이 화면 하나뿐이라
- * 테스트가 붙는 자리를 만들지 않는다.
- */
-const TEAM_LABELS: Readonly<Record<TeamKey, string>> = {
-  edit: '편집팀',
-  shoot: '촬영·기획팀',
-  marketing: '마케팅·관리팀',
-};
+import { teamLabel } from '@/lib/view/team-slug';
 
 function Tile({ label, value }: { label: string; value: number }) {
   return (
@@ -55,7 +44,7 @@ export function PreviewSummary({ preview }: { preview: UploadPreview }) {
 
       {preview.untouchedTeams.length > 0 && (
         <p className="rounded border border-line bg-raise px-3 py-2 text-sm text-ink-muted">
-          이번 업로드에 없는 팀: {preview.untouchedTeams.map((key) => TEAM_LABELS[key]).join(' · ')}{' '}
+          이번 업로드에 없는 팀: {preview.untouchedTeams.map((key) => teamLabel(key)).join(' · ')}{' '}
           (기존 데이터는 그대로 유지됩니다)
         </p>
       )}
@@ -79,7 +68,7 @@ export function PreviewSummary({ preview }: { preview: UploadPreview }) {
               <tr key={tab.sheet} className="h-10 border-b border-line hover:bg-raise">
                 <td className="px-3 py-2 text-ink-body">{tab.sheet}</td>
                 <td className="px-3 py-2 text-ink-body">
-                  {tab.teamKey === null ? '—' : TEAM_LABELS[tab.teamKey]}
+                  {tab.teamKey === null ? '—' : teamLabel(tab.teamKey)}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums text-ink">
                   {tab.taskCount}

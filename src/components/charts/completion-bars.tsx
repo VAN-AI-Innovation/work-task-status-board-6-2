@@ -4,8 +4,7 @@
  * **완료율이 `null`인 팀은 막대가 없다.** 0%로 그리면 「완료가 하나도 없는 팀」과
  * 「셀 것이 없는 팀」이 같은 그림이 되므로, 그런 팀은 막대 대신 아래 줄에 「—」로 적는다.
  *
- * ⚠ 팀 이름이 아직 `TeamKey`(`edit`·`shoot`·`marketing`)로 나온다. 한글 이름의 단일 소스는
- * step 6의 `team-slug.ts`이고, 그때 `buildCompletionBars`와 이 줄이 함께 그것을 쓴다.
+ * 팀 이름은 `teamLabel`에서 온다 — 막대 축과 이 줄이 같은 표를 쓴다.
  */
 
 'use client';
@@ -14,6 +13,7 @@ import { Bar } from 'react-chartjs-2';
 
 import { registerCharts } from '@/components/charts/chart-registry';
 import { CHART_AXIS, CHART_GRID, type ChartSeries } from '@/lib/view/chart-series';
+import { teamLabel } from '@/lib/view/team-slug';
 import type { TeamKey } from '@/types/task';
 
 registerCharts();
@@ -66,7 +66,7 @@ export function CompletionBars({
       </div>
       {unmeasurable.length > 0 && (
         <p className="text-ink-muted mt-2 text-xs">
-          완료율 — (모수 0): {unmeasurable.join(', ')}
+          완료율 — (모수 0): {unmeasurable.map(teamLabel).join(', ')}
         </p>
       )}
     </div>

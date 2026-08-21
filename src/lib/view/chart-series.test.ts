@@ -15,6 +15,7 @@ import {
   STATUS_COLORS,
   unmeasurableTeams,
 } from '@/lib/view/chart-series';
+import { teamLabel } from '@/lib/view/team-slug';
 import type { DisplayStatus, TeamKey } from '@/types/task';
 
 function tasks(...statuses: DisplayStatus[]): { displayStatus: DisplayStatus }[] {
@@ -110,7 +111,7 @@ describe('buildCompletionBars', () => {
       summary('marketing', 0),
     ]);
 
-    expect(series.labels).toEqual(['edit', 'marketing']);
+    expect(series.labels).toEqual([teamLabel('edit'), teamLabel('marketing')]);
     expect(series.values).toEqual([80, 0]);
   });
 
@@ -121,9 +122,11 @@ describe('buildCompletionBars', () => {
     expect(series.colors).toHaveLength(series.values.length);
   });
 
-  it('라벨은 아직 `TeamKey`다 — 한글 이름은 step 6의 `team-slug.ts`가 진다', () => {
+  it('라벨은 `teamLabel`에서 온다 — 축과 표가 같은 이름을 쓴다', () => {
     const series = buildCompletionBars([summary('shoot', 50)]);
-    expect(series.labels).toEqual(['shoot']);
+
+    expect(series.labels).toEqual([teamLabel('shoot')]);
+    expect(series.labels).not.toEqual(['shoot']);
   });
 
   it('전부 null이면 빈 시리즈다', () => {

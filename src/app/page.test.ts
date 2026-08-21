@@ -20,6 +20,7 @@ import { buildSeedPayload } from '@/lib/upload/seed-loader';
 import { buildCompletionBars, type ChartSeries } from '@/lib/view/chart-series';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
 import { sortTasks } from '@/lib/view/task-sort';
+import { teamLabel } from '@/lib/view/team-slug';
 import type { TaskResponse } from '@/types/api';
 
 let handle: StorageHandle;
@@ -245,7 +246,8 @@ describe('/ — 차트 (T6 범위 In「Chart.js 도넛·바」)', () => {
     const chart = findComponent(await Home(props()), 'CompletionBars');
     const series = chart?.props?.series as ChartSeries;
 
-    expect(series.labels).toEqual(['edit']);
+    // 축 라벨은 한글이고(`teamLabel`), 빠진 팀은 `TeamKey`로 넘어가 컴포넌트가 이름을 붙인다
+    expect(series.labels).toEqual([teamLabel('edit')]);
     expect(chart?.props?.unmeasurable).toEqual(['shoot', 'marketing']);
   });
 

@@ -20,7 +20,6 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
-import { TEAM_LABELS } from '@/components/dashboard/team-summary-table';
 import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
 import { TEAM_KEYS } from '@/lib/domain/progress-stats';
 import {
@@ -29,6 +28,7 @@ import {
   FILTER_RESET_PATCH,
   type DashboardQuery,
 } from '@/lib/view/dashboard-query';
+import { teamLabel } from '@/lib/view/team-slug';
 import type { DisplayStatus } from '@/types/task';
 
 const CHIP_ON = 'rounded-full bg-ink text-canvas px-3 py-1 text-xs';
@@ -53,25 +53,39 @@ function submitted(data: FormData, key: string): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
-export function FilterBar({ query, pathname }: { query: DashboardQuery; pathname: string }) {
+/**
+ * `showTeamChips`가 꺼지는 자리는 부서별 탭이다 — 경로가 이미 팀을 정했으므로 칩이 그것을
+ * 다시 물으면 「어느 쪽이 이기는가」를 사용자가 눌러 보고 알아내야 한다.
+ */
+export function FilterBar({
+  query,
+  pathname,
+  showTeamChips = true,
+}: {
+  query: DashboardQuery;
+  pathname: string;
+  showTeamChips?: boolean;
+}) {
   const router = useRouter();
   const active = countActiveFilters(query);
 
   return (
     <div className="border-line space-y-3 border-b pb-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-ink-muted w-16 text-xs">팀</span>
-        {TEAM_KEYS.map((teamKey) => (
-          <Link
-            key={teamKey}
-            href={buildHref(pathname, query, { team: toggled(query.team, teamKey) })}
-            aria-pressed={query.team.includes(teamKey)}
-            className={query.team.includes(teamKey) ? CHIP_ON : CHIP_OFF}
-          >
-            {TEAM_LABELS[teamKey]}
-          </Link>
-        ))}
-      </div>
+      {showTeamChips && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-ink-muted w-16 text-xs">팀</span>
+          {TEAM_KEYS.map((teamKey) => (
+            <Link
+              key={teamKey}
+              href={buildHref(pathname, query, { team: toggled(query.team, teamKey) })}
+              aria-pressed={query.team.includes(teamKey)}
+              className={query.team.includes(teamKey) ? CHIP_ON : CHIP_OFF}
+            >
+              {teamLabel(teamKey)}
+            </Link>
+          ))}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-ink-muted w-16 text-xs">상태</span>

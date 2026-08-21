@@ -3,8 +3,8 @@
 /**
  * 좌측 고정 사이드바. 현재 경로 판정 때문에 클라이언트 컴포넌트다.
  *
- * **항목이 둘뿐인 것이 의도다.** 팀별 라우트(`/teams/[teamSlug]`)는 아직 없고, 없는 곳으로
- * 가는 링크를 미리 만들면 화면에 404가 남는다. 그 라우트가 생길 때 여기에 줄이 붙는다.
+ * 팀 항목은 `TEAM_SLUGS`·`teamLabel`로 만든다. **팀 이름을 여기에 손으로 적지 않는다** —
+ * 가운뎃점 한 글자가 달라지면 사이드바와 표가 같은 팀을 다른 이름으로 부른다.
  *
  * 1024px 미만에서는 `w-14`로 줄어 아이콘만 남는다 (`ADR-014` — 그 아래는 깨지지 않고 읽히면
  * 통과다). 여닫는 토글을 두지 않는다: `UI_GUIDE.md`가 허용한 애니메이션은 사이드 패널
@@ -14,6 +14,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
+
+import { TEAM_KEYS } from '@/lib/domain/progress-stats';
+import { teamLabel, toTeamSlug } from '@/lib/view/team-slug';
 
 /** 아이콘은 인라인 SVG 16px · `strokeWidth 1.5` · 컨테이너 없이 (`UI_GUIDE.md`) */
 function DashboardIcon() {
@@ -59,8 +62,35 @@ function UploadIcon() {
   );
 }
 
+/** 부서별 탭. 셋이 같은 아이콘을 쓴다 — 구분은 아이콘이 아니라 한글 이름이 진다 */
+function TeamIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <path d="M2.5 13.5v-9l5-2 5 2v9" />
+      <path d="M2.5 13.5h11" />
+      <path d="M6 13.5v-3h3v3" />
+    </svg>
+  );
+}
+
 const ITEMS: readonly { href: string; label: string; icon: ReactNode }[] = [
   { href: '/', label: '대시보드', icon: <DashboardIcon /> },
+  ...TEAM_KEYS.map((teamKey) => ({
+    href: `/teams/${toTeamSlug(teamKey)}`,
+    label: teamLabel(teamKey),
+    icon: <TeamIcon />,
+  })),
   { href: '/upload', label: '시트 업로드', icon: <UploadIcon /> },
 ];
 

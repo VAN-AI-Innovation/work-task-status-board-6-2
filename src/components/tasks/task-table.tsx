@@ -1,5 +1,5 @@
 /**
- * 업무 표. **공통 8칸만 뿌린다** — 촬영·기획팀은 70컬럼이고 그것을 표에 펼치면 아무도 못 쓴다
+ * 업무 표. **공통 8칸만 뿌린다** — 촬영팀 탭은 70컬럼이고 그것을 표에 펼치면 아무도 못 쓴다
  * (`ADR-002`). 팀 전용 필드(`extras`)와 단계 타임라인은 사이드 패널(step 7)이 진다.
  *
  * 행마다의 링크가 그 패널의 입구다. `?task=`만 갈아끼우고 나머지 필터를 그대로 들고 가므로,
@@ -13,10 +13,10 @@
 
 import Link from 'next/link';
 
-import { TEAM_LABELS } from '@/components/dashboard/team-summary-table';
 import { StatusBadge } from '@/components/tasks/status-badge';
 import { buildHref, type DashboardQuery } from '@/lib/view/dashboard-query';
 import { EMPTY, formatDate, formatDday, formatPercent } from '@/lib/view/kpi-format';
+import { teamLabel } from '@/lib/view/team-slug';
 import { rowClassOf } from '@/lib/view/status-badge';
 import type { TaskResponse } from '@/types/api';
 
@@ -77,7 +77,7 @@ export function TaskTable({
                 <StatusBadge status={task.displayStatus} />
               </td>
               <td className="text-ink-body px-3 py-2 whitespace-nowrap">
-                {TEAM_LABELS[task.teamId]}
+                {teamLabel(task.teamId)}
               </td>
               <td className="px-3 py-2">
                 <Link
