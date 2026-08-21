@@ -37,12 +37,53 @@ export interface RepositoryContractCase {
 /** 업로드 시각. 저장소는 시간을 읽지 않고 이 값을 주입받는다 */
 const FIRST_UPLOAD_AT = '2026-07-20T09:00:00.000Z';
 const SECOND_UPLOAD_AT = '2026-07-27T09:00:00.000Z';
+/**
+ * 계약 17번 전용. `getLastSyncedAt`의 의미가 "마지막 업로드 시각"이라는 것을 보이려면
+ * 서로 다른 시각이 넷 필요하다. **뒤로 가는 시각은 계약이 정의하지 않는다** — 업로드
+ * 시각은 단조로우므로(실제로 과거로 올릴 방법이 없다) 그 갈래를 규정하지 않고 둔다.
+ */
+const THIRD_UPLOAD_AT = '2026-08-03T09:00:00.000Z';
+const FOURTH_UPLOAD_AT = '2026-08-10T09:00:00.000Z';
+
+/**
+ * 자연키·기간 라벨에 붙이는 접두사. 계약 테스트는 **실제 저장소에도** 붙어 도는데(supabase),
+ * 접두사가 없으면 정리(`reset`)가 실업무 행까지 지울 근거를 갖게 된다. 접두사 덕분에
+ * `reset`은 `source_key like 'contract::%'`인 행만 지우면 된다.
+ *
+ * ⚠ **같은 저장소에 계약 테스트를 두 벌 동시에 돌리지 마라.** 계약 1·17번이 "빈 저장소"를
+ * 전제하는데 `listTasks()`는 접두사로 좁혀지지 않으므로, 두 실행은 서로의 행을 보고
+ * 서로의 `reset`에 지워진다. 그러면 **저장소 오류 없이 행만 사라져** 구현이 멀쩡한데도
+ * 계약이 산발적으로 깨진다 (실측으로 재현했다 — 실행마다 다른 접두사를 줘도 해결되지 않는다.
+ * 남의 행이 여전히 `listTasks()`에 보이기 때문이다).
+ */
+export const CONTRACT_KEY_PREFIX = 'contract::';
+
+const KEY_A = `${CONTRACT_KEY_PREFIX}card-a`;
+const KEY_B = `${CONTRACT_KEY_PREFIX}vlog-b`;
+const KEY_C = `${CONTRACT_KEY_PREFIX}inquiry-c`;
+const PERIOD_1 = `${CONTRACT_KEY_PREFIX}2026-07 4주차`;
+const PERIOD_2 = `${CONTRACT_KEY_PREFIX}2026-08 1주차`;
+
+/**
+ * 업로드 id는 **uuid**여야 한다. supabase 스키마에서 `tasks.source_upload_id`·
+ * `task_events.upload_id`가 `uuid references uploads(id)`이기 때문이다 (step 8).
+ * 임의 문자열(`UPLOAD_1`)을 쓰면 supabase 구현만 타입 오류로 죽어 계약이 한쪽에서만 돈다.
+ * 값 자체에는 의미가 없고, 두 구현 모두 불투명한 식별자로만 다룬다.
+ */
+const UPLOAD_1 = '11111111-1111-4111-8111-111111111111';
+const UPLOAD_2 = '22222222-2222-4222-8222-222222222222';
+
+/**
+ * supabase 픽스처가 미리 만들어 둬야 하는 `uploads` 행의 id (외래키 대상).
+ * 실행마다 같아도 된다 — 계약은 이 행을 **지우지 않고** 참조만 한다.
+ */
+export const CONTRACT_UPLOAD_IDS: readonly string[] = [UPLOAD_1, UPLOAD_2];
 
 function taskInput(overrides: Partial<TaskUpsertInput> = {}): TaskUpsertInput {
   return {
     teamId: 'edit',
     departmentId: null,
-    sourceKey: 'card-a',
+    sourceKey: KEY_A,
     title: '카드뉴스 A',
     ownerMemberId: null,
     ownerNameRaw: '김편집',
@@ -61,7 +102,7 @@ function taskInput(overrides: Partial<TaskUpsertInput> = {}): TaskUpsertInput {
     note: null,
     extras: {},
     raw: {},
-    sourceUploadId: 'upload-1',
+    sourceUploadId: UPLOAD_1,
     sourceSheetTab: '01_편집팀',
     sourceRowIndex: 5,
     stages: [],
@@ -86,7 +127,7 @@ function stageInput(seq: number, overrides: Partial<Omit<TaskStage, 'id' | 'task
 function goalInput(overrides: Partial<GoalMetricUpsertInput> = {}): GoalMetricUpsertInput {
   return {
     teamId: 'marketing',
-    periodLabel: '2026-07 4주차',
+    periodLabel: PERIOD_1,
     title: '인스타 팔로워 증대',
     goalText: null,
     kpiName: '팔로워 증가 수',
@@ -104,7 +145,7 @@ function goalInput(overrides: Partial<GoalMetricUpsertInput> = {}): GoalMetricUp
     startedAt: null,
     dueAt: null,
     extras: {},
-    sourceUploadId: 'upload-1',
+    sourceUploadId: UPLOAD_1,
     sourceSheetTab: '03_마케팅·관리팀',
     sourceRowIndex: 25,
     ...overrides,
@@ -112,9 +153,9 @@ function goalInput(overrides: Partial<GoalMetricUpsertInput> = {}): GoalMetricUp
 }
 
 /** 두 건짜리 기본 시드. 팀도 자연키도 다르다 */
-const SEED_A = taskInput({ sourceKey: 'card-a', title: '카드뉴스 A' });
+const SEED_A = taskInput({ sourceKey: KEY_A, title: '카드뉴스 A' });
 const SEED_B = taskInput({
-  sourceKey: 'vlog-b',
+  sourceKey: KEY_B,
   teamId: 'shoot',
   title: '브이로그 촬영',
   ownerNameRaw: '박촬영',
@@ -169,7 +210,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
 
       const tasks = await repo.listTasks();
       expect(tasks).toHaveLength(2);
-      const a = findBySourceKey(tasks, 'card-a');
+      const a = findBySourceKey(tasks, KEY_A);
       expect(a.id).toBeTruthy();
       expect(a.title).toBe('카드뉴스 A');
       expect(a.lastProgressAt).toBe(FIRST_UPLOAD_AT);
@@ -200,7 +241,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       await repo.upsertTasks([SEED_A, SEED_B], { occurredAt: FIRST_UPLOAD_AT });
       const result = await repo.upsertTasks(
         [{ ...SEED_A, progress: 60 }, SEED_B],
-        { occurredAt: SECOND_UPLOAD_AT, uploadId: 'upload-2' },
+        { occurredAt: SECOND_UPLOAD_AT, uploadId: UPLOAD_2 },
       );
 
       expect({ created: result.created, updated: result.updated, unchanged: result.unchanged }).toEqual({
@@ -211,11 +252,11 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       expect(result.events).toHaveLength(1);
       expect(result.events[0].changedFields).toEqual(['progress']);
       expect(result.events[0].occurredAt).toBe(SECOND_UPLOAD_AT);
-      expect(result.events[0].uploadId).toBe('upload-2');
+      expect(result.events[0].uploadId).toBe(UPLOAD_2);
 
       const tasks = await repo.listTasks();
-      const changed = findBySourceKey(tasks, 'card-a');
-      const untouched = findBySourceKey(tasks, 'vlog-b');
+      const changed = findBySourceKey(tasks, KEY_A);
+      const untouched = findBySourceKey(tasks, KEY_B);
       expect(result.events[0].taskId).toBe(changed.id);
       expect(changed.progress).toBe(60);
       expect(changed.lastProgressAt).toBe(SECOND_UPLOAD_AT);
@@ -227,8 +268,8 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
     async run(repo) {
       await repo.upsertTasks([SEED_A], { occurredAt: FIRST_UPLOAD_AT });
       const result = await repo.upsertTasks(
-        [{ ...SEED_A, sourceRowIndex: 99, sourceUploadId: 'upload-2' }],
-        { occurredAt: SECOND_UPLOAD_AT, uploadId: 'upload-2' },
+        [{ ...SEED_A, sourceRowIndex: 99, sourceUploadId: UPLOAD_2 }],
+        { occurredAt: SECOND_UPLOAD_AT, uploadId: UPLOAD_2 },
       );
 
       expect({ created: result.created, updated: result.updated, unchanged: result.unchanged }).toEqual({
@@ -237,7 +278,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
         unchanged: 1,
       });
       expect(result.events).toHaveLength(0);
-      expect(findBySourceKey(await repo.listTasks(), 'card-a').lastProgressAt).toBe(FIRST_UPLOAD_AT);
+      expect(findBySourceKey(await repo.listTasks(), KEY_A).lastProgressAt).toBe(FIRST_UPLOAD_AT);
     },
   },
   {
@@ -251,7 +292,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       expect(result.updated).toBe(1);
       expect(result.unchanged).toBe(0);
       expect(result.events[0]?.changedFields).toEqual(['progress']);
-      expect(findBySourceKey(await repo.listTasks(), 'card-a').progress).toBeNull();
+      expect(findBySourceKey(await repo.listTasks(), KEY_A).progress).toBeNull();
     },
   },
   {
@@ -311,7 +352,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
           SEED_A,
           SEED_B,
           taskInput({
-            sourceKey: 'inquiry-c',
+            sourceKey: KEY_C,
             teamId: 'marketing',
             title: 'SNS Inquiry',
             ownerNameRaw: '최마케팅',
@@ -326,7 +367,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       for (const filter of [
         { teamKeys: ['edit'] as const },
         { teamKeys: ['edit', 'marketing'] as const },
-        { sourceKeys: ['card-a', 'vlog-b'] as const },
+        { sourceKeys: [KEY_A, KEY_B] as const },
         { ownerNameRaw: '박촬영' },
         { dueFrom: '2026-07-27', dueTo: '2026-08-05' },
         { dueFrom: '2026-08-05' },
@@ -355,8 +396,8 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       );
 
       const tasks = await repo.listTasks();
-      const a = findBySourceKey(tasks, 'card-a');
-      const b = findBySourceKey(tasks, 'vlog-b');
+      const a = findBySourceKey(tasks, KEY_A);
+      const b = findBySourceKey(tasks, KEY_B);
 
       const stagesOfA = await repo.listStages([a.id]);
       expect(stagesOfA.map((stage) => stage.seq)).toEqual([0, 1, 2]);
@@ -374,7 +415,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       await repo.upsertTasks([{ ...SEED_A, stages: [stageInput(0), stageInput(1), stageInput(2)] }], {
         occurredAt: FIRST_UPLOAD_AT,
       });
-      const taskId = findBySourceKey(await repo.listTasks(), 'card-a').id;
+      const taskId = findBySourceKey(await repo.listTasks(), KEY_A).id;
       expect(await repo.listStages([taskId])).toHaveLength(3);
 
       await repo.upsertTasks([{ ...SEED_A, stages: [stageInput(0), stageInput(1)] }], {
@@ -411,7 +452,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       expect(metrics).toHaveLength(2);
       expect(findGoal(metrics, '유튜브 조회수').actualValue).toBe(300);
 
-      const otherPeriod = await repo.upsertGoalMetrics([goalInput({ periodLabel: '2026-08 1주차' })], {
+      const otherPeriod = await repo.upsertGoalMetrics([goalInput({ periodLabel: PERIOD_2 })], {
         occurredAt: SECOND_UPLOAD_AT,
       });
       expect(otherPeriod).toEqual({ created: 1, updated: 0, unchanged: 0 });
@@ -423,7 +464,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       await repo.upsertGoalMetrics(
         [
           goalInput(),
-          goalInput({ title: '유튜브 조회수', periodLabel: '2026-08 1주차' }),
+          goalInput({ title: '유튜브 조회수', periodLabel: PERIOD_2 }),
           goalInput({ teamId: 'edit', title: '편집 목표' }),
         ],
         { occurredAt: FIRST_UPLOAD_AT },
@@ -432,9 +473,9 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       expect(await repo.listGoalMetrics({ teamKeys: ['marketing'] })).toHaveLength(2);
       expect(await repo.listGoalMetrics({ teamKeys: ['edit'] })).toHaveLength(1);
       expect(await repo.listGoalMetrics({ teamKeys: [] })).toHaveLength(0);
-      expect(await repo.listGoalMetrics({ periodLabel: '2026-08 1주차' })).toHaveLength(1);
+      expect(await repo.listGoalMetrics({ periodLabel: PERIOD_2 })).toHaveLength(1);
       expect(
-        await repo.listGoalMetrics({ teamKeys: ['marketing'], periodLabel: '2026-07 4주차' }),
+        await repo.listGoalMetrics({ teamKeys: ['marketing'], periodLabel: PERIOD_1 }),
       ).toHaveLength(1);
     },
   },
@@ -442,13 +483,13 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
     name: '16. recordEvents는 예외 없이 끝난다',
     async run(repo) {
       await repo.upsertTasks([SEED_A], { occurredAt: FIRST_UPLOAD_AT });
-      const taskId = findBySourceKey(await repo.listTasks(), 'card-a').id;
+      const taskId = findBySourceKey(await repo.listTasks(), KEY_A).id;
 
       await expect(
         repo.recordEvents([
           {
             taskId,
-            uploadId: 'upload-2',
+            uploadId: UPLOAD_2,
             changedFields: ['progress'],
             occurredAt: SECOND_UPLOAD_AT,
           },
@@ -458,13 +499,32 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
     },
   },
   {
-    name: '17. getLastSyncedAt은 빈 저장소에서 null, 업로드 후 주입된 시각이다',
+    name: '17. getLastSyncedAt은 마지막으로 업로드가 돌아간 시각이다 (무변경·목표 지표만인 업로드 포함)',
     async run(repo) {
+      // 의미: **"마지막으로 시트를 반영한 시각"**이다 (`ADR-001`의 "마지막 반영: N일 전").
+      // 무엇이 바뀌었는지가 아니라 **업로드가 돌았는지**가 기준이다 — 아무것도 안 바뀐
+      // 업로드도 반영은 반영이고, 사용자는 "오늘 올렸는데 왜 5일 전이지?"를 이해하지 못한다.
       expect(await repo.getLastSyncedAt()).toBeNull();
+
       await repo.upsertTasks([SEED_A], { occurredAt: FIRST_UPLOAD_AT });
       expect(await repo.getLastSyncedAt()).toBe(FIRST_UPLOAD_AT);
-      await repo.upsertTasks([SEED_A], { occurredAt: SECOND_UPLOAD_AT });
+
+      // 같은 파일 재업로드라 전건 unchanged다. 그래도 **반영 시각은 움직인다.**
+      const again = await repo.upsertTasks([SEED_A], { occurredAt: SECOND_UPLOAD_AT });
+      expect(again.unchanged).toBe(1);
+      expect(again.updated).toBe(0);
       expect(await repo.getLastSyncedAt()).toBe(SECOND_UPLOAD_AT);
+
+      // 업무는 한 건도 없고 **목표 지표만** 담긴 업로드(마케팅 탭 B섹션만 올린 경우, UC-04)도
+      // 반영이다. 이 갈래가 계약에 없어서 두 구현이 갈라져 있었다 — memory는 갱신하고
+      // supabase는 `tasks`만 보느라 갱신하지 않았다.
+      await repo.upsertGoalMetrics([goalInput()], { occurredAt: THIRD_UPLOAD_AT });
+      expect(await repo.getLastSyncedAt()).toBe(THIRD_UPLOAD_AT);
+
+      // 빈 배열은 반영이 아니다 — 올린 것이 없으므로 시각을 앞당기지 않는다 (계약 18과 짝).
+      await repo.upsertTasks([], { occurredAt: FOURTH_UPLOAD_AT });
+      await repo.upsertGoalMetrics([], { occurredAt: FOURTH_UPLOAD_AT });
+      expect(await repo.getLastSyncedAt()).toBe(THIRD_UPLOAD_AT);
     },
   },
   {
@@ -496,7 +556,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       );
       await repo.upsertGoalMetrics([goalInput()], { occurredAt: FIRST_UPLOAD_AT });
 
-      const task = findBySourceKey(await repo.listTasks(), 'card-a');
+      const task = findBySourceKey(await repo.listTasks(), KEY_A);
       task.title = '망가뜨린 제목';
       task.extras.채널 = '망가뜨린 값';
       task.coOwnerNames.push('없는 사람');
@@ -507,7 +567,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       const metric = findGoal(await repo.listGoalMetrics(), '인스타 팔로워 증대');
       metric.actualValue = -1;
 
-      const reread = findBySourceKey(await repo.listTasks(), 'card-a');
+      const reread = findBySourceKey(await repo.listTasks(), KEY_A);
       expect(reread.title).toBe('카드뉴스 A');
       expect(reread.extras.채널).toBe('인스타');
       expect(reread.coOwnerNames).toEqual([]);

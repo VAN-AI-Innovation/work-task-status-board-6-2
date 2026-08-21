@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "chart.js": "^4.5.1",
     "exceljs": "4.4.0",
     "mammoth": "^1.12.1",

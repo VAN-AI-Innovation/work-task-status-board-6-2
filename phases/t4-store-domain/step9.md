@@ -174,3 +174,60 @@ npm run lint && npm run build && npm run test
 - 마이그레이션 SQL을 고치지 마라. 스키마가 안 맞으면 `blocked`로 보고하라. 이유: 스키마 변경은
   새 마이그레이션 파일이어야 하고, 이미 적용된 파일을 고치면 두 환경이 갈라진다.
 - `git commit`을 직접 실행하지 마라. 이유: 커밋은 하네스가 확정된 제목으로 처리한다.
+
+---
+
+## ⚠ 이전 시도에서 드러난 것 — 반드시 먼저 읽어라
+
+1차 시도는 `index.json`에 `completed`를 적었지만 **계약 테스트 10건이 실패한 상태**였다.
+아래는 실측된 실패이고, 이 step은 **이것들을 고쳐야 끝난다.**
+
+### 실패 1 — `reset`이 다 지우지 못한다 (실패 대부분의 원인)
+
+`15. listGoalMetrics 필터가 동작한다`에서 `expected length 2 but got 3`.
+앞선 케이스가 넣은 `goal_metrics` 행이 살아남아 다음 케이스에 보인다.
+`11`·`12`(단계)·`19`도 같은 계열이다.
+
+- `reset`은 `tasks`뿐 아니라 **`goal_metrics`·`task_stages`·`task_events`까지** 지워야 한다.
+- `goal_metrics`에는 `source_key`가 없다. 계약이 `periodLabel`에 `contract::` 접두사를 붙여
+  두었으니 **`period_label like 'contract::%'`** 로 지운다.
+- `tasks`를 지우면 `task_stages`·`task_events`는 `on delete cascade`로 따라간다(step 8 스키마).
+  cascade에 기대든 명시적으로 지우든, **지운 뒤 실제로 0건인지 확인하는 테스트를 넣어라.**
+- 현재 DB에 1차 시도가 남긴 행이 그대로 있다. 고친 `reset`이 그것까지 치워야 한다.
+
+### 실패 2 — `getLastSyncedAt`의 의미가 두 구현에서 갈린다
+
+`17. getLastSyncedAt은 빈 저장소에서 null, 업로드 후 주입된 시각이다`:
+두 번째 upsert가 **`unchanged`**라 supabase는 UPDATE를 보내지 않았고
+`max(updated_at)`이 첫 번째 시각에 머물렀다. memory 구현은 마지막 upsert 호출의
+`occurredAt`을 그대로 들고 있어 통과한다.
+
+**이건 supabase 쪽 버그가 아니라 계약이 의미를 정하지 않은 것이다.** 정하고 양쪽을 맞춰라.
+
+- 의미는 **"마지막으로 시트를 반영한 시각"**이다 — `ARCHITECTURE.md` `ADR-001`의
+  "마지막 반영: N일 전" 표시가 이 값을 쓴다. 아무것도 안 바뀐 업로드도 **반영은 반영이다.**
+  사용자는 "오늘 올렸는데 왜 5일 전이라고 나오지?"를 이해하지 못한다.
+- 따라서 `max(tasks.updated_at)`은 근거가 될 수 없다. `unchanged` 건에 UPDATE를 보내는
+  것으로 때우지 마라 — 그러면 계약 3·5번(재업로드가 `unchanged`이고 `lastProgressAt`이
+  안 움직인다)이 깨진다. **두 요구가 정면으로 부딪히므로 다른 저장 위치가 필요하다.**
+- 권하는 방법: `upsertTasks`·`upsertGoalMetrics`가 `options.occurredAt`을 **별도 행**에
+  기록하고 `getLastSyncedAt`이 그것을 읽는다. `uploads` 테이블을 쓰거나(행이 있으면
+  `max(created_at)`), 그것이 어색하면 스키마에 작은 테이블을 하나 더 두는 새 마이그레이션
+  파일(`0003_*.sql`)을 추가한다. **이미 적용된 0001·0002를 고치지 마라.**
+- 어느 쪽을 택하든 **memory 구현도 같은 의미로 맞추고**, 계약 17번에
+  "아무것도 바뀌지 않은 업로드 뒤에도 갱신된다"는 케이스를 **추가**하라.
+  지금 계약은 이 구분을 하지 않아 두 구현이 갈라져도 몰랐다.
+
+### 실패 3 — 시간 초과
+
+1차 세션은 1800초를 넘겨 하네스가 죽었다(그래서 커밋도 되지 않았다). 하네스 타임아웃은
+3600초로 올렸고 게이트(`lint`·`build`·`test`)를 하네스가 직접 돌리도록 바꿨으니
+**`completed`를 적기 전에 `npx vitest run src/lib/store`가 전부 통과하는지 반드시 직접 확인하라.**
+통과하지 못하면 `completed`를 적지 마라 — 하네스가 어차피 잡아내고 재시도로 돌린다.
+
+### 작업 지시 요약
+
+- `supabase-task-store.ts`·`supabase-task-store.test.ts`·`repository-contract.ts`는 이미 있다.
+  **처음부터 다시 쓰지 말고 위 세 가지를 고쳐라.**
+- `repository-contract.ts`의 1차 변경(접두사 상수·uuid 업로드 id)은 타당하니 되돌리지 마라.
+- 계약 항목을 **지우거나 약화시켜 통과시키지 마라.** 17번은 오히려 케이스가 늘어야 한다.
