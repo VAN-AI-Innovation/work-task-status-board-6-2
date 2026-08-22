@@ -11,7 +11,7 @@ import type { StorageMode } from '@/lib/store/store-factory';
 export function StorageBanner({ mode }: { mode: StorageMode }) {
   if (mode === 'fallback') {
     return (
-      <div className="border-b border-amber-600 bg-amber-50 px-6 py-2 text-sm text-amber-700">
+      <div className="border-b border-warn-line bg-warn-bg px-6 py-2 text-sm text-warn">
         읽기 전용 — 저장소 연결 실패
       </div>
     );
@@ -19,7 +19,7 @@ export function StorageBanner({ mode }: { mode: StorageMode }) {
 
   if (mode === 'demo') {
     return (
-      <div className="border-b border-neutral-300 bg-neutral-100 px-6 py-2 text-sm text-neutral-600">
+      <div className="border-b border-line bg-raise px-6 py-2 text-sm text-ink-muted">
         샘플 데이터 모드
       </div>
     );

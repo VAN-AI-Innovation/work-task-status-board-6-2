@@ -6,9 +6,13 @@
  * (`ADR-007`).
  */
 
+import { PageShell } from '@/components/shell/page-shell';
 import { SheetUploadPanel } from '@/components/upload/sheet-upload-panel';
-import { StorageBanner } from '@/components/upload/storage-banner';
+import { resolveViewerRole } from '@/lib/api/viewer-role';
+import { kstToday } from '@/lib/domain/kst-today';
 import { getStorage } from '@/lib/store/store-factory';
+import { parseDashboardQuery } from '@/lib/view/dashboard-query';
+import { describeSync } from '@/lib/view/sync-freshness';
 
 /**
  * **정적 프리렌더를 막는다.** `getStorage()`의 결과(연결 성공/실패)는 빌드 시각이 아니라
@@ -18,22 +22,25 @@ import { getStorage } from '@/lib/store/store-factory';
 export const dynamic = 'force-dynamic';
 
 export default async function UploadPage() {
-  const { readOnly, mode } = await getStorage();
+  const { repo, readOnly, mode, driver } = await getStorage();
+
+  // 「마지막 반영」은 *모든* 페이지가 진다 (T6 완료 기준 8). 업로드 화면에서는 특히 —
+  // 지금 올릴지 말지를 정하는 근거가 바로 이 숫자다
+  const lastSyncedAt = await repo.getLastSyncedAt();
+  const freshness = describeSync(lastSyncedAt, kstToday(new Date()));
+  const query = parseDashboardQuery(new URLSearchParams());
+  const role = resolveViewerRole(query.as, { nodeEnv: process.env.NODE_ENV, mode });
 
   return (
-    <main className="flex-1 bg-neutral-50">
-      <StorageBanner mode={mode} />
+    <PageShell mode={mode} driver={driver} freshness={freshness} role={role} query={query}>
+      <h1 className="text-ink text-xl font-semibold">시트 업로드</h1>
+      <p className="text-ink-body mt-1 text-sm">
+        Google Sheets에서 내보낸 .xlsx를 올리면 신규·변경·유지 건수를 먼저 보여 줍니다.
+      </p>
 
-      <div className="mx-auto max-w-[1280px] px-6 py-8">
-        <h1 className="text-xl font-semibold text-neutral-900">시트 업로드</h1>
-        <p className="mt-1 text-sm text-neutral-700">
-          Google Sheets에서 내보낸 .xlsx를 올리면 신규·변경·유지 건수를 먼저 보여 줍니다.
-        </p>
-
-        <div className="mt-6">
-          <SheetUploadPanel readOnly={readOnly} mode={mode} />
-        </div>
+      <div className="mt-6">
+        <SheetUploadPanel readOnly={readOnly} mode={mode} />
       </div>
-    </main>
+    </PageShell>
   );
 }

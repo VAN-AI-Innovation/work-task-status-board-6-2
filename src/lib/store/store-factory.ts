@@ -169,17 +169,28 @@ export async function createStorage(env: NodeJS.ProcessEnv): Promise<StorageHand
 }
 
 /**
+ * 캐시를 모듈 지역 변수가 아니라 **전역 심볼**에 건다. Next.js가 페이지(RSC)와 라우트
+ * 핸들러를 서로 다른 서버 번들로 만들기 때문이다 — 모듈 지역 변수면 두 번들이 각자의
+ * 저장소를 갖는다. 메모리 드라이버에서 이 증상이 실제로 났다: `/api/uploads/seed`로 확정한
+ * 업로드를 화면이 못 봐서 「마지막 반영」이 확정 뒤에도 「기록 없음」에 머물렀다 (T6 완료
+ * 기준 8). `Symbol.for`는 전역 심볼 레지스트리를 쓰므로 번들이 갈라져도 같은 키가 된다.
+ */
+const CACHE_KEY = Symbol.for('work-task-status-board.storage');
+
+type CacheHost = Record<symbol, Promise<StorageHandle> | null | undefined>;
+
+const cacheHost = globalThis as unknown as CacheHost;
+
+/**
  * 앱이 쓰는 진입점. **연결 실패도 캐시된다** — 매 요청마다 죽은 DB에 붙으러 가면 화면 전체가
  * 그 왕복만큼 느려진다. 복구는 프로세스 재시작으로 한다.
  */
-let cached: Promise<StorageHandle> | null = null;
-
 export function getStorage(): Promise<StorageHandle> {
-  cached ??= createStorage(process.env);
-  return cached;
+  cacheHost[CACHE_KEY] ??= createStorage(process.env);
+  return cacheHost[CACHE_KEY];
 }
 
 /** **테스트 전용 탈출구.** 제품 코드에서 부르지 마라 — 캐시가 있는 이유가 사라진다 */
 export function resetStorage(): void {
-  cached = null;
+  cacheHost[CACHE_KEY] = null;
 }

@@ -180,15 +180,15 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
             handleFiles(event.dataTransfer.files);
           }}
           className={`rounded-md border border-dashed p-8 text-center ${
-            dragging ? 'border-neutral-900 bg-neutral-100' : 'border-neutral-300 bg-white'
+            dragging ? 'border-ink bg-raise' : 'border-line bg-panel'
           } ${readOnly ? 'opacity-50' : ''}`}
         >
-          <p className="text-sm text-neutral-700">
+          <p className="text-sm text-ink-body">
             시트 .xlsx 파일을 여기에 끌어다 놓거나 파일을 선택하세요.
           </p>
           <label
-            className={`mt-3 inline-block rounded border border-neutral-300 bg-white px-4 py-2 text-sm text-neutral-900 ${
-              readOnly || busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-neutral-50'
+            className={`mt-3 inline-block rounded border border-line bg-panel px-4 py-2 text-sm text-ink ${
+              readOnly || busy ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-raise'
             }`}
           >
             파일 선택
@@ -202,9 +202,9 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
               onChange={(event) => handleFiles(event.target.files)}
             />
           </label>
-          <p className="mt-3 text-xs text-neutral-500">확정 전에는 저장되지 않습니다.</p>
+          <p className="mt-3 text-xs text-ink-muted">확정 전에는 저장되지 않습니다.</p>
           {mode === 'demo' && (
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-xs text-ink-muted">
               샘플 데이터 모드입니다. 반영 결과는 서버를 다시 시작하면 사라집니다.
             </p>
           )}
@@ -212,13 +212,13 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
       )}
 
       {filename !== null && (
-        <p className="text-xs text-neutral-500">
-          파일: <span className="text-neutral-700">{filename}</span>
+        <p className="text-xs text-ink-muted">
+          파일: <span className="text-ink-body">{filename}</span>
         </p>
       )}
 
       {busy && (
-        <p className="text-sm text-neutral-700">
+        <p className="text-sm text-ink-body">
           {stage === 'validating' && '파일을 확인하는 중…'}
           {stage === 'parsing' && '시트를 읽는 중…'}
           {stage === 'committing' && '반영하는 중…'}
@@ -227,12 +227,12 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
 
       {/* 서버가 준 문장을 그대로 보여 준다. 코드별 문구를 여기서 다시 만들지 않는다 */}
       {message !== null && (stage === 'rejected' || stage === 'failed') && (
-        <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded border border-late-line bg-late-bg px-3 py-2 text-sm text-late">
           <p>{message}</p>
           <button
             type="button"
             onClick={retry}
-            className="mt-2 rounded border border-neutral-300 bg-white px-4 py-2 text-sm text-neutral-900 hover:bg-neutral-50"
+            className="mt-2 rounded border border-line bg-panel px-4 py-2 text-sm text-ink hover:bg-raise"
           >
             {preview === null ? '다시 올리기' : '다시 시도'}
           </button>
@@ -247,10 +247,10 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
               type="button"
               onClick={() => void commit()}
               disabled={readOnly || stage !== 'previewing'}
-              className={`rounded bg-neutral-900 px-4 py-2 text-sm text-white ${
+              className={`rounded bg-ink text-canvas px-4 py-2 text-sm ${
                 readOnly || stage !== 'previewing'
                   ? 'cursor-not-allowed opacity-50'
-                  : 'hover:bg-neutral-700'
+                  : 'hover:bg-ink-body'
               }`}
             >
               확정하기
@@ -260,11 +260,11 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
               type="button"
               onClick={reset}
               disabled={stage === 'committing'}
-              className="rounded border border-neutral-300 bg-white px-4 py-2 text-sm text-neutral-900 hover:bg-neutral-50"
+              className="rounded border border-line bg-panel px-4 py-2 text-sm text-ink hover:bg-raise"
             >
               취소
             </button>
-            <span className="text-xs text-neutral-500">
+            <span className="text-xs text-ink-muted">
               확정하면 위 숫자대로 반영됩니다. 취소하면 아무것도 저장되지 않습니다.
             </span>
           </div>
@@ -272,9 +272,9 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
       )}
 
       {stage === 'done' && summary !== null && (
-        <section className="rounded-md border border-neutral-200 bg-white p-5">
-          <h2 className="text-sm font-semibold text-neutral-900">반영 완료</h2>
-          <p className="mt-2 text-sm text-neutral-700">
+        <section className="rounded-md border border-line bg-panel p-5">
+          <h2 className="text-sm font-semibold text-ink">반영 완료</h2>
+          <p className="mt-2 text-sm text-ink-body">
             신규 <span className="tabular-nums">{summary.created}</span>건 · 변경{' '}
             <span className="tabular-nums">{summary.updated}</span>건 · 유지{' '}
             <span className="tabular-nums">{summary.unchanged}</span>건
@@ -283,14 +283,14 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
             {/* 자동으로 옮기지 않는다 — 사용자가 숫자를 읽을 시간을 뺏는다 */}
             <Link
               href="/"
-              className="rounded bg-neutral-900 px-4 py-2 text-sm text-white hover:bg-neutral-700"
+              className="rounded bg-ink text-canvas px-4 py-2 text-sm hover:bg-ink-body"
             >
               현황판으로 가기
             </Link>
             <button
               type="button"
               onClick={reset}
-              className="rounded border border-neutral-300 bg-white px-4 py-2 text-sm text-neutral-900 hover:bg-neutral-50"
+              className="rounded border border-line bg-panel px-4 py-2 text-sm text-ink hover:bg-raise"
             >
               다른 파일 올리기
             </button>
