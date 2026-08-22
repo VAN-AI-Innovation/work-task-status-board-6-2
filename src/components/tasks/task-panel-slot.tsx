@@ -61,12 +61,12 @@ export function TaskPanelSlot({
         {hasFilters && (
           <Link
             href={buildHref(pathname, query, { ...FILTER_RESET_PATCH, task: openId })}
-            className="text-ink underline-offset-4 hover:underline"
+            className="text-ink hover:text-brand underline-offset-4 hover:underline"
           >
             필터 초기화
           </Link>
         )}
-        <Link href={closeHref} className="text-ink underline-offset-4 hover:underline">
+        <Link href={closeHref} className="text-ink hover:text-brand underline-offset-4 hover:underline">
           닫기
         </Link>
       </p>

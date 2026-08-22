@@ -43,8 +43,8 @@ export function GoalSection({
   mismatchCount: number;
 }) {
   return (
-    <section className="border-line bg-panel rounded-md border p-5">
-      <h2 className="text-ink text-sm font-semibold">목표 대비 성과</h2>
+    <section className="border-line bg-panel rounded-md border p-4">
+      <h2 className="text-brand text-sm font-semibold">목표 대비 성과</h2>
       <p className="text-ink-muted mt-1 text-xs">
         달성률은 실적 ÷ 목표로 다시 계산한 값이다 · 업무 필터의 영향을 받지 않는다
       </p>
@@ -71,7 +71,7 @@ export function GoalSection({
           <div className="mt-3 overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse text-sm">
               <thead>
-                <tr className="bg-raise text-ink-muted text-xs font-medium">
+                <tr className="bg-brand-soft text-brand text-xs font-medium">
                   {COLUMNS.map((column) => (
                     <th
                       key={column.label}
@@ -86,7 +86,7 @@ export function GoalSection({
                 {rows.map((row) => (
                   <tr
                     key={`${row.teamKey}:${row.title}:${row.kpiName}`}
-                    className="border-line hover:bg-raise h-10 border-b"
+                    className="border-line hover:bg-brand-soft h-10 border-b"
                   >
                     <td className="text-ink-muted px-3 py-2 text-xs">{row.teamLabel}</td>
                     <td className="text-ink-body px-3 py-2">{row.title}</td>

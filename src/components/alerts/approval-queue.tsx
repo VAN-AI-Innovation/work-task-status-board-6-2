@@ -8,6 +8,7 @@
 
 import Link from 'next/link';
 
+import { RowChevron } from '@/components/alerts/row-chevron';
 import type { WaitingItem } from '@/lib/view/alert-groups';
 import { EMPTY, formatCount } from '@/lib/view/kpi-format';
 
@@ -21,9 +22,9 @@ export function ApprovalQueue({
   hrefOf: (taskId: string) => string;
 }) {
   return (
-    <section className="border-line bg-panel rounded-md border p-5">
+    <section className="border-line bg-panel rounded-md border p-4">
       <div className="border-line flex items-baseline justify-between border-b pb-1">
-        <h2 className="text-ink text-sm font-semibold">승인 대기함</h2>
+        <h2 className="text-brand text-sm font-semibold">승인 대기함</h2>
         <span className="text-ink-muted text-xs tabular-nums">{items.length}건</span>
       </div>
 
@@ -32,17 +33,26 @@ export function ApprovalQueue({
       ) : (
         <ul className="mt-2 space-y-1">
           {items.map((item) => (
-            <li key={item.taskId} className="flex items-baseline justify-between gap-3">
+            // 알림 패널과 **같은 줄 모양**이다. 두 목록이 나란히 서는 화면이라 한쪽만
+            // 눌리는 것처럼 보이면 다른 쪽은 못 누르는 줄로 읽힌다
+            <li key={item.taskId}>
               <Link
                 href={hrefOf(item.taskId)}
-                className="text-ink-body hover:text-ink truncate text-sm underline-offset-4 hover:underline"
+                className="group/row hover:bg-brand-soft -mx-2 flex items-center justify-between gap-2 rounded px-2 py-1"
               >
-                {titleOf(item.taskId)}
+                <span className="text-ink-body group-hover/row:text-brand truncate text-sm">
+                  {titleOf(item.taskId)}
+                </span>
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <span className="text-ink-muted text-xs tabular-nums">
+                    {/* 「모른다」를 「0일 대기」로 접지 않는다 — 방금 올라온 건과 같아진다 */}
+                    {item.days === null ? EMPTY : `${formatCount(item.days)}일 대기`}
+                  </span>
+                  <span className="text-ink-faint group-hover/row:text-brand">
+                    <RowChevron />
+                  </span>
+                </span>
               </Link>
-              <span className="text-ink-muted shrink-0 text-xs tabular-nums">
-                {/* 「모른다」를 「0일 대기」로 접지 않는다 — 방금 올라온 건과 같아진다 */}
-                {item.days === null ? EMPTY : `${formatCount(item.days)}일 대기`}
-              </span>
             </li>
           ))}
         </ul>

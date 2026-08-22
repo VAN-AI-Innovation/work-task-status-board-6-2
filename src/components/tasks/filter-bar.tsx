@@ -31,10 +31,11 @@ import {
 import { teamLabel } from '@/lib/view/team-slug';
 import type { DisplayStatus } from '@/types/task';
 
-const CHIP_ON = 'rounded-full bg-ink text-canvas px-3 py-1 text-xs';
-const CHIP_OFF = 'rounded-full border border-line px-3 py-1 text-xs text-ink-muted hover:text-ink';
+const CHIP_ON = 'rounded-full bg-brand text-canvas px-3 py-1 text-xs';
+const CHIP_OFF =
+  'rounded-full border border-line px-3 py-1 text-xs text-ink-muted hover:border-brand hover:text-brand';
 const INPUT =
-  'border-line bg-canvas text-ink placeholder:text-ink-faint focus:border-ink rounded border px-3 py-1.5 text-sm focus:outline-none';
+  'border-line bg-canvas text-ink placeholder:text-ink-faint focus:border-brand rounded border px-3 py-1.5 text-sm focus:outline-none';
 
 const DISPLAY_KEYS = Object.keys(DISPLAY_STATUS_LABELS) as DisplayStatus[];
 
@@ -175,7 +176,11 @@ export function FilterBar({
           placeholder="업무명·비고 검색"
           className={`${INPUT} w-44`}
         />
-        <button type="submit" className={CHIP_OFF}>
+        {/* 이 줄에서 사용자가 누르는 유일한 확정 버튼이다 — 기본 버튼(남색)으로 세운다 */}
+        <button
+          type="submit"
+          className="bg-brand text-canvas hover:bg-brand-strong rounded px-4 py-1.5 text-sm"
+        >
           적용
         </button>
       </form>
@@ -187,7 +192,7 @@ export function FilterBar({
         {active > 0 && (
           <Link
             href={buildHref(pathname, query, FILTER_RESET_PATCH)}
-            className="text-ink-muted hover:text-ink text-xs underline-offset-4 hover:underline"
+            className="text-ink-muted hover:text-brand text-xs underline-offset-4 hover:underline"
           >
             필터 초기화
           </Link>

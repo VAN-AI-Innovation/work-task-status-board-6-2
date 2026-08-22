@@ -8,7 +8,6 @@
  */
 
 import {
-  ArcElement,
   BarElement,
   CategoryScale,
   Chart as ChartJS,
@@ -17,7 +16,10 @@ import {
   Tooltip,
 } from 'chart.js';
 
-/** 도넛(`ArcElement`)과 가로 바(`BarElement` + 두 축)만 등록한다 — 차트 타입은 둘뿐이다 */
+/**
+ * 가로 바(`BarElement` + 두 축)만 등록한다. **`ArcElement`는 없다** — 도넛을 버렸고
+ * (`ADR-019`) 상태 분포는 Chart.js를 거치지 않는 `div` 스택 바다.
+ */
 export function registerCharts(): void {
-  ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Legend, Tooltip);
+  ChartJS.register(BarElement, CategoryScale, LinearScale, Legend, Tooltip);
 }

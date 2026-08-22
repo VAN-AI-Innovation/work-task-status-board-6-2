@@ -27,33 +27,38 @@
  * 없는 것은 의도이고(그 응답이 화면 밖으로도 나간다, `S6`), 그래서 이름을 못 붙이는
  * 항목(필터에 걸려 목록에서 빠진 건)은 알림에서도 뺀다.
  *
- * **섹션 순서는 역할이 정한다** (`sectionsFor`, 완료 기준 7). 세 역할이 보는 것은 같은
- * 데이터이고 같은 섹션이며, 다른 것은 무엇이 맨 위에 오느냐뿐이다 — 필요한 사람이 스크롤하면
- * 나머지도 다 있다. **삭제하지 않는 것이 요점이다**: 지금 섹션을 빼면 권한을 구현한 것처럼
- * 보이지만 서버는 아무것도 막지 않아 URL 하나로 뚫린다. 권한은 T8이다.
+ * **섹션 순서도 배치도 역할이 정한다** (`layoutFor`, 완료 기준 7 · `ADR-019`). 섹션을 세로로
+ * 쌓지 않고 12열 그리드에 흘려보내며, 행 묶음은 `lib/view/role-layout.ts`가 낸다 — 이 파일은
+ * 받은 행을 그리기만 한다. 세 역할이 보는 것은 같은 데이터이고 같은 섹션이며, 다른 것은
+ * 무엇이 맨 위에 오느냐뿐이다. **삭제하지 않는 것이 요점이다**: 지금 섹션을 빼면 권한을
+ * 구현한 것처럼 보이지만 서버는 아무것도 막지 않아 URL 하나로 뚫린다. 권한은 T8이다.
+ * `detail` zone(목표·브리핑·승인 대기)은 접히지만 **제목 줄은 항상 남는다** — 접힌 것과
+ * 없는 것이 화면에서 같아 보이면 안 된다.
  *
  * 주간 브리핑도 여기서 짓지 않는다 — `buildWeeklyReport`가 만든 **마크다운 문자열**을 그대로
  * 카드에 넘긴다. 자기 API(`/api/report/weekly`)를 부르지 않는 것은 다른 섹션과 같은 이유다
  * (`ADR-007`).
  *
- * 차트도 여기서 세지 않는다. `buildStatusDonut`·`buildCompletionBars`가 만든 배열만
- * 클라이언트 컴포넌트로 넘어간다 — 업무 배열 전량을 넘기면 직렬화 비용을 치르고 클라이언트
- * 번들에 업무 데이터가 통째로 들어간다.
+ * 차트도 여기서 세지 않는다. `buildStatusBreakdown`·`buildCompletionBars`가 만든 배열만
+ * 넘어간다 — 업무 배열 전량을 넘기면 직렬화 비용을 치르고 클라이언트 번들에 업무 데이터가
+ * 통째로 들어간다. 상태 분포는 도넛을 버리고 스택 바가 됐고(`ADR-019`), 그래서 이제
+ * 클라이언트 컴포넌트는 완료율 바 하나뿐이다.
  */
 
 import Link from 'next/link';
 
-import { Fragment, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { AlertPanel } from '@/components/alerts/alert-panel';
 import { ApprovalQueue } from '@/components/alerts/approval-queue';
 import { CompletionBars } from '@/components/charts/completion-bars';
-import { StatusDonut } from '@/components/charts/status-donut';
+import { StatusBars } from '@/components/charts/status-bars';
 import { BriefingCard } from '@/components/dashboard/briefing-card';
 import { KpiStrip } from '@/components/dashboard/kpi-strip';
 import { TeamSummaryTable } from '@/components/dashboard/team-summary-table';
 import { GoalSection } from '@/components/goals/goal-section';
 import { PageShell } from '@/components/shell/page-shell';
+import { SectionGrid } from '@/components/shell/section-grid';
 import { EmptyState } from '@/components/tasks/empty-state';
 import { FilterBar } from '@/components/tasks/filter-bar';
 import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
@@ -69,7 +74,8 @@ import { getStorage } from '@/lib/store/store-factory';
 import { approvalQueue, groupAlerts } from '@/lib/view/alert-groups';
 import {
   buildCompletionBars,
-  buildStatusDonut,
+  buildStatusBreakdown,
+  toStatusSeries,
   unmeasurableTeams,
 } from '@/lib/view/chart-series';
 import {
@@ -81,7 +87,12 @@ import {
   toURLSearchParams,
 } from '@/lib/view/dashboard-query';
 import { toGoalRows } from '@/lib/view/goal-view';
-import { COMPACT_KPI_KEYS, sectionsFor, type SectionKey } from '@/lib/view/role-layout';
+import {
+  COMPACT_KPI_KEYS,
+  DASHBOARD_LAYOUT,
+  layoutFor,
+  type SectionKey,
+} from '@/lib/view/role-layout';
 import { sortTasks } from '@/lib/view/task-sort';
 import { describeSync } from '@/lib/view/sync-freshness';
 
@@ -117,7 +128,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   const freshness = describeSync(read.meta.lastSyncedAt, read.meta.today);
   const teams = summarizeAllTeams(read.tasks, read.ctx);
   /*
-   * 도넛과 표가 보는 `displayStatus`는 조회 응답과 **같은 함수**가 만든 것이다. 화면이
+   * 스택 바와 표가 보는 `displayStatus`는 조회 응답과 **같은 함수**가 만든 것이다. 화면이
    * 여기서 5색 판정을 다시 하면 마스킹·판정 규칙이 API와 갈라진다 (`ADR-006`).
    */
   const listed = toTaskListResponse(read.tasks, read.ctx.flags, read.role);
@@ -177,6 +188,22 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   const needsOwnerHint = read.role === 'member' && query.owner === null;
 
   /**
+   * 접힌 줄 오른쪽에 적는 한 조각. **접힌 것과 비어 있는 것이 같아 보이면 안 된다** —
+   * 0건이라는 사실은 펼치기 전에 보여야 한다. 여기서 세지 않고 이미 만들어진 배열의
+   * 길이만 읽는다.
+   */
+  const detailHint = (key: SectionKey): string => {
+    switch (key) {
+      case 'goals':
+        return `지표 ${goalRows.length}개`;
+      case 'approvals':
+        return `${waiting.length}건 대기`;
+      default:
+        return '회의록용 마크다운';
+    }
+  };
+
+  /**
    * 섹션 하나를 그린다. **순서는 `sectionsFor`가 정하고 여기서는 무엇을 그릴지만 안다.**
    * 컴포넌트는 전부 앞 step들이 만들어 둔 것이라 이 함수에 계산이 없다.
    */
@@ -202,30 +229,48 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       case 'teams':
         return <TeamSummaryTable teams={teams} />;
 
-      case 'charts':
+      case 'completion':
+        /*
+         * 팀별 현황 표와 **나란히 선다** (`DASHBOARD_LAYOUT`). 같은 팀 축을 표와 그림으로
+         * 보는 둘이라 세로로 쌓으면 눈이 두 번 왕복한다. 차트는 남는 세로를 먹으므로
+         * (`flex-1` · `maintainAspectRatio: false`) 옆 표가 길어져도 빈칸이 생기지 않는다.
+         */
         return (
-          <div className="grid grid-cols-12 gap-6">
-            <section className="border-line bg-panel col-span-5 rounded-md border p-5">
-              <h2 className="text-ink text-sm font-semibold">상태 분포</h2>
-              <p className="text-ink-muted mt-1 text-xs">
-                지연이 다른 상태를 덮어쓴다 · 「기타」는 보류·취소·미등록
-              </p>
-              <div className="mt-3">
-                <StatusDonut series={buildStatusDonut(listed)} />
-              </div>
-            </section>
+          <section className="border-line bg-panel flex h-full flex-col rounded-md border p-4">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <h2 className="text-brand text-sm font-semibold">팀별 완료율</h2>
+              <p className="text-ink-muted text-xs">완료 ÷ (전체 − 취소)</p>
+            </div>
+            <div className="mt-2 flex flex-1 flex-col">
+              <CompletionBars
+                series={buildCompletionBars(teams)}
+                unmeasurable={unmeasurableTeams(teams)}
+              />
+            </div>
+          </section>
+        );
 
-            <section className="border-line bg-panel col-span-7 rounded-md border p-5">
-              <h2 className="text-ink text-sm font-semibold">팀별 완료율</h2>
-              <p className="text-ink-muted mt-1 text-xs">완료 ÷ (전체 − 취소)</p>
-              <div className="mt-3">
-                <CompletionBars
-                  series={buildCompletionBars(teams)}
-                  unmeasurable={unmeasurableTeams(teams)}
-                />
+      case 'charts':
+        /*
+         * 도넛도 스택 바도 아닌 **가로 막대**다 (`ADR-019`). 스택 바는 세로를 안 먹어서
+         * 알림 옆에 세우면 그쪽이 통째로 비었다 — 막대 여섯은 세로를 채우고 옆 카드를 따라
+         * 늘어난다. 축이 건수라 조각이 작아도 길이를 읽을 수 있다.
+         */
+        return (
+          <section className="border-line bg-panel flex h-full flex-col rounded-md border p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <h2 className="text-brand text-sm font-semibold">상태 분포</h2>
+                <p className="text-ink-muted text-xs">지연이 다른 상태를 덮어쓴다</p>
               </div>
-            </section>
-          </div>
+              <span className="text-ink-muted shrink-0 text-xs tabular-nums">
+                전체 {listed.length}건
+              </span>
+            </div>
+            <div className="mt-3 flex flex-1 flex-col">
+              <StatusBars series={toStatusSeries(buildStatusBreakdown(listed))} />
+            </div>
+          </section>
         );
 
       case 'goals':
@@ -248,8 +293,8 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
 
       case 'tasks':
         return (
-          <section className="border-line bg-panel rounded-md border p-5">
-            <h2 className="text-ink text-sm font-semibold">업무</h2>
+          <section className="border-line bg-panel rounded-md border p-4">
+            <h2 className="text-brand text-sm font-semibold">업무</h2>
             {needsOwnerHint && (
               // 아래 필터 바의 「담당자」 칸을 가리킨다. 입력을 하나 더 두면 같은 `?owner=`에
               // 두 소스가 생겨 어느 쪽이 현재 값인지 눌러 봐야 안다
@@ -297,7 +342,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       role={read.role}
       query={query}
     >
-      <h1 className="text-ink text-xl font-semibold">전사 업무 현황판</h1>
+      <h1 className="text-brand text-xl font-semibold">전사 업무 현황판</h1>
 
       {read.tasks.length === 0 && activeFilters === 0 ? (
         // 빈 상태 화면은 `UI_GUIDE.md`가 중앙 정렬을 금지하면서 **예외로 둔 유일한 자리**다
@@ -320,10 +365,12 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
           )}
         </div>
       ) : (
-        <div className="mt-6 space-y-6">
-          {sectionsFor(read.role).map((key) => (
-            <Fragment key={key}>{renderSection(key)}</Fragment>
-          ))}
+        <div className="mt-4">
+          <SectionGrid
+            rows={layoutFor(read.role, DASHBOARD_LAYOUT)}
+            render={renderSection}
+            hint={detailHint}
+          />
         </div>
       )}
     </PageShell>

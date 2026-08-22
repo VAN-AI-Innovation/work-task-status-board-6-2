@@ -56,7 +56,7 @@ export function TaskTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-[900px] border-collapse text-sm">
         <thead>
-          <tr className="bg-raise text-ink-muted sticky top-0 text-xs font-medium">
+          <tr className="bg-brand-soft text-brand sticky top-0 text-xs font-medium">
             {COLUMNS.map((column) => (
               <th
                 key={column.label}
@@ -71,7 +71,7 @@ export function TaskTable({
           {tasks.map((task) => (
             <tr
               key={task.id}
-              className={`border-line hover:bg-raise h-10 border-b ${rowClassOf(task.displayStatus)}`}
+              className={`border-line hover:bg-brand-soft h-10 border-b ${rowClassOf(task.displayStatus)}`}
             >
               <td className="px-3 py-2">
                 <StatusBadge status={task.displayStatus} />
@@ -82,7 +82,7 @@ export function TaskTable({
               <td className="px-3 py-2">
                 <Link
                   href={buildHref(pathname, query, { task: task.id })}
-                  className="text-ink underline-offset-4 hover:underline"
+                  className="text-ink hover:text-brand underline-offset-4 hover:underline"
                 >
                   {task.title ?? EMPTY}
                 </Link>

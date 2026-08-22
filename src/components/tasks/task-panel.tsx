@@ -62,7 +62,7 @@ function Row({
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-ink underline-offset-4 hover:underline"
+            className="text-ink hover:text-brand underline-offset-4 hover:underline"
           >
             {value}
           </a>
@@ -113,7 +113,9 @@ export function TaskPanel({
   return (
     <div className="fixed inset-0 z-40 flex justify-end">
       {/* 오버레이는 불투명도만 쓴다. 흐림 효과는 안티패턴 1번이다 (`UI_GUIDE.md`) */}
-      <Link href={closeHref} aria-label="패널 닫기" className="bg-canvas/70 absolute inset-0" />
+      {/* 베일은 **어두운 쪽**이다. 라이트에서 `bg-canvas/70`(옅은 회색)을 덮으면 뒤 화면이
+          뿌예지기만 하고 패널이 앞에 있다는 것이 읽히지 않는다 (`ADR-018`) */}
+      <Link href={closeHref} aria-label="패널 닫기" className="bg-ink/30 absolute inset-0" />
 
       <aside
         aria-label="업무 상세"
@@ -134,7 +136,7 @@ export function TaskPanel({
           <Link
             ref={closeRef}
             href={closeHref}
-            className="border-line text-ink-muted hover:bg-raise hover:text-ink rounded border px-2 py-1 text-xs"
+            className="border-line text-ink-muted hover:border-brand hover:text-brand rounded border px-2 py-1 text-xs"
           >
             닫기
           </Link>
@@ -142,7 +144,7 @@ export function TaskPanel({
 
         <div className="space-y-6 px-5 py-4">
           <section>
-            <h3 className="text-ink text-sm font-semibold">기본</h3>
+            <h3 className="text-brand text-sm font-semibold">기본</h3>
             <dl className="mt-2">
               <Row label="담당자" value={text(task.ownerNameRaw)} />
               <Row
@@ -167,7 +169,7 @@ export function TaskPanel({
           </section>
 
           <section>
-            <h3 className="text-ink text-sm font-semibold">단계</h3>
+            <h3 className="text-brand text-sm font-semibold">단계</h3>
             {stages.length === 0 ? (
               <p className="text-ink-muted mt-2 text-xs">단계 정보가 없습니다</p>
             ) : (
@@ -201,7 +203,7 @@ export function TaskPanel({
           </section>
 
           <section>
-            <h3 className="text-ink text-sm font-semibold">
+            <h3 className="text-brand text-sm font-semibold">
               팀 전용 필드
               <span className="text-ink-muted ml-2 text-xs font-normal tabular-nums">
                 {cells.length}칸
@@ -226,7 +228,7 @@ export function TaskPanel({
           </section>
 
           <section>
-            <h3 className="text-ink text-sm font-semibold">출처</h3>
+            <h3 className="text-brand text-sm font-semibold">출처</h3>
             {/* 「시트 어디서 왔는가」가 이 화면 전체의 신뢰 근거다 */}
             <dl className="mt-2">
               <Row label="시트 탭" value={task.sourceSheetTab} />

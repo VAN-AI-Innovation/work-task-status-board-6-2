@@ -33,7 +33,7 @@ export default async function UploadPage() {
 
   return (
     <PageShell mode={mode} driver={driver} freshness={freshness} role={role} query={query}>
-      <h1 className="text-ink text-xl font-semibold">시트 업로드</h1>
+      <h1 className="text-brand text-xl font-semibold">시트 업로드</h1>
       <p className="text-ink-body mt-1 text-sm">
         Google Sheets에서 내보낸 .xlsx를 올리면 신규·변경·유지 건수를 먼저 보여 줍니다.
       </p>
