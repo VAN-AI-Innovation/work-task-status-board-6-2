@@ -51,7 +51,10 @@
       "step": 5,
       "name": "assignment-writer",
       "commit": "feat: 드롭다운과 수식 주입 방어를 갖춘 배정표 xlsx 생성기 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-23T21:55:24+0900",
+      "completed_at": "2026-08-23T23:12:43+0900",
+      "summary": "buildAssignmentWorkbook(rows, {dropdowns, sheetName}) → Uint8Array. 제품 코드에서 exceljs를 쓰기로 여는 유일한 파일이고(grep 확인 — workbook-reader.ts와 이 파일 두 줄뿐) 수식 주입 방어가 여기 한 곳에 모인다. sanitizeCellText는 =·+·-·@·탭·개행으로 시작하면 ' 프리픽스를 붙이되 값을 삭제하지 않고(ADR-012), 앞 공백을 건너뛰고 한 번 더 본다 — 엑셀은 ' =SUM(A1)'을 수식으로 읽는다. 이미 붙은 값에 두 번 붙이지 않아 멱등이다. 헤더도 같은 함수를 통과한다 — 한 칸이라도 예외를 두면 다음 사람이 우회 경로를 만든다. 모든 문자열 셀은 numFmt '@'이고 cell.value에는 문자열만 넣는다 ({formula} 객체를 만들 길이 이 파일에 없다). 마감은 deadlineDate ?? deadlineRaw를 **문자열로** 쓴다 — 추론 성공·실패가 같은 컬럼에 섞이는데 타입이 갈리면 재업로드에서 한 컬럼이 두 가지로 읽힌다. ASSIGNMENT_COLUMNS가 헤더·너비·드롭다운·서식의 단일 출처이고(11칸), 드롭다운은 난이도·우선순위·상태의 **데이터 행에만** 건다(헤더에 걸면 헤더가 목록 밖 값이 된다). DEFAULT_DROPDOWNS는 결정 B대로 이미 있는 출처만 가리킨다 — status는 Object.keys(STATUS_SEMANTIC_MAP)라 상태 10개 문자열이 이 파일에 없고(가운뎃점 하나만 달라져도 재업로드에서 조용히 미매핑된다, ADR-009), difficulty·priority는 assignment-mapper의 DIFFICULTY_LEVELS·PRIORITY_LEVELS다. 인라인 목록 255자 한도와 값 안의 쉼표가 목록을 가른다는 것은 주석으로 남겼다. 꾸미기는 틀고정·굵은 헤더·열 너비까지 — 색·조건부 서식·필터·차트 없음. 테스트 38건. 되읽기는 원칙적으로 시트 파서(readWorkbook + findHeaderBands/resolveHeaders/toText)로만 하고, exceljs 직접 로드는 두 자리로 한정했다 — dataValidation은 격자가 담지 않고, 값이 빈 셀의 numFmt는 리더가 버리기 때문이다(workbook-reader가 빈 셀을 {value:null,numFmt:null}로 채운다). 왕복(완료 기준 6)은 sample-workload.md → 4계층 → xlsx → 시트 파서로 되읽어 행 전체를 sanitizeCellText(원본)과 비교하고, 픽스처가 실제로 =·+·-·@·개행 페이로드를 싣고 있는지를 먼저 잰다 (그 단언이 없으면 왕복 테스트가 아무것도 재지 않는다). src/lib/doc/는 한 줄도 고치지 않았다 — 앞 계층 계약이 그대로 맞았다. 변이 6종(앞 공백 재검사 제거·데이터 행 sanitize 생략·numFmt 미지정·드롭다운을 헤더에도·상태 목록 하드코딩 오타·마감을 Date 타입으로)이 모두 잡혔다. lint·build·test(70파일 1171건) 통과."
     },
     {
       "step": 6,
