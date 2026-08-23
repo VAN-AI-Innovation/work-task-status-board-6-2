@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 
 import {
   DETAIL_LABELS,
+  FIXED_HEIGHT,
   SECTION_ZONE,
   type LayoutRow,
   type SectionKey,
@@ -45,7 +46,7 @@ export function SectionGrid({
   /** 접히는 섹션 하나. 제목 줄은 접혀도 남는다 — 접힌 것과 없는 것이 같아 보이면 안 된다 */
   const renderDetail = (key: SectionKey, className: string): ReactNode => (
     <details key={key} className={`${className} group`}>
-      <summary className="border-line bg-panel text-brand hover:border-brand hover:bg-brand-soft flex cursor-pointer list-none items-baseline justify-between gap-3 rounded-md border px-4 py-2 text-sm font-semibold">
+      <summary className="border-line bg-panel text-brand hover:border-brand hover:bg-brand-soft flex cursor-pointer list-none items-baseline justify-between gap-3 rounded-md border px-4 py-2 text-sm font-semibold group-open:rounded-b-none">
         <span>
           <span className="text-ink-muted mr-1.5 inline-block group-open:rotate-90">▸</span>
           {DETAIL_LABELS[key]}
@@ -53,8 +54,14 @@ export function SectionGrid({
         <span className="text-ink-muted text-xs font-normal tabular-nums">{hint(key)}</span>
       </summary>
       {/* 카드는 섹션 컴포넌트가 이미 들고 있다. 제목이 두 번 뜨지 않도록 펼친 카드의
-          제목만 숨긴다 — 읽어 주는 것은 요약 줄이 한다 */}
-      <div className="mt-3 [&>section>h2]:sr-only">{render(key)}</div>
+          제목만 숨긴다 — 읽어 주는 것은 요약 줄이 한다.
+
+          요약 줄과 카드 **사이를 띄우지 않는다.** 둘 사이에 여백과 테두리가 두 겹 들어가면
+          펼친 내용이 요약 줄에 딸린 것이 아니라 그 아래 놓인 별개 카드로 읽힌다. 위쪽
+          모서리와 테두리를 지워 요약 줄에 이어 붙인다 */}
+      <div className="[&>section]:rounded-t-none [&>section]:border-t-0 [&>section>h2]:sr-only">
+        {render(key)}
+      </div>
     </details>
   );
 
@@ -106,7 +113,16 @@ export function SectionGrid({
                       // 쌓인 칸 안에서는 폭이 칸에 매여 있다 — 펼쳐도 넓어지지 않는다
                       renderDetail(key, 'shrink-0')
                     ) : (
-                      <div key={key} className="flex flex-1 flex-col [&>section]:h-full">
+                      // KPI 타일은 옆 카드 높이를 따라 늘어나면 안 된다 (`FIXED_HEIGHT`) —
+                      // 남는 세로는 같이 쌓인 차트가 먹는다
+                      <div
+                        key={key}
+                        className={
+                          FIXED_HEIGHT.includes(key)
+                            ? 'shrink-0'
+                            : 'flex flex-1 flex-col [&>section]:h-full'
+                        }
+                      >
                         {render(key)}
                       </div>
                     )

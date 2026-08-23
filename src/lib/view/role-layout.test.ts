@@ -14,6 +14,7 @@ import { buildSemanticIndex } from '@/lib/domain/task-semantic';
 import {
   COMPACT_KPI_KEYS,
   DASHBOARD_LAYOUT,
+  FIXED_HEIGHT,
   DETAIL_LABELS,
   layoutFor,
   TEAM_PAGE_LAYOUT,
@@ -105,6 +106,16 @@ describe('COMPACT_KPI_KEYS', () => {
  * 섹션이 하나도 빠지지 않는가, 역할별로 맨 위에 오는 것이 여전히 다른가,
  * 한 행이 12칸을 넘지 않는가.
  */
+/**
+ * 세로로 쌓인 칸에서 **남는 높이를 먹지 않는 섹션**. KPI 타일이 옆 카드 높이에 맞춰 늘어나면
+ * 숫자 하나가 뜬 빈 상자가 된다 — 아래에 쌓인 차트가 그 높이를 가져가야 한다.
+ */
+describe('FIXED_HEIGHT', () => {
+  it('KPI 두 종류만 높이를 고정한다', () => {
+    expect([...FIXED_HEIGHT].sort()).toEqual(['kpi', 'kpi_compact']);
+  });
+});
+
 describe('SECTION_ZONE · SECTION_SPAN', () => {
   const ALL_KEYS = SECTION_ORDER.admin.concat('kpi_compact');
 
@@ -204,7 +215,10 @@ describe('layoutFor', () => {
           ?.cells.flatMap((cell) => cell.keys);
 
       expect(rowOf('teams')).toEqual(['teams', 'completion']);
-      expect(rowOf('alerts')).toEqual(['alerts', 'charts']);
+      expect(rowOf('alerts')).toEqual(
+        // `member`의 축약 KPI는 상태 분포 위에 쌓여 같은 행에 들어온다
+        role === 'member' ? ['alerts', 'kpi_compact', 'charts'] : ['alerts', 'charts']
+      );
     }
   });
 
@@ -214,8 +228,48 @@ describe('layoutFor', () => {
         const keys = row.cells.flatMap((cell) => cell.keys);
         if (!keys.includes('alerts')) continue;
 
-        expect(keys).toHaveLength(2);
+        for (const key of keys) expect(['alerts', 'kpi_compact', 'charts']).toContain(key);
       }
+    }
+  });
+
+  /**
+   * **알림과 상태 분포는 폭이 같다.** 「지금 문제」와 「전체 그림」은 어느 쪽도 곁다리가
+   * 아니라서, 한쪽이 좁으면 그쪽이 부속처럼 읽힌다.
+   */
+  it('알림과 상태 분포가 같은 폭으로 선다', () => {
+    for (const role of ROLES) {
+      const row = layoutFor(role, DASHBOARD_LAYOUT).find((item) =>
+        item.cells.some((cell) => cell.keys.includes('alerts'))
+      );
+      const spanOf = (key: SectionKey): number | undefined =>
+        row?.cells.find((cell) => cell.keys.includes(key))?.span;
+
+      expect(spanOf('alerts')).toBe(6);
+      expect(spanOf('charts')).toBe(6);
+    }
+  });
+
+  /**
+   * `member`의 축약 KPI 3칸은 **상태 분포 바로 위**에 같은 폭으로 쌓인다 — 12칸을 혼자
+   * 쓰면 타일 셋이 화면 폭만큼 벌어지고, 알림 옆은 그만큼 비어 있다.
+   */
+  it('축약 KPI가 상태 분포 위 같은 칸에 쌓인다', () => {
+    const row = layoutFor('member', DASHBOARD_LAYOUT).find((item) =>
+      item.cells.some((cell) => cell.keys.includes('kpi_compact'))
+    );
+
+    expect(row?.cells.map((cell) => cell.keys)).toEqual([['alerts'], ['kpi_compact', 'charts']]);
+  });
+
+  /** 10칸짜리 전체 KPI는 그대로 한 행을 다 쓴다 — 6칸에 5열 그리드를 넣지 않는다 */
+  it('`admin`·`lead`의 전체 KPI는 12칸을 유지한다', () => {
+    for (const role of ['admin', 'lead'] as const) {
+      const row = layoutFor(role, DASHBOARD_LAYOUT).find((item) =>
+        item.cells.some((cell) => cell.keys.includes('kpi'))
+      );
+
+      expect(row?.cells).toEqual([{ keys: ['kpi'], span: 12 }]);
     }
   });
 

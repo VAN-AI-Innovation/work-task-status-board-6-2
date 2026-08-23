@@ -151,6 +151,12 @@ export const DETAIL_LABELS: Readonly<Partial<Record<SectionKey, string>>> = {
   approvals: '승인 대기함',
 };
 
+/**
+ * 세로로 쌓인 칸에서 **남는 높이를 먹지 않는 섹션**. KPI 타일이 옆 카드 높이에 맞춰 늘어나면
+ * 숫자 하나만 뜬 빈 상자가 된다 — 남는 세로는 같은 칸에 쌓인 차트가 가져가야 한다.
+ */
+export const FIXED_HEIGHT: readonly SectionKey[] = ['kpi', 'kpi_compact'];
+
 /** 한 칸에 들어갈 것. 배열이면 **세로로 쌓인다** (상태 분포 아래 목표 대비 성과처럼) */
 export type CellSpec = SectionKey | readonly SectionKey[];
 
@@ -207,11 +213,17 @@ export const TEAM_PAGE_LAYOUT: ScreenLayout = {
 /**
  * 대시보드의 배치. 짝이 둘이다 — **팀별 현황 + 팀별 완료율**(같은 팀 축을 표와 그림으로
  * 보는 둘)과 **알림 + 상태 분포**(「지금 문제」와 「전체 그림」).
+ *
+ * 뒤의 짝은 **6 + 6이다.** 어느 쪽도 곁다리가 아니라서 한쪽이 좁으면 그쪽이 부속처럼 읽힌다.
+ * `member`의 축약 KPI 3칸은 그 오른쪽 칸에 **상태 분포 위로 쌓는다** — 12칸을 혼자 쓰면
+ * 타일 셋 사이가 화면 폭만큼 벌어지고 알림 옆은 그만큼 빈다. 10칸짜리 전체 KPI(`kpi`)는
+ * 여기 넣지 않는다: 5열 그리드를 6칸에 밀어 넣으면 라벨이 두 줄로 접힌다.
  */
 export const DASHBOARD_LAYOUT: ScreenLayout = {
+  spans: { alerts: 6, charts: 6, kpi_compact: 6 },
   groups: [
     ['teams', 'completion'],
-    ['alerts', 'charts'],
+    ['alerts', ['kpi_compact', 'charts']],
   ],
 };
 
