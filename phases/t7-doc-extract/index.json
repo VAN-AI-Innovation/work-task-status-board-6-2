@@ -60,7 +60,10 @@
       "step": 6,
       "name": "docx-reader",
       "commit": "feat: mammoth로 docx를 같은 아웃라인으로 읽는 docx-reader 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-23T23:13:08+0900",
+      "completed_at": "2026-08-23T23:42:49+0900",
+      "summary": "readDocxOutline(buffer) → Promise<OutlineNode[]> + outlineFromHtml(html) → OutlineNode[]. mammoth를 convertToHtml({buffer}) 한 인자로만 부르고 styleMap·옵션을 주지 않는다(H8이 기본 옵션 PASS로 끝냈다). messages는 읽지 않는다 — 경고에 스타일 이름이 담기고 그것은 사용자에게 보일 것이 아니다. 이 step의 위험은 mammoth가 아니라 경계라서, HTML→아웃라인을 순수 함수 outlineFromHtml로 떼어 바이너리 없이 문자열로 재고 대조 테스트를 걸었다(완료 기준 2) — 같은 내용의 md·html이 toEqual 깊은 동등이고, '양쪽이 빈 배열이라 같은 것이 아니다'를 노드 7개·줄 6개로 따로 못박았다(그 단언이 없으면 대조 테스트가 아무것도 재지 않는다). markdown-reader와 규칙 셋을 맞췄다: 빈 줄 제외, trim()만, 제목 앞 본문은 level 0 서두 노드. 불릿 기호는 떼지 않는다 — docx의 li·p 텍스트에는 애초에 글자가 없고(Word가 글리프를 그린다) 규칙을 늘리면 두 벌이 된다. 중첩 목록은 ownText로 평평해진다: li.text를 그냥 쓰면 바깥 항목이 안쪽을 삼켜 '가나'가 된다. table 등은 무시하고 던지지 않되, 손상된 바이트는 던진다 — 에러 코드로 옮기는 것은 doc-pipeline(step 7)의 몫이다. exceljs를 import하지 않는다. 픽스처 src/lib/fixtures/sample-workload.docx(2,583 B)는 scripts/fixtures/build-sample-workload-docx.mjs가 만든다(npm run fixture:docx) — ZIP 엔트리 3개·무압축(stored)·CRC-32 직접 계산·DOS 타임스탬프 고정이라 재실행해도 같은 바이트다(md5 일치 확인). word/styles.xml을 일부러 넣지 않았다: mammoth 기본 styleMap이 스타일 ID로도 걸어 Heading1~3이 h1~h3으로 인식되고(경고 3건은 나오지만 변환은 된다), 목록 문단이 <p>로 떨어지는 것은 리더가 p와 li를 같은 본문 줄로 다루므로 문제가 아니다. 내용은 sample-workload.md 앞부분의 익명 데이터다. 테스트 23건. 변이 6종(중첩 li를 .text로·빈 줄 허용·제목 앞 본문 버리기·trim 생략·ol 무시·기본 styleMap 끄기)이 모두 잡혔다. 다만 한 가지는 테스트로 못 막는다 — 커스텀 styleMap 규칙은 mammoth의 기본 맵이 이겨서 조용한 no-op이 되므로 (includeDefaultStyleMap:false를 함께 주어야 비로소 바뀐다) 「옵션을 주지 마라」는 테스트가 아니라 grep·리뷰로만 지켜진다. src/lib/doc의 기존 파일은 한 줄도 고치지 않았다. lint·build·test(71파일 1194건) 통과."
     },
     {
       "step": 7,
