@@ -42,7 +42,10 @@
       "step": 4,
       "name": "assignment-mapper",
       "commit": "feat: 난이도·마감·우선순위를 배정표 행으로 만드는 assignment-mapper 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-23T21:23:02+0900",
+      "summary": "buildAssignmentRows(tasks, workload, {baseYear}) → AssignmentRow[]. 문서의 산문 표기를 배정표 한 줄로 옮기는 계층이고 판단 셋이 전부 여기 모인다. 난이도는 DIFFICULTY_MATCH_ORDER(['中上','中下','上','中','下'])를 |로 이어 정규식을 만들어 긴 것부터 매칭한다 — 배열 자체가 규칙이라 코드에서 다시 정렬하지 않고, 드롭다운용 표시 순서(DIFFICULTY_LEVELS: 上→下)는 별도로 export해 두 용도가 서로를 덮지 않게 했다(완료 기준 3). 제목은 빌더가 확정한 taskNo로 접두사를 떼(번호 정규식이 두 벌이 되지 않는다) 끝에 이어 붙은 괄호 덩어리만 본다 — 괄호 안에 난이도도 날짜도 없으면 떼지 않는다('촬영 가이드 (2부)'는 제목의 일부다). 마감은 YYYY-MM-DD → M/D → N월 M일 순으로 날짜 토큰만 떼어 시트 쪽 toDateString(token,{baseYear})에 넘긴다 — 날짜 파서를 새로 쓰지 않아 시트와 문서가 같은 날짜를 낸다. 연도는 코드 어디에도 리터럴로 없고(grep 확인) new Date()·Date.now()를 부르지 않는다. 추론이 실패해도 deadlineRaw는 남는다('추후 협의'·'13/45까지') — 값을 버리는 것이 가장 나쁜 실패다. 우선순위는 taskNo 조인 후 WORKLOAD_PRIORITY_MAP(P0→긴급…)으로 옮기고, 조인 실패와 표에 없는 원문(P7)은 조용히 빈칸이되 priorityRaw는 남긴다 — 드롭다운 목록 밖 값을 셀에 쓰지 않는다(ADR-021). 담당자·상태·진행률을 만들지 않고 던지지 않는다. 테스트 39건(리터럴 32 + 픽스처 7). 구현이 선행 실행분으로 이미 있어 red→green을 직접 보지 못한 대신 변이 6종(난이도 순서를 ❌원안으로·baseYear 하드코딩·추론 실패 시 deadlineRaw 버리기·표에 없는 우선순위를 셀에 쓰기·괄호 무조건 떼기·중복 last-wins)을 넣어 전부 잡히는 것을 확인했다.",
+      "completed_at": "2026-08-23T21:54:51+0900"
     },
     {
       "step": 5,
