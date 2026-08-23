@@ -69,7 +69,10 @@
       "step": 7,
       "name": "doc-pipeline",
       "commit": "feat: 독스 추출 4단계를 잇는 doc-pipeline 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-23T23:43:18+0900",
+      "summary": "runDocExtract(bytes,{baseYear,timeoutMs?}) → Promise<DocExtractOutcome> + extractFromOutline(nodes,{baseYear}) → {rows,warnings}. 네 계층의 순서를 아는 유일한 곳이고, 그래서 픽스처 테스트는 기댓값을 옮겨 적지 않고 «손으로 이어 붙인 리더→빌더→파서→매퍼»와 결과가 같은지로 잰다(값 자체는 계층별 테스트가 이미 전수로 덮는다). 「바이트→노드」를 runDocExtract에, 「노드→행」을 extractFromOutline에 갈라 둬서 마크다운 픽스처 경로가 mammoth를 건드리지 않는다(완료 기준 2의 경계). 빌더와 워크로드 파서는 같은 노드 배열을 본다 — 파서가 읽는 것은 과제가 아니라 「워크로드 공유」 절이라서다. 과제 0건은 성공이 아니라 NO_OUTLINE_TASK 중단이고, 리더가 던지면 DOCUMENT_CORRUPT로 접는다 — 아래 계층은 던지지 않기로 계약돼 있지만 그 계약이 깨져도 예외가 라우트로 새지 않게 try로 한 겹 더 감쌌다. 타임아웃은 parse-runner의 Promise+setTimeout 패턴 그대로이고 기본값은 PARSE_TIMEOUT_MS를 재사용한다(새 숫자 0개, grep 확인). 실패 문구 셋은 step 8의 api-error.ts가 그대로 옮겨 적을 단일 출처다 — 다만 PARSE_TIMEOUT은 시트 쪽과 코드가 같아도 뒷 절을 갈랐다: 「탭을 나눠 올려 주세요」는 .docx에 탭이 없어 같은 문장이 아니라 틀린 안내가 된다(사실을 말하는 앞 절은 글자까지 같다). 파일 크기·ZIP 엔트리를 재지 않고(upload-guard의 몫) 저장소를 부르지 않으며(ADR-022) 경고를 늘리지 않고 new Date()·Date.now()를 부르지 않는다. 테스트 19건. 「과제 0건」 한 갈래만 vi.mock으로 리더를 갈아 끼웠다 — 과제 없는 .docx 픽스처를 하나 더 만드는 대신 판정 자체를 쟀고, 나머지는 전부 실제 mammoth 경로다. 변이 5종(워크로드 조인 생략·0건도 성공·WORKBOOK_CORRUPT 문장 재사용·타이머 미정리·리더 실패를 다시 던지기)이 모두 잡혔다. src/lib/doc의 기존 파일은 한 줄도 고치지 않았다. lint·build·test(72파일 1213건) 통과.",
+      "completed_at": "2026-08-23T23:51:44+0900"
     },
     {
       "step": 8,
