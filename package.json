@@ -10,6 +10,7 @@
     "start": "next start",
     "lint": "eslint",
     "seed:build": "vite-node -c vitest.config.ts scripts/fixtures/build-seed-tasks.ts",
+    "fixture:docx": "node scripts/fixtures/build-sample-workload-docx.mjs",
     "test": "vitest run"
   },
   "dependencies": {
