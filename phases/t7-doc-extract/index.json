@@ -15,7 +15,10 @@
       "step": 1,
       "name": "markdown-reader",
       "commit": "feat: 마크다운 픽스처를 아웃라인으로 읽는 markdown-reader 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-23T20:59:01+0900",
+      "summary": "readMarkdownOutline(markdown) → OutlineNode[]. 리더는 문서 형식만 알고 의미를 모른다 — 제목 정규식 하나(#1~6 + 공백)로 level·text를 잡고 text는 trim만 해 번호·난이도 표기를 원문 그대로 둔다. 불릿(-·*·+·•·1.·1)·①~⑳)은 줄 맨 앞에서 한 번만 떼되 뒤에 공백을 요구해 -20%·+15%·1.5배의 부호가 살아남는다. 제목 앞 본문은 버리지 않고 level 0 서두 노드에 담고, 빈 줄은 lines에 넣지 않으며 어떤 입력에도 던지지 않는다. 테스트 28건 — 문자열 리터럴 22건 + 픽스처 6건(과제 6개 level 3, 번호 없는 절 4개, 워크로드 공유 level 2, 수식 페이로드 보존). 구현이 선행 실행분으로 이미 있어 red→green을 직접 보지 못한 대신 변이 테스트 3종으로 계약을 검증했고, 그중 '불릿 공백 요구 제거'가 살아남아 테스트 2건을 보강해 잡았다.",
+      "completed_at": "2026-08-23T21:08:18+0900"
     },
     {
       "step": 2,
