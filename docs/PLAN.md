@@ -541,9 +541,68 @@ STAGE_GROUPS : { key:'concept', label:'컨셉·레퍼런스', slaDays:2,
 
 1행 틀고정, 열너비, 헤더 굵게. `상태`·`난이도`·`우선순위`에 **데이터 검증 드롭다운** — 값은 `설정` 탭에서 읽은 `enum_options` 재사용. **이러면 뽑은 배정표를 그대로 입력해 다시 시스템에 올릴 수 있다.** 두 기능이 한 바퀴로 닫힌다. 데모의 클라이맥스다.
 
+> 위 문장의 「`설정` 탭에서 읽은 `enum_options` 재사용」은 **T7 시점에 성립하지 않는다** — 아래
+> 「T7 착수 시 확정」 결정 B를 본다. 원래 의도가 근거로 남아야 해서 문장은 지우지 않았다.
+
 **왕복 테스트**: `sample-workload.md` → rows → xlsx 버퍼 → 시트 파서로 다시 읽기 → rows 동일. 두 파이프라인을 한 번에 검증하는 가장 가치 있는 통합 테스트.
 
 **LLM은 옵션.** `ENABLE_LLM=false`가 기본. 키가 없으면 보조 필드만 빈칸이고 나머지는 그대로 동작한다. 이 경계를 넘지 않는다.
+
+#### T7 착수 시 확정 (2026-08-23)
+
+위 문단들은 T2 시점의 설계다. T7에 착수하면서 **뒤 단계 열 개가 갈라지지 않도록** 네 가지를
+못박는다. 기존 문단은 근거로 남기고 여기에 이어 붙인다.
+
+**결정 A — 우선순위는 시트 enum 값으로 옮겨 적는다.** 문서의 「워크로드 공유」 절은 우선순위를
+`P0`·`P1`로 적지만, 배정표의 `우선순위` 컬럼은 시트 `공통_우선순위` 드롭다운을 달고 나간다.
+`P0`을 그대로 쓰면 셀 값이 드롭다운 목록 밖이라 엑셀이 경고를 띄우고, 그 파일을 `/upload`에
+재업로드하면 `task-semantic.ts`의 `UNREGISTERED_PRIORITY` 경고가 뜬다. **고리가 닫히지 않는다.**
+
+| 문서 | 배정표 `우선순위` |
+|---|---|
+| `P0` | `긴급` |
+| `P1` | `높음` |
+| `P2` | `보통` |
+| `P3` | `낮음` |
+| 그 밖 · 조인 실패 | 빈칸 (경고도 내지 않는다 — `TICKETS.md` T7 「조인 실패는 무시」) |
+
+원문(`P0`)을 버리지는 않는다. 행이 `priorityRaw`로 들고 있고 배정표 셀에는 매핑된 값만 쓴다.
+결정 이력은 `ADR-021`.
+
+**결정 B — 드롭다운 목록은 `assignment-writer`가 인자로 받는다.** 위 문단의 「`설정` 탭에서 읽은
+`enum_options` 재사용」은 T7 시점에 읽을 곳이 없다 — `enum_options` 테이블은 있지만
+`TaskRepository`에 읽기 메서드가 없고, `/extract`는 시트 업로드와 무관하게 단독으로 돈다
+(`TICKETS.md`가 T7을 T2 직후에 두는 이유다). 기본값은 **코드에 이미 있는 단일 출처**에서 만든다.
+
+| 컬럼 | 기본 목록 | 출처 |
+|---|---|---|
+| `상태` | 시트 10단계 | `STATUS_SEMANTIC_MAP`의 키 순서 (`lib/domain/task-semantic.ts`) |
+| `난이도` | `上`·`中上`·`中`·`中下`·`下` | `assignment-mapper.ts`의 `DIFFICULTY_LEVELS` |
+| `우선순위` | `긴급`·`높음`·`보통`·`낮음` | `assignment-mapper.ts`의 `PRIORITY_LEVELS` (`공통_우선순위` 실측값) |
+
+**상태 문자열을 `assignment-writer.ts`에 다시 적지 않는다.** 한 글자만 달라져도
+(`게시·이관 대기`의 가운뎃점은 `·`) 재업로드에서 조용히 미매핑된다 — `ADR-009`가 상태 원문의
+출처를 한 곳으로 몰아 둔 이유가 그것이고, 배정표도 그 규칙 밖이 아니다.
+
+**결정 C — `/extract`는 아무것도 저장하지 않는다. 왕복 두 번이다.** `TICKETS.md` T7 범위 Out에
+「DB 저장」이 있으므로 `ADR-008`의 미리보기→확정 2단계를 쓰지 않는다 — 확정할 저장소가 없다.
+라우트는 둘이며 이름은 `ARCHITECTURE.md`가 이미 적어 둔 것을 그대로 쓴다.
+
+```
+POST /api/uploads/doc        .docx  → 배정표 행 미리보기(JSON). uploads 행을 만들지 않는다
+POST /api/export/assignment  행 JSON → 배정표 .xlsx 바이트 (Content-Disposition: attachment)
+```
+
+`uploads` 행을 만들지 않는 이유는 스코프만이 아니다. 그 행의 `parse_result`에 문서 본문이
+통째로 남는데 **워크로드 문서에는 사람 이름이 들어 있다** (`S6`). 결정 이력은 `ADR-022`.
+
+**결정 D — 에러 코드 2개를 추가한다.** 아래 두 코드를 `X1` 목록에 넣는다. ADR을 만들지 않는
+것은 되돌릴 수 있는 구현 선택이기 때문이다.
+
+| 코드 | 상태 | 왜 기존 코드로 안 되는가 |
+|---|---|---|
+| `DOCUMENT_CORRUPT` | 422 | `WORKBOOK_CORRUPT`의 문구는 「워크북」이다. `.docx`를 올린 사람에게 워크북이라고 말하면 무엇을 잘못했는지 알 수 없다 |
+| `NO_OUTLINE_TASK` | 422 | 「알려진 탭이 하나도 없음」(`NO_KNOWN_TAB`)과 같은 강도의 중단이다. 과제 0건짜리 배정표를 내려보내면 사람은 그게 빈 문서인지 파서 고장인지 모른다 |
 
 ### 6. 집계·판정 — `src/lib/domain/` 순수 함수
 
@@ -917,6 +976,7 @@ React가 기본 이스케이프하므로 태스크 제목·비고의 XSS 위험�
 ```
 FILE_TOO_LARGE · FILE_TYPE_MISMATCH · ARCHIVE_LIMIT_EXCEEDED · PARSE_TIMEOUT
 WORKBOOK_CORRUPT · NO_KNOWN_TAB · SETTINGS_TAB_MISSING
+DOCUMENT_CORRUPT · NO_OUTLINE_TASK
 UPLOAD_NOT_FOUND · UPLOAD_ALREADY_COMMITTED · TASK_NOT_FOUND
 STORAGE_READONLY · STORAGE_UNAVAILABLE · FORBIDDEN · VALIDATION_FAILED
 ```

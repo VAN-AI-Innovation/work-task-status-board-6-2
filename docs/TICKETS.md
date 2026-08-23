@@ -446,7 +446,7 @@ API 9종 / `/upload` 화면(드롭존·미리보기 표·경고 목록) / 미리
 LLM 보강, DB 저장, `.md` 업로드 UI (제품은 `.docx`만 받는다 — `ADR-010`)
 
 **산출물**
-`src/lib/doc/` 5개 + `src/lib/xlsx/assignment-writer.ts` + `/extract` 페이지
+`src/lib/doc/` 6개(`docx-reader`·`markdown-reader`·`outline-builder`·`workload-parser`·`assignment-mapper`·`doc-pipeline`) + `src/lib/xlsx/assignment-writer.ts` + 라우트 2개(`POST /api/uploads/doc`·`POST /api/export/assignment`) + `/extract` 페이지
 
 **완료 기준**
 

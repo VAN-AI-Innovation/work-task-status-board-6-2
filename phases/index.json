@@ -34,6 +34,10 @@
       "dir": "t6-dashboard",
       "status": "completed",
       "completed_at": "2026-08-22T04:50:12+0900"
+    },
+    {
+      "dir": "t7-doc-extract",
+      "status": "pending"
     }
   ]
 }
