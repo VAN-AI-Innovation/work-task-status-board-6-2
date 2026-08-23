@@ -100,9 +100,10 @@ export function AppSidebar() {
   return (
     <aside className="bg-panel border-line sticky top-0 flex h-screen w-14 shrink-0 flex-col border-r lg:w-[220px]">
       <div className="border-line flex h-14 shrink-0 items-center border-b px-4">
-        <span className="text-ink hidden text-sm font-semibold lg:inline">현황판</span>
+        {/* 브랜드 색이 쓰이는 유일한 「데이터 아닌」 글자다 (`ADR-020`) */}
+        <span className="text-brand hidden text-sm font-semibold lg:inline">현황판</span>
         {/* 좁은 폭에서는 로고 자리도 아이콘 하나만큼이다 */}
-        <span className="text-ink text-sm font-semibold lg:hidden">현</span>
+        <span className="text-brand text-sm font-semibold lg:hidden">현</span>
       </div>
 
       <nav aria-label="주요 화면" className="flex flex-col gap-1 p-2">
@@ -115,7 +116,9 @@ export function AppSidebar() {
               aria-current={active ? 'page' : undefined}
               title={item.label}
               className={`flex items-center gap-3 rounded px-3 py-2 text-sm ${
-                active ? 'bg-raise text-ink' : 'text-ink-muted hover:text-ink'
+                active
+                  ? 'bg-brand-soft text-brand font-medium'
+                  : 'text-ink-muted hover:text-brand'
               }`}
             >
               {item.icon}

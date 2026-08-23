@@ -37,7 +37,7 @@ export function RoleSwitch({
             href={buildHref(pathname, query, { as: item.key })}
             aria-current={active ? 'true' : undefined}
             className={`rounded-full px-3 py-1 text-xs ${
-              active ? 'bg-ink text-canvas' : 'border-line text-ink-muted hover:text-ink border'
+              active ? 'bg-brand text-canvas' : 'border-line text-ink-muted hover:text-brand border'
             }`}
           >
             {item.label}

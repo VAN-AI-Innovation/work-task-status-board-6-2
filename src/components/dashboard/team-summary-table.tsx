@@ -28,11 +28,11 @@ const COLUMNS: readonly { label: string; of: (summary: TeamSummary) => string }[
 
 export function TeamSummaryTable({ teams }: { teams: TeamSummary[] }) {
   return (
-    <section className="border-line bg-panel rounded-md border p-5">
-      <h2 className="text-ink text-sm font-semibold">팀별 현황</h2>
+    <section className="border-line bg-panel rounded-md border p-4">
+      <h2 className="text-brand text-sm font-semibold">팀별 현황</h2>
       <table className="mt-3 w-full border-collapse text-sm">
         <thead>
-          <tr className="bg-raise text-ink-muted text-xs font-medium">
+          <tr className="bg-brand-soft text-brand text-xs font-medium">
             <th className="px-3 py-2 text-left">팀</th>
             {COLUMNS.map((column) => (
               <th key={column.label} className="px-3 py-2 text-right">
@@ -43,7 +43,7 @@ export function TeamSummaryTable({ teams }: { teams: TeamSummary[] }) {
         </thead>
         <tbody>
           {teams.map((summary) => (
-            <tr key={summary.teamKey} className="border-line hover:bg-raise h-10 border-b">
+            <tr key={summary.teamKey} className="border-line hover:bg-brand-soft h-10 border-b">
               <td className="text-ink-body px-3 py-2">{teamLabel(summary.teamKey)}</td>
               {COLUMNS.map((column) => (
                 <td

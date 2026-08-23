@@ -20,7 +20,7 @@ export default function GlobalError({ reset }: { error: Error; reset: () => void
           <button
             type="button"
             onClick={reset}
-            className="bg-ink text-canvas hover:bg-ink-body rounded px-4 py-2 text-sm"
+            className="bg-brand text-canvas hover:bg-brand-strong rounded px-4 py-2 text-sm"
           >
             다시 시도
           </button>

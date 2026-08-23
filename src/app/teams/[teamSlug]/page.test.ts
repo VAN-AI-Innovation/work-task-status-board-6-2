@@ -14,7 +14,14 @@ import { buildSeedPayload } from '@/lib/upload/seed-loader';
 import type { AlertGroup } from '@/lib/view/alert-groups';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
 import type { GoalRow } from '@/lib/view/goal-view';
-import { COMPACT_KPI_KEYS, sectionsFor, type SectionKey } from '@/lib/view/role-layout';
+import {
+  COMPACT_KPI_KEYS,
+  layoutFor,
+  SECTION_ORDER,
+  sectionsFor,
+  TEAM_PAGE_LAYOUT,
+  type SectionKey,
+} from '@/lib/view/role-layout';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { ExtraCell } from '@/lib/view/extras-render';
 import type { TaskResponse } from '@/types/api';
@@ -42,6 +49,18 @@ function walk(node: unknown, visit: (element: Element) => void): void {
 
   const element = node as Element;
   visit(element);
+
+  /*
+   * **배치 래퍼는 펼쳐서 본다.** 이 순회기는 자식 컴포넌트를 렌더하지 않으므로, 섹션을
+   * `SectionGrid`가 `render` prop으로 만들어 주는 지금 구조에서는 트리에 `<SectionGrid>`
+   * 하나만 남고 그 안의 KPI·표·알림이 보이지 않는다. 순수 함수라 여기서 한 번 불러도
+   * 안전하며, 이렇게 해야 **페이지가 실제로 넘긴 props로** 그려진 결과를 검사하게 된다
+   * (`TaskPanelSlot`을 `openSlot`으로 여는 것과 같은 이유다).
+   */
+  if (typeof element.type === 'function' && (element.type as { name?: string }).name === 'SectionGrid') {
+    walk((element.type as (props: unknown) => unknown)(element.props), visit);
+  }
+
   walk(element.props?.children, visit);
 }
 
@@ -57,7 +76,17 @@ function textOf(tree: unknown): string {
       return;
     }
     if (node === null || typeof node !== 'object') return;
-    collect((node as Element).props?.children);
+
+    // `walk`과 같은 이유로 배치 래퍼는 펼쳐서 본다 — 섹션 글자가 그 안에 있다
+    const element = node as Element;
+    if (
+      typeof element.type === 'function' &&
+      (element.type as { name?: string }).name === 'SectionGrid'
+    ) {
+      collect((element.type as (props: unknown) => unknown)(element.props));
+    }
+
+    collect(element.props?.children);
   };
   collect(tree);
   return parts.join(' ');
@@ -100,14 +129,24 @@ async function idOf(teamId: string): Promise<string> {
   return task.id;
 }
 
-/** `/`와 같은 방식이다 — 페이지가 섹션을 `<Fragment key={…}>`로 감싸므로 키가 곧 순서다 */
+/** 섹션 키로 쓰이는 문자열 전부. 행 키(`kpi+charts`처럼 이어 붙인 것)와 가르는 데 쓴다 */
+const ALL_SECTION_KEYS: readonly string[] = [...SECTION_ORDER.admin, 'kpi_compact'];
+
+/** `/`와 같은 방식이다 — `SectionGrid`가 칸마다 섹션 키를 `key`로 달아 두므로 키가 곧 순서다 */
 function sectionKeys(tree: unknown): string[] {
   const keys: string[] = [];
   walk(tree, (element) => {
     const key = (element as { key?: unknown }).key;
-    if (typeof element.type === 'symbol' && typeof key === 'string') keys.push(key);
+    if (typeof key === 'string' && ALL_SECTION_KEYS.includes(key)) keys.push(key);
   });
   return keys;
+}
+
+/** `layoutFor`가 이 화면에 대해 정한 배치를 평평하게 편 것 */
+function placedKeys(role: 'admin' | 'lead' | 'member'): string[] {
+  return layoutFor(role, TEAM_PAGE_LAYOUT).flatMap((row) =>
+    row.cells.flatMap((cell) => cell.keys)
+  );
 }
 
 async function seed(): Promise<void> {
@@ -201,7 +240,7 @@ describe('/teams/[teamSlug] — 화면 구성', () => {
     const tree = await TeamPage(props('edit'));
 
     expect(findComponent(tree, 'KpiStrip')).not.toBeNull();
-    expect(findComponent(tree, 'StatusDonut')).not.toBeNull();
+    expect(findComponent(tree, 'StatusBars')).not.toBeNull();
     expect(findComponent(tree, 'TaskTable')).not.toBeNull();
     expect(findComponent(tree, 'TeamSummaryTable')).toBeNull();
     expect(findComponent(tree, 'CompletionBars')).toBeNull();
@@ -323,10 +362,14 @@ describe('/teams/[teamSlug] — 역할별 진입 화면 (완료 기준 7)', () =
     await seed();
 
     for (const role of ['admin', 'lead', 'member'] as const) {
-      // `/`가 지는 섹션도 자리(Fragment)는 그대로 있고 내용만 `null`이라 순서가 흔들리지 않는다
-      expect(sectionKeys(await TeamPage(props('edit', { as: role })))).toEqual([
-        ...sectionsFor(role),
-      ]);
+      // `/`가 지는 섹션은 `TEAM_PAGE_LAYOUT.only`가 걸러 낸다 — 자리도 남지 않는다
+      expect(sectionKeys(await TeamPage(props('edit', { as: role })))).toEqual(placedKeys(role));
+      // 걸러 내되 이 화면에 있는 섹션은 역할 순서를 그대로 따른다
+      expect(placedKeys(role).sort()).toEqual(
+        sectionsFor(role)
+          .filter((key) => SUPPORTED.includes(key))
+          .sort()
+      );
       expect(sectionsFor(role).some((key) => !SUPPORTED.includes(key))).toBe(true);
     }
   });

@@ -50,10 +50,10 @@ export function BriefingCard({ markdown, note }: { markdown: string; note: strin
   };
 
   return (
-    <section className="border-line bg-panel rounded-md border p-5">
+    <section className="border-line bg-panel rounded-md border p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-ink text-sm font-semibold">주간 브리핑</h2>
+          <h2 className="text-brand text-sm font-semibold">주간 브리핑</h2>
           <p className="text-ink-muted mt-1 text-xs">
             회의록에 그대로 붙여넣는 마크다운입니다 · 화면에는 원문 그대로 둡니다
           </p>
@@ -73,7 +73,13 @@ export function BriefingCard({ markdown, note }: { markdown: string; note: strin
         </p>
       )}
 
-      <pre className="border-line bg-canvas text-ink-body mt-3 max-h-[320px] overflow-y-auto rounded border p-3 text-xs whitespace-pre-wrap">
+      {/*
+        * 줄을 **접지 않는다**(`whitespace-pre` + 가로 스크롤). 접힌 카드가 4칸 안에서
+        * 펼쳐지므로 폭이 좁은데, 거기서 줄을 접으면 마크다운 표의 `|` 칸이 어긋나 원문이
+        * 무엇이었는지 알아볼 수 없다. 이 카드의 용도는 읽는 것이 아니라 **복사해 가는 것**이라
+        * 원문 모양을 지키는 쪽이 맞다.
+        */}
+      <pre className="border-line bg-canvas text-ink-body mt-3 max-h-[320px] overflow-auto rounded border p-3 text-xs whitespace-pre">
         {markdown}
       </pre>
 

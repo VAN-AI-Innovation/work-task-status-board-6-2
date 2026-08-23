@@ -23,7 +23,13 @@ import { buildCompletionBars, type ChartSeries } from '@/lib/view/chart-series';
 import type { GoalRow } from '@/lib/view/goal-view';
 import type { ExtraCell } from '@/lib/view/extras-render';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
-import { COMPACT_KPI_KEYS, sectionsFor } from '@/lib/view/role-layout';
+import {
+  COMPACT_KPI_KEYS,
+  DASHBOARD_LAYOUT,
+  layoutFor,
+  SECTION_ORDER,
+  sectionsFor,
+} from '@/lib/view/role-layout';
 import { sortTasks } from '@/lib/view/task-sort';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { TaskResponse } from '@/types/api';
@@ -52,6 +58,18 @@ function walk(node: unknown, visit: (element: Element) => void): void {
 
   const element = node as Element;
   visit(element);
+
+  /*
+   * **배치 래퍼는 펼쳐서 본다.** 이 순회기는 자식 컴포넌트를 렌더하지 않으므로, 섹션을
+   * `SectionGrid`가 `render` prop으로 만들어 주는 지금 구조에서는 트리에 `<SectionGrid>`
+   * 하나만 남고 그 안의 KPI·표·알림이 보이지 않는다. 순수 함수라 여기서 한 번 불러도
+   * 안전하며, 이렇게 해야 **페이지가 실제로 넘긴 props로** 그려진 결과를 검사하게 된다
+   * (`TaskPanelSlot`을 `openSlot`으로 여는 것과 같은 이유다).
+   */
+  if (typeof element.type === 'function' && (element.type as { name?: string }).name === 'SectionGrid') {
+    walk((element.type as (props: unknown) => unknown)(element.props), visit);
+  }
+
   walk(element.props?.children, visit);
 }
 
@@ -67,7 +85,17 @@ function textOf(tree: unknown): string {
       return;
     }
     if (node === null || typeof node !== 'object') return;
-    collect((node as Element).props?.children);
+
+    // `walk`과 같은 이유로 배치 래퍼는 펼쳐서 본다 — 섹션 글자가 그 안에 있다
+    const element = node as Element;
+    if (
+      typeof element.type === 'function' &&
+      (element.type as { name?: string }).name === 'SectionGrid'
+    ) {
+      collect((element.type as (props: unknown) => unknown)(element.props));
+    }
+
+    collect(element.props?.children);
   };
   collect(tree);
   return parts.join(' ');
@@ -125,18 +153,29 @@ function emptyHandle(overrides: Partial<StorageHandle> = {}): StorageHandle {
   };
 }
 
+/** 섹션 키로 쓰이는 문자열 전부. 행 키(`kpi+charts`처럼 이어 붙인 것)와 가르는 데 쓴다 */
+const ALL_SECTION_KEYS: readonly string[] = [...SECTION_ORDER.admin, 'kpi_compact'];
+
 /**
- * 화면이 실제로 그린 **섹션 순서**. 페이지가 `sectionsFor`의 배열을 `<Fragment key={…}>`로
- * 감싸므로 그 키를 순서대로 모으면 된다 — 컴포넌트 이름으로 찾으면 「그렸다」만 알 수 있고
- * 「몇 번째냐」를 알 수 없는데, 완료 기준 7이 묻는 것은 **맨 위에 오는 것**이다.
+ * 화면이 실제로 그린 **섹션 순서**. 페이지가 `layoutFor`의 행을 12열 그리드로 깔면서 칸마다
+ * 섹션 키를 `key`로 달아 두므로 그 키를 순서대로 모으면 된다 (`ADR-019`) — 컴포넌트 이름으로
+ * 찾으면 「그렸다」만 알 수 있고 「몇 번째냐」를 알 수 없는데, 완료 기준 7이 묻는 것은
+ * **맨 위에 오는 것**이다.
  */
 function sectionKeys(tree: unknown): string[] {
   const keys: string[] = [];
   walk(tree, (element) => {
     const key = (element as { key?: unknown }).key;
-    if (typeof element.type === 'symbol' && typeof key === 'string') keys.push(key);
+    if (typeof key === 'string' && ALL_SECTION_KEYS.includes(key)) keys.push(key);
   });
   return keys;
+}
+
+/** `layoutFor`가 정한 배치를 평평하게 편 것. 화면이 그려야 할 순서다 */
+function placedKeys(role: 'admin' | 'lead' | 'member'): string[] {
+  return layoutFor(role, DASHBOARD_LAYOUT).flatMap((row) =>
+    row.cells.flatMap((cell) => cell.keys)
+  );
 }
 
 async function seed(): Promise<void> {
@@ -267,10 +306,10 @@ describe('/ — 차트 (T6 범위 In「Chart.js 도넛·바」)', () => {
    * 차트가 지는 위험은 「그림이 안 예쁘다」가 아니라 **「표와 다른 숫자를 말한다」**다.
    * 그래서 조각 합이 조회 건수와 같은지, 막대가 팀 요약표와 같은 값인지를 단언한다.
    */
-  it('도넛 조각의 합이 조회된 업무 수와 같다 — 「무엇의 100%인가」가 성립한다', async () => {
+  it('막대 값의 합이 조회된 업무 수와 같다 — 「무엇의 100%인가」가 성립한다', async () => {
     await seed();
 
-    const series = findComponent(await Home(props()), 'StatusDonut')?.props
+    const series = findComponent(await Home(props()), 'StatusBars')?.props
       ?.series as ChartSeries;
     const tasks = await handle.repo.listTasks();
 
@@ -304,13 +343,13 @@ describe('/ — 차트 (T6 범위 In「Chart.js 도넛·바」)', () => {
     expect(chart?.props?.unmeasurable).toEqual(['shoot', 'marketing']);
   });
 
-  it('업무 배열 전량을 클라이언트 컴포넌트에 넘기지 않는다', async () => {
+  it('업무 배열 전량을 차트 컴포넌트에 넘기지 않는다', async () => {
     await seed();
 
-    const donut = findComponent(await Home(props()), 'StatusDonut');
+    const bars = findComponent(await Home(props()), 'StatusBars');
 
-    expect(Object.keys(donut?.props ?? {})).toEqual(['series']);
-    expect(Object.keys((donut?.props?.series ?? {}) as object).sort()).toEqual([
+    expect(Object.keys(bars?.props ?? {})).toEqual(['series']);
+    expect(Object.keys((bars?.props?.series ?? {}) as object).sort()).toEqual([
       'colors',
       'labels',
       'values',
@@ -638,11 +677,22 @@ describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
     expect(await first('member')).toBe('tasks');
   });
 
-  it('그린 순서가 `sectionsFor`가 정한 그대로다 — 화면이 표를 다시 짜지 않는다', async () => {
+  it('그린 순서가 `layoutFor`가 정한 그대로다 — 화면이 표를 다시 짜지 않는다', async () => {
     await seed();
 
     for (const role of ['admin', 'lead', 'member'] as const) {
-      expect(sectionKeys(await Home(props({ as: role })))).toEqual([...sectionsFor(role)]);
+      expect(sectionKeys(await Home(props({ as: role })))).toEqual(placedKeys(role));
+    }
+  });
+
+  /** 배치는 zone으로 묶을 뿐 섹션을 버리지 않는다 — 버리는 것은 권한이고 권한은 T8이다 */
+  it('배치를 거쳐도 역할이 가진 섹션이 그대로 다 나온다', async () => {
+    await seed();
+
+    for (const role of ['admin', 'lead', 'member'] as const) {
+      expect(sectionKeys(await Home(props({ as: role }))).sort()).toEqual(
+        [...sectionsFor(role)].sort()
+      );
     }
   });
 
@@ -661,7 +711,7 @@ describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
   it('`?as=` 없이 들어가면 가장 좁은 `member` 화면이다', async () => {
     await seed();
 
-    expect(sectionKeys(await Home(props()))).toEqual([...sectionsFor('member')]);
+    expect(sectionKeys(await Home(props()))).toEqual(placedKeys('member'));
   });
 
   it('`member`의 KPI는 축약 3칸이고, 그 값은 10칸에서 골라 온 것이다', async () => {

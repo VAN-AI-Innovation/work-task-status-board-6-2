@@ -247,10 +247,10 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
               type="button"
               onClick={() => void commit()}
               disabled={readOnly || stage !== 'previewing'}
-              className={`rounded bg-ink text-canvas px-4 py-2 text-sm ${
+              className={`rounded bg-brand text-canvas px-4 py-2 text-sm ${
                 readOnly || stage !== 'previewing'
                   ? 'cursor-not-allowed opacity-50'
-                  : 'hover:bg-ink-body'
+                  : 'hover:bg-brand-strong'
               }`}
             >
               확정하기
@@ -283,7 +283,7 @@ export function SheetUploadPanel({ readOnly, mode }: { readOnly: boolean; mode: 
             {/* 자동으로 옮기지 않는다 — 사용자가 숫자를 읽을 시간을 뺏는다 */}
             <Link
               href="/"
-              className="rounded bg-ink text-canvas px-4 py-2 text-sm hover:bg-ink-body"
+              className="rounded bg-brand text-canvas px-4 py-2 text-sm hover:bg-brand-strong"
             >
               현황판으로 가기
             </Link>

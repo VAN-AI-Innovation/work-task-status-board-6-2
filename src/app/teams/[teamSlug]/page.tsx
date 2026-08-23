@@ -1,7 +1,7 @@
 /**
  * 부서별 탭 (`/teams/[teamSlug]`). 과제 원문의 「각 부서마다 new tabs」를 라우트로 충족한다.
  *
- * **새로 만든 것은 슬러그 변환 하나뿐이다.** KPI·도넛·필터 바·업무 표는 전부 대시보드와 같은
+ * **새로 만든 것은 슬러그 변환 하나뿐이다.** KPI·상태 분포·필터 바·업무 표는 전부 대시보드와 같은
  * 컴포넌트이고, 데이터도 같은 경로(`getStorage` → `buildReadContext` → `lib/domain`)로 읽는다.
  * 팀 화면 전용 컴포넌트를 만들면 같은 숫자를 두 곳에서 세게 되고 그때 둘이 갈라진다.
  *
@@ -30,13 +30,14 @@
 
 import { notFound } from 'next/navigation';
 
-import { Fragment, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { AlertPanel } from '@/components/alerts/alert-panel';
-import { StatusDonut } from '@/components/charts/status-donut';
+import { StatusBars } from '@/components/charts/status-bars';
 import { KpiStrip } from '@/components/dashboard/kpi-strip';
 import { GoalSection } from '@/components/goals/goal-section';
 import { PageShell } from '@/components/shell/page-shell';
+import { SectionGrid } from '@/components/shell/section-grid';
 import { EmptyState } from '@/components/tasks/empty-state';
 import { FilterBar } from '@/components/tasks/filter-bar';
 import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
@@ -48,7 +49,7 @@ import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip } from '@/lib/domain/progress-stats';
 import { getStorage } from '@/lib/store/store-factory';
 import { groupAlerts } from '@/lib/view/alert-groups';
-import { buildStatusDonut } from '@/lib/view/chart-series';
+import { buildStatusBreakdown, toStatusSeries } from '@/lib/view/chart-series';
 import {
   applyDisplayFilter,
   buildHref,
@@ -58,13 +59,19 @@ import {
   toURLSearchParams,
 } from '@/lib/view/dashboard-query';
 import { toGoalRows } from '@/lib/view/goal-view';
-import { COMPACT_KPI_KEYS, sectionsFor, type SectionKey } from '@/lib/view/role-layout';
+import {
+  COMPACT_KPI_KEYS,
+  layoutFor,
+  TEAM_PAGE_LAYOUT,
+  type SectionKey,
+} from '@/lib/view/role-layout';
 import { sortTasks } from '@/lib/view/task-sort';
 import { describeSync } from '@/lib/view/sync-freshness';
 import { teamLabel, toTeamKey, toTeamSlug } from '@/lib/view/team-slug';
 
 /** `/`와 같은 이유다 — 건수도 저장소 연결 여부도 빌드 시각이 아니라 요청 시각의 사실이다 */
 export const dynamic = 'force-dynamic';
+
 
 export default async function TeamPage({ params, searchParams }: PageProps<'/teams/[teamSlug]'>) {
   // Next 16에서 `params`·`searchParams`는 **둘 다** Promise다
@@ -129,18 +136,22 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
         );
 
       case 'charts':
+        /*
+         * 대시보드와 같은 가로 막대다 (`ADR-019`). 이 화면에서는 **알림 오른쪽 칸**에
+         * 목표 대비 성과와 함께 세로로 선다.
+         */
         return (
-          <div className="grid grid-cols-12 gap-6">
-            <section className="border-line bg-panel col-span-5 rounded-md border p-5">
-              <h2 className="text-ink text-sm font-semibold">상태 분포</h2>
-              <p className="text-ink-muted mt-1 text-xs">
-                지연이 다른 상태를 덮어쓴다 · 「기타」는 보류·취소·미등록
-              </p>
-              <div className="mt-3">
-                <StatusDonut series={buildStatusDonut(listed)} />
-              </div>
-            </section>
-          </div>
+          <section className="border-line bg-panel flex h-full flex-col rounded-md border p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="text-brand text-sm font-semibold">상태 분포</h2>
+              <span className="text-ink-muted text-xs tabular-nums">전체 {listed.length}건</span>
+            </div>
+            <p className="text-ink-muted mt-1 text-xs">지연이 다른 상태를 덮어쓴다</p>
+            {/* 차트 높이가 확정이라 여기서 늘이지 않는다 (`status-bars.tsx` 머리말) */}
+            <div className="mt-3">
+              <StatusBars series={toStatusSeries(buildStatusBreakdown(listed))} />
+            </div>
+          </section>
         );
 
       case 'goals':
@@ -163,8 +174,8 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
 
       case 'tasks':
         return (
-          <section className="border-line bg-panel rounded-md border p-5">
-            <h2 className="text-ink text-sm font-semibold">업무</h2>
+          <section className="border-line bg-panel rounded-md border p-4">
+            <h2 className="text-brand text-sm font-semibold">업무</h2>
             {needsOwnerHint && (
               <p className="text-ink-muted mt-1 text-xs">
                 담당자를 지정하면 내 업무만 볼 수 있습니다 — 아래 「담당자」 칸에 이름을 넣고
@@ -205,8 +216,13 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
           </section>
         );
 
-      // `/`가 지는 섹션들 (머리말)
+      /*
+       * `TEAM_PAGE_LAYOUT.only`가 이미 걸러 내므로 여기까지 오지 않는다. 그래도 남겨 두는 것은
+       * `SectionKey`가 늘어날 때 **여기서 타입 에러가 나야** 새 섹션을 이 화면에 둘지
+       * 결정하게 되기 때문이다 — 조용히 빠지면 아무도 그 결정을 하지 않는다.
+       */
       case 'teams':
+      case 'completion':
       case 'approvals':
       case 'briefing':
         return null;
@@ -221,12 +237,15 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
       role={read.role}
       query={query}
     >
-      <h1 className="text-ink text-xl font-semibold">{teamLabel(teamKey)}</h1>
+      <h1 className="text-brand text-xl font-semibold">{teamLabel(teamKey)}</h1>
 
-      <div className="mt-6 space-y-6">
-        {sectionsFor(read.role).map((key) => (
-          <Fragment key={key}>{renderSection(key)}</Fragment>
-        ))}
+      <div className="mt-4">
+        <SectionGrid
+          rows={layoutFor(read.role, TEAM_PAGE_LAYOUT)}
+          render={renderSection}
+          /* 접힌 줄에도 건수가 남는다 — 접힌 것과 비어 있는 것이 같아 보이면 안 된다 */
+          hint={() => `지표 ${goalRows.length}개`}
+        />
       </div>
     </PageShell>
   );

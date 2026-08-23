@@ -31,8 +31,9 @@ const ROW_ACCENT = 'border-l-[3px] border-l-late-line';
  * **칸마다의 결정이 여기 한 줄씩 모여 있다** — 배지 클래스와 행 클래스가 같은 자리에 있어야
  * 「이 칸은 색을 갖는가」를 표 하나로 대조할 수 있다.
  *
- * 다크에서 명도 방향이 뒤집혀 「진행」이 반전 배지(`bg-ink text-canvas`)다. 어두운 배경 위에서
- * 가장 눈에 띄는 무채색은 가장 진한 것이 아니라 **가장 밝은 것**이다 (`UI_GUIDE.md`).
+ * **이 표는 색이 아니라 의미로 적혀 있다** — `bg-ink`는 「가장 진한 것」, `bg-raise`는 「배경에
+ * 가장 가까운 것」이라는 뜻이다. 그래서 톤이 라이트↔다크로 뒤집혀도 여기는 고칠 것이 없고,
+ * 실제로 두 번의 전환에서 한 글자도 바뀌지 않았다 (`ADR-018`).
  */
 const STYLES: Readonly<Record<DisplayStatus, { badge: string; row: string }>> = {
   planned: { badge: 'bg-raise text-ink-muted', row: '' },
@@ -45,7 +46,7 @@ const STYLES: Readonly<Record<DisplayStatus, { badge: string; row: string }>> = 
 
 /**
  * 라벨을 표에 적어 두지 않고 도메인에서 끌어온다. 손으로 적으면 언젠가 한쪽만 고치고,
- * 그날부터 배지와 도넛이 같은 칸을 다른 말로 부른다.
+ * 그날부터 배지와 상태 분포 막대가 같은 칸을 다른 말로 부른다.
  */
 export const STATUS_BADGES: Readonly<Record<DisplayStatus, BadgeStyle>> = Object.freeze(
   Object.fromEntries(

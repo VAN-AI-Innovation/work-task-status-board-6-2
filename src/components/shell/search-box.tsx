@@ -40,7 +40,7 @@ export function SearchBox({ pathname, query }: { pathname: string; query: Dashbo
         type="search"
         defaultValue={query.search ?? ''}
         placeholder="업무명·담당자 검색 후 Enter"
-        className="border-line bg-canvas text-ink placeholder:text-ink-faint focus:border-ink w-full max-w-[420px] rounded border px-3 py-1.5 text-sm focus:outline-none"
+        className="border-line bg-canvas text-ink placeholder:text-ink-faint focus:border-brand w-full max-w-[420px] rounded border px-3 py-1.5 text-sm focus:outline-none"
       />
     </form>
   );
