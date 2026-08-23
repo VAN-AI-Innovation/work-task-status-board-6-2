@@ -1,0 +1,76 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t7-doc-extract",
+  "steps": [
+    {
+      "step": 0,
+      "name": "doc-decisions",
+      "commit": "docs: 독스 추출 경로 결정과 워크로드 픽스처 반영",
+      "status": "completed",
+      "started_at": "2026-08-23T20:19:32+0900",
+      "summary": "T7 결정 4건을 문서에 확정: PLAN.md「T7 착수 시 확정」 소절(A 우선순위 P0→긴급 매핑 · B 드롭다운 목록은 assignment-writer 인자 · C /extract 무저장 2라우트 · D 에러 코드 2개), ADR-021·ADR-022 신설, ARCHITECTURE.md에 DOCUMENT_CORRUPT·NO_OUTLINE_TASK와 doc-pipeline 반영, TICKETS.md T7 산출물 갱신(완료 기준 6개 불변). 계층 4개가 주고받는 src/types/doc.ts(OutlineNode·OutlineTask·WorkloadEntry·AssignmentRow) 신설, 익명화 픽스처 sample-workload.md 작성 — 난이도 5종·마감 3갈래·번호 없는 절 4개·수식 주입 페이로드 6종(=·+·-·@·탭·개행)·조인 실패용 9-9 포함.",
+      "completed_at": "2026-08-23T20:58:30+0900"
+    },
+    {
+      "step": 1,
+      "name": "markdown-reader",
+      "commit": "feat: 마크다운 픽스처를 아웃라인으로 읽는 markdown-reader 추가",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "outline-builder",
+      "commit": "feat: 번호 접두사로 과제를 고르는 outline-builder 추가",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "workload-parser",
+      "commit": "feat: 워크로드 공유 절의 우선순위 블록 파서 추가",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "assignment-mapper",
+      "commit": "feat: 난이도·마감·우선순위를 배정표 행으로 만드는 assignment-mapper 추가",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "assignment-writer",
+      "commit": "feat: 드롭다운과 수식 주입 방어를 갖춘 배정표 xlsx 생성기 추가",
+      "status": "pending"
+    },
+    {
+      "step": 6,
+      "name": "docx-reader",
+      "commit": "feat: mammoth로 docx를 같은 아웃라인으로 읽는 docx-reader 추가",
+      "status": "pending"
+    },
+    {
+      "step": 7,
+      "name": "doc-pipeline",
+      "commit": "feat: 독스 추출 4단계를 잇는 doc-pipeline 추가",
+      "status": "pending"
+    },
+    {
+      "step": 8,
+      "name": "extract-api",
+      "commit": "feat: 독스 업로드와 배정표 내려받기 API 라우트 추가",
+      "status": "pending"
+    },
+    {
+      "step": 9,
+      "name": "extract-page",
+      "commit": "feat: 독스 추출 화면과 배정표 미리보기 추가",
+      "status": "pending"
+    },
+    {
+      "step": 10,
+      "name": "t7-audit",
+      "commit": "docs: T7 완료 기준 전수 검증과 문서 갱신",
+      "status": "pending"
+    }
+  ],
+  "created_at": "2026-08-23T20:19:32+0900"
+}
