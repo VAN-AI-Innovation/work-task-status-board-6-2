@@ -10,6 +10,17 @@
  * 0건 묶음은 **한 줄**이다. 「해당 없음」을 아래 줄에 따로 두면 묶음 다섯이 열 줄이 되어,
  * 아무 문제가 없는 날 이 패널이 화면에서 가장 큰 카드가 된다.
  *
+ * ## 묶음은 한 번에 하나만 펼친다
+ *
+ * 항목을 전부 펼쳐 두면 이 카드가 옆 카드보다 길어져 요약이 첫 화면 밖으로 밀린다. 그래서
+ * 기본은 **묶음 제목 줄만** 보이고, 누른 묶음의 목록이 열리면서 앞서 열려 있던 묶음이 닫힌다.
+ * `<details name>`의 배타 동작이라 **JS가 없다** — 이 패널이 서버 컴포넌트로 남아야 하기
+ * 때문이다. `titleOf`·`hrefOf`는 서버가 만들어 넘기는 함수라 클라이언트 컴포넌트로는
+ * 건너갈 수 없고, 그것을 없애려면 업무 배열을 통째로 내려보내야 한다 (`S6`).
+ *
+ * **0건 묶음은 펼쳐지지 않는다.** 눌러서 빈 상자가 열리면 목록이 비었는지 화면이 고장 났는지
+ * 알 수 없다. 그 줄은 접히지 않는 제목 줄로 남는다 — 건수는 접힌 채로도 보인다.
+ *
  * 종류는 **한글 라벨로 구분한다.** 아이콘을 쓰지 않는다 (`UI_GUIDE.md`「아이콘」).
  *
  * 업무명은 `titleOf`가 붙인다 — `Alert`에는 이름이 없고, 그것이 의도다 (`S6`). 서버가
@@ -42,7 +53,7 @@ export function AlertPanel({
       <div className="flex flex-wrap items-baseline gap-x-2">
         <h2 className="text-brand text-sm font-semibold">알림</h2>
         <p className="text-ink-muted text-xs">
-          0건이어도 묶음은 남는다 · 누르면 상세가 열린다
+          0건이어도 묶음은 남는다 · 묶음을 누르면 목록이 열린다
         </p>
       </div>
 
@@ -61,24 +72,60 @@ export function AlertPanel({
         * 패딩을 주면 글자 위치는 그대로면서 배경이 잘릴 자리가 사라진다.
         */}
       <div className="mt-3 -mx-2 max-h-[360px] flex-1 overflow-y-auto px-2 @2xl:columns-2 @2xl:gap-x-6">
-        {groups.map((group) => (
-          <div key={group.kind} className="mb-3 break-inside-avoid last:mb-0">
-            {/*
-              * 묶음 제목은 **바탕을 깔아** 항목과 가른다. 밑줄 한 줄로는 부족했다 — 제목이
-              * `text-xs`고 항목이 `text-sm`이라 오히려 항목이 더 커 보였고, 「마감 임박」이
-              * 업무 이름인지 묶음 이름인지 한눈에 안 갈렸다. 항목의 hover 배경(옅은 남색)과
-              * 다른 색(회색)이라 둘이 섞이지도 않는다.
-              */}
-            <div className="bg-raise -mx-2 flex items-baseline justify-between gap-2 rounded px-2 py-1">
-              <span className="text-ink text-xs font-semibold">{group.label}</span>
-              <span className="flex items-baseline gap-1.5 text-xs">
-                {/* 0건에도 「해당 없음」을 남긴다 (`PLAN.md`「사용자 여정」12) — 다만 같은 줄이다 */}
-                {group.items.length === 0 && <span className="text-ink-faint">해당 없음</span>}
-                <span className="text-ink-muted tabular-nums">{group.items.length}건</span>
-              </span>
-            </div>
+        {groups.map((group) => {
+          const empty = group.items.length === 0;
 
-            {group.items.length > 0 && (
+          /*
+           * 제목 줄의 내용. **바탕을 깔아** 항목과 가른다 — 밑줄 한 줄로는 부족했다. 제목이
+           * `text-xs`고 항목이 `text-sm`이라 오히려 항목이 더 커 보였고, 「마감 임박」이
+           * 업무 이름인지 묶음 이름인지 한눈에 안 갈렸다. 항목의 hover 배경(옅은 남색)과
+           * 다른 색(회색)이라 둘이 섞이지도 않는다.
+           */
+          const head = (
+            <>
+              <span className="text-ink text-xs font-semibold">{group.label}</span>
+              <span className="flex items-center gap-1.5 text-xs">
+                {/* 0건에도 「해당 없음」을 남긴다 (`PLAN.md`「사용자 여정」12) — 다만 같은 줄이다 */}
+                {empty && <span className="text-ink-faint">해당 없음</span>}
+                <span className="text-ink-muted tabular-nums">{group.items.length}건</span>
+                {/* 펼칠 수 있는 줄에만 화살표가 있다. 눕히면 아래를 본다 */}
+                <span
+                  className={
+                    empty
+                      ? 'text-ink-faint/40'
+                      : 'text-ink-faint group-open/ag:text-brand inline-block group-open/ag:rotate-90'
+                  }
+                >
+                  <RowChevron />
+                </span>
+              </span>
+            </>
+          );
+
+          const HEAD_CLASS =
+            'bg-raise -mx-2 flex items-center justify-between gap-2 rounded px-2 py-1.5';
+
+          return empty ? (
+            // 펼칠 것이 없으면 `<details>`로 만들지 않는다 — 눌러서 빈 상자가 열리면 안 된다
+            <div key={group.kind} className={`${HEAD_CLASS} mb-1.5 last:mb-0`}>
+              {head}
+            </div>
+          ) : (
+            /*
+             * `name`이 같은 `<details>`는 **한 번에 하나만 열린다.** 다른 묶음을 누르면
+             * 브라우저가 앞엣것을 닫아 주므로 이 컴포넌트가 열린 묶음을 기억하지 않는다.
+             */
+            <details
+              key={group.kind}
+              name="alert-group"
+              className="group/ag mb-1.5 break-inside-avoid last:mb-0"
+            >
+              <summary
+                className={`${HEAD_CLASS} hover:bg-brand-soft group-open/ag:bg-brand-soft cursor-pointer list-none`}
+              >
+                {head}
+              </summary>
+
               <ul className="mt-1 space-y-0.5">
                 {group.items.map((alert) => (
                   <li key={`${alert.taskId}:${alert.stageKey ?? ''}`}>
@@ -107,9 +154,9 @@ export function AlertPanel({
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
-        ))}
+            </details>
+          );
+        })}
       </div>
     </section>
   );
