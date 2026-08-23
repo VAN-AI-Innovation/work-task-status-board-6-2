@@ -267,7 +267,8 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
                 전체 {listed.length}건
               </span>
             </div>
-            <div className="mt-3 flex flex-1 flex-col">
+            {/* 차트 높이가 확정이라 여기서 늘이지 않는다 — 남는 세로는 카드가 그냥 둔다 */}
+            <div className="mt-3">
               <StatusBars series={toStatusSeries(buildStatusBreakdown(listed))} />
             </div>
           </section>

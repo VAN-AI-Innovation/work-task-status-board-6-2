@@ -138,7 +138,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
       case 'charts':
         /*
          * 대시보드와 같은 가로 막대다 (`ADR-019`). 이 화면에서는 **알림 오른쪽 칸**에
-         * 목표 대비 성과와 함께 세로로 서서 알림 높이를 함께 채운다.
+         * 목표 대비 성과와 함께 세로로 선다.
          */
         return (
           <section className="border-line bg-panel flex h-full flex-col rounded-md border p-4">
@@ -147,7 +147,8 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
               <span className="text-ink-muted text-xs tabular-nums">전체 {listed.length}건</span>
             </div>
             <p className="text-ink-muted mt-1 text-xs">지연이 다른 상태를 덮어쓴다</p>
-            <div className="mt-3 flex flex-1 flex-col">
+            {/* 차트 높이가 확정이라 여기서 늘이지 않는다 (`status-bars.tsx` 머리말) */}
+            <div className="mt-3">
               <StatusBars series={toStatusSeries(buildStatusBreakdown(listed))} />
             </div>
           </section>
