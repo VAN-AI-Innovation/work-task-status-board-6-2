@@ -46,6 +46,26 @@ const TASK_NO = /^(\d+-\d+)(?:[.)]|(?=\s|$))\s*/;
  */
 export const WORKLOAD_SECTION_PATTERN = /워크로드\s*공유/;
 
+/**
+ * 제목 노드 하나가 거느리는 본문 노드들. 범위는 **그 제목 다음부터 같거나 더 얕은
+ * 다음 제목 직전까지**이고 제목 노드 자신은 포함하지 않는다.
+ *
+ * 이 규칙이 두 파일에 필요하다 — 여기서는 「워크로드 공유」 절을 **건너뛰려고**,
+ * `workload-parser`에서는 같은 절만 **읽으려고** 쓴다. 규칙이 두 벌이 되면 절이 두
+ * 파서 모두에서 사라지거나 두 번 읽힌다. 그래서 여기 하나만 두고 그쪽이 import한다.
+ */
+export function sectionBody(nodes: readonly OutlineNode[], headingIndex: number): OutlineNode[] {
+  const level = nodes[headingIndex].level;
+  const body: OutlineNode[] = [];
+
+  for (let i = headingIndex + 1; i < nodes.length; i += 1) {
+    if (nodes[i].level <= level) break;
+    body.push(nodes[i]);
+  }
+
+  return body;
+}
+
 export function buildOutline(nodes: readonly OutlineNode[]): OutlineBuildResult {
   const tasks: OutlineTask[] = [];
   const warnings: string[] = [];
@@ -53,20 +73,14 @@ export function buildOutline(nodes: readonly OutlineNode[]): OutlineBuildResult 
 
   let category: string | null = null;
   let current: OutlineTask | null = null;
-  /** 「워크로드 공유」 절이 열려 있는 동안의 그 제목 level. 닫혀 있으면 null */
-  let workloadLevel: number | null = null;
 
-  for (const node of nodes) {
-    if (workloadLevel !== null) {
-      // 절의 끝은 「같거나 더 얕은 level의 다음 제목 직전」이다.
-      if (node.level <= workloadLevel) workloadLevel = null;
-      else continue;
-    }
+  for (let i = 0; i < nodes.length; i += 1) {
+    const node = nodes[i];
 
     // 워크로드 절 판별이 대분류·과제보다 먼저다 — 「5. 워크로드 공유」처럼 번호가 붙어
-    // 있으면 대분류로도 읽히기 때문이다.
+    // 있으면 대분류로도 읽히기 때문이다. 절 전체를 통째로 건너뛴다.
     if (node.level > 0 && WORKLOAD_SECTION_PATTERN.test(node.text)) {
-      workloadLevel = node.level;
+      i += sectionBody(nodes, i).length;
       current = null;
       continue;
     }
