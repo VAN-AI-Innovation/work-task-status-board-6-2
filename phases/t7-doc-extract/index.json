@@ -33,7 +33,10 @@
       "step": 3,
       "name": "workload-parser",
       "commit": "feat: 워크로드 공유 절의 우선순위 블록 파서 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-23T21:15:28+0900",
+      "summary": "parseWorkloadPriorities(nodes) → WorkloadEntry[]. 「워크로드 공유」 절만 따로 읽어 taskNo → 우선순위 대응표만 만든다 — 과제·세부항목을 만들지 않고 OutlineTask를 몰라 조인도 하지 않는다. 절 판별 정규식(WORKLOAD_SECTION_PATTERN)에 더해 **절 범위 규칙도 outline-builder가 소유**하도록 sectionBody(nodes, headingIndex)를 거기서 export해 공유했다 — 같은 규칙을 한쪽은 건너뛰는 데, 한쪽은 읽는 데 쓰므로 두 벌이 되면 절이 두 파서 모두에서 사라지거나 두 번 읽힌다. outline-builder는 workloadLevel 상태 추적을 이 헬퍼 호출로 바꿨고 기존 37건 그대로 통과. 스캔은 절 제목의 lines + 본문 노드의 text·lines를 문서 순서로 이은 줄 목록이고, /\\bP([0-9])\\b/i 토큰이 나오면 현재 우선순위가 바뀌어 다음 토큰까지 이어진다. 토큰 전의 번호는 담지 않고, 중복은 처음 것이 이기며(문서 위쪽이 더 강하다), 9-9 같은 없는 번호도 그대로 담는다(조인 실패 판단은 step 4). p0도 인식하되 priorityRaw는 `P0`으로 정규화한다 — 원문 대소문자를 넘기면 매핑에서 조용히 조인 실패가 된다. 시트 enum 값(긴급…)으로 바꾸지 않고, 던지지도 경고하지도 않는다. 테스트 20건(리터럴 18 + 픽스처 2), 변이 5종(중복 last-wins·절 범위 무시·대소문자 정규화 제거·토큰 전 번호 수집·\\b 제거)이 모두 잡혔다.",
+      "completed_at": "2026-08-23T21:22:33+0900"
     },
     {
       "step": 4,
