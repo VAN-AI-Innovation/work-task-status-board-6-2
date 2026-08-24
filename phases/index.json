@@ -37,7 +37,8 @@
     },
     {
       "dir": "t7-doc-extract",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-08-24T09:02:33+0900"
     }
   ]
 }
