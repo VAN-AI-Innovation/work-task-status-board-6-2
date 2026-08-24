@@ -15,12 +15,14 @@ import { defineConfig } from 'vitest/config';
 // 게이트에서 막힌다. 자격증명을 주지 않으면 스위트가 스스로 `it.skip`으로 흔적을 남기므로
 // 「조용히 0건 통과」가 되지 않는다.
 //
-// ⚠ **실측(T7 step 10): 아래 `process.env` 대입은 테스트 워커에 전달되지 않는다.**
-// Vitest 3.2.7의 워커에서 `process.env.NEXT_PUBLIC_SUPABASE_URL`을 찍으면 비어 있어서,
-// `SKIP_LIVE_DB` 값과 **무관하게** 계약 스위트가 늘 `it.skip`으로 접힌다. 라이브로 붙이려면
-// 셸에서 직접 export해야 한다 (`set -a; . ./.env.local; set +a`). 그러면 이슈 #20이 재현된다.
-// 전달을 고치는 것은 이슈 #20을 함께 다뤄야 하는 일이라 여기서 하지 않았다 —
-// 근거와 남은 일은 `docs/TICKETS.md` T7「감사에서 발견했으나 고치지 않은 것」.
+// **기본값은 「돈다」다.** 실측(2026-08-24, 깨끗한 셸):
+//   `npx vitest run src/lib/store/supabase-task-store.test.ts`        → 43건 중 10건 실패(라이브)
+//   `SKIP_LIVE_DB=1 npx vitest run …supabase-task-store.test.ts`      → 23건, 계약 스위트 skip
+// 즉 아래 `process.env` 대입은 워커에 정상 전달된다.
+//
+// ⚠ **재는 셸에 `SKIP_LIVE_DB`가 남아 있는지 먼저 확인하라.** 하네스를 `SKIP_LIVE_DB=1`로
+// 돌리면 그 자식 세션이 값을 물려받아, 「스위치 없이 돌렸다」고 믿으면서 실제로는 켠 채로
+// 재게 된다. T7 감사에서 실제로 그렇게 재어 「스위치가 무의미하다」는 잘못된 결론이 났다.
 const env = process.env.SKIP_LIVE_DB === '1' ? {} : loadEnv('', process.cwd(), '');
 for (const name of [
   'NEXT_PUBLIC_SUPABASE_URL',
