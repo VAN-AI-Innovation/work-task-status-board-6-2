@@ -161,6 +161,7 @@ export async function buildAssignmentWorkbook(
     cell.value = sanitizeCellText(column.header);
     cell.numFmt = TEXT_FORMAT;
     cell.font = { bold: true };
+    cell.alignment = { vertical: 'middle' };
   });
 
   rows.forEach((row, rowIndex) => {
@@ -175,6 +176,20 @@ export async function buildAssignmentWorkbook(
       // 실수로도 수식이 나가지 않는다.
       cell.value = text === '' ? null : text;
       cell.numFmt = column.numFmt ?? TEXT_FORMAT;
+
+      /*
+       * **줄바꿈을 켠다.** 엑셀은 셀이 넘치면 오른쪽 칸이 비어 있는 동안 그 위로 글자를
+       * 흘려 보낸다 — 배정표는 담당자·상태·비고가 **빈 채로** 나가는 파일이라, 세부항목 한
+       * 줄이 표 절반을 가로질러 어느 칸의 값인지 알 수 없게 된다.
+       *
+       * 켜면 부수 효과가 하나 더 따라온다: 세부항목을 개행으로 이어 담았는데(`\n`) 그 개행이
+       * 이 속성 없이는 화면에 나타나지 않는다. 불릿 셋이 한 문단으로 붙어 보이던 것이
+       * 그래서였다.
+       *
+       * 행 높이는 **지정하지 않는다.** 엑셀이 접힌 줄 수에 맞춰 자동으로 잡으며, 여기서
+       * 숫자를 박으면 긴 항목이 잘린 채 고정된다.
+       */
+      cell.alignment = { wrapText: true, vertical: 'top' };
 
       // 드롭다운은 **데이터 행에만** 건다. 헤더에 걸면 헤더가 목록 밖 값이 되어 경고가 뜬다.
       if (column.dropdown) {

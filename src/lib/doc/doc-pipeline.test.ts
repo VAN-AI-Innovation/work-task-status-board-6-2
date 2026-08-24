@@ -125,7 +125,7 @@ describe('runDocExtract — 성공', () => {
     expect(outcome.result.rows[0]).toMatchObject({
       taskNo: '1-1',
       title: '숏폼 시리즈 기획',
-      difficulty: '上',
+      difficulty: '상',
       deadlineDate: '2026-09-01',
       priority: '긴급',
     });

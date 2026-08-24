@@ -27,8 +27,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 
+import { CopyButton } from '@/components/tasks/copy-button';
 import { StatusBadge } from '@/components/tasks/status-badge';
-import type { ExtraCell } from '@/lib/view/extras-render';
+import { safeHref, type ExtraCell } from '@/lib/view/extras-render';
 import { EMPTY, formatDate, formatDday, formatPercent } from '@/lib/view/kpi-format';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { TaskResponse } from '@/types/api';
@@ -50,23 +51,47 @@ function Row({
   href?: string | null;
   faint?: boolean;
 }) {
+  /*
+   * 복사 대상은 **하이퍼링크 셀만이 아니다.** 시트의 「내용」 칸에는 URL이 그냥 텍스트로
+   * 들어 있는 경우가 더 많고(문서·캔바 링크), 그것도 옮겨 붙이려고 적어 둔 값이다.
+   * 판정은 `safeHref`가 이미 진다 — `http`·`https`만 통과한다 (`S7`).
+   *
+   * 텍스트 URL을 **앵커로 만들지는 않는다.** 앵커는 여전히 하이퍼링크 셀에서만 나온다
+   * (`UI_GUIDE.md`「링크 렌더링」) — 여기서 넓히면 시트 값이 곧 클릭 가능한 링크가 되고,
+   * 그 판단은 이 컴포넌트가 아니라 응답 계층이 져야 한다.
+   */
+  const linkToCopy = href ?? safeHref(value);
+
   return (
-    <div className="border-line/60 grid grid-cols-[140px_1fr] gap-3 border-b py-1.5 text-sm">
-      <dt className="text-ink-muted text-xs break-words">{label}</dt>
-      <dd className={`break-words ${faint === true ? 'text-ink-faint' : 'text-ink-body'}`}>
-        {href === undefined || href === null ? (
-          value
-        ) : (
-          // 스킴 검사를 통과한 링크만 여기 온다. 외부로 나가므로 opener를 끊는다 (`S7`)
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-ink hover:text-brand underline-offset-4 hover:underline"
-          >
-            {value}
-          </a>
-        )}
+    <div className="border-line/60 grid grid-cols-[120px_1fr] gap-3 border-b py-1.5 text-sm">
+      <dt className="text-ink-muted min-w-0 text-xs break-words">{label}</dt>
+      {/*
+       * `min-w-0`이 없으면 그리드 칸의 최소 폭이 **내용 폭**이라, 띄어쓰기 없는 긴 URL이
+       * 칸을 밀어내고 패널 밖으로 잘려 나간다. `break-words`만으로는 못 막는다.
+       * `overflow-wrap: anywhere`는 한 낱말 안에서도 끊게 해 준다 — 링크가 잘리지 않는 것이
+       * 이 패널의 존재 이유(70컬럼을 다 보여 준다)와 직결된다.
+       */}
+      <dd
+        className={`flex min-w-0 items-start gap-2 [overflow-wrap:anywhere] ${
+          faint === true ? 'text-ink-faint' : 'text-ink-body'
+        }`}
+      >
+        <span className="min-w-0 flex-1">
+          {href === undefined || href === null ? (
+            value
+          ) : (
+            // 스킴 검사를 통과한 링크만 여기 온다. 외부로 나가므로 opener를 끊는다 (`S7`)
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ink hover:text-brand underline-offset-4 hover:underline"
+            >
+              {value}
+            </a>
+          )}
+        </span>
+        {linkToCopy !== null && <CopyButton value={linkToCopy} label={label} />}
       </dd>
     </div>
   );
@@ -119,7 +144,7 @@ export function TaskPanel({
 
       <aside
         aria-label="업무 상세"
-        className="border-line bg-panel relative z-10 h-full w-[480px] overflow-y-auto rounded-none border-l"
+        className="border-line bg-panel relative z-10 h-full w-[640px] max-w-[92vw] overflow-y-auto rounded-none border-l"
         // keyframe은 `globals.css`에 있다. 이 화면의 유일한 애니메이션이다 (`UI_GUIDE.md`)
         style={{ animation: 'panel-slide-in 200ms ease-out' }}
       >
@@ -184,7 +209,7 @@ export function TaskPanel({
                     </div>
                     <dl className="mt-2">
                       <Row label="계획일" value={formatDate(stage.plannedDate)} />
-                      <div className="border-line/60 grid grid-cols-[140px_1fr] gap-3 border-b py-1.5 text-sm">
+                      <div className="border-line/60 grid grid-cols-[120px_1fr] gap-3 border-b py-1.5 text-sm">
                         <dt className="text-ink-muted text-xs">실제일</dt>
                         {/* 계획보다 늦은 **날짜 한 칸**만 색을 갖는다 */}
                         <dd

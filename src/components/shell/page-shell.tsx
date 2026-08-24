@@ -46,7 +46,12 @@ export function PageShell({
          */
         showRoleSwitch={mode === 'demo' || driver === 'memory'}
       />
-      <div className="mx-auto max-w-[1280px] px-6 py-6">{children}</div>
+      {/*
+       * 아래 여백이 위보다 넓다(`pb-16`). 마지막 카드가 뷰포트 바닥에 붙으면 스크롤이 끝난
+       * 것인지 잘린 것인지 알 수 없고, 접히는 카드 셋이 맨 아래에 서는 화면이라 펼칠 때
+       * 손이 닿는 자리이기도 하다.
+       */}
+      <div className="mx-auto max-w-[1280px] px-6 pt-6 pb-16">{children}</div>
     </main>
   );
 }

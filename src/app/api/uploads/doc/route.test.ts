@@ -56,10 +56,10 @@ describe('POST /api/uploads/doc — 통과', () => {
     expect(Array.isArray(body.warnings)).toBe(true);
   });
 
-  it('난이도가 中上인 행이 中으로 잘리지 않는다 (완료 기준 3이 라우트까지 살아 있다)', async () => {
+  it('난이도 中上이 中으로 잘리지 않는다 — 응답에는 한글 「중상」으로 실린다 (완료 기준 3)', async () => {
     const body = await (await POST(docRequest())).json();
 
-    expect(body.rows.some((row: { difficulty: string | null }) => row.difficulty === '中上')).toBe(
+    expect(body.rows.some((row: { difficulty: string | null }) => row.difficulty === '중상')).toBe(
       true,
     );
   });

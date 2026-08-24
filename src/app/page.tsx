@@ -295,18 +295,32 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       case 'tasks':
         return (
           <section className="border-line bg-panel rounded-md border p-4">
-            <h2 className="text-brand text-sm font-semibold">업무</h2>
+            {/*
+             * 제목과 필터를 **같은 격자 칸에 겹쳐** 놓는다. [필터] 버튼만 있는 줄이 따로 서면
+             * 그 줄 왼쪽이 통째로 비고 업무 표가 그만큼 아래로 밀린다 — 「여백보다 정보」
+             * (`UI_GUIDE.md`).
+             *
+             * 겹치되 **나란히 두지 않는 이유**: 필터를 오른쪽 칸에 넣으면 펼친 패널(칩 열여섯과
+             * 입력 넷)이 그 칸 폭에 갇혀 화면 오른쪽으로 쏠린다. 겹쳐 두면 접혔을 때는 버튼이
+             * 제목 줄 오른쪽 끝에 서고, 펼치면 패널이 **카드 폭 전체**를 쓴다.
+             *
+             * 안내문은 격자 **밖**이다. 제목만 겹쳐야 요약 줄(약 30px)보다 낮아 펼친 패널이
+             * 글자를 덮지 않는다.
+             */}
+            <div className="grid grid-cols-1 items-start">
+              <h2 className="text-brand col-start-1 row-start-1 text-sm font-semibold">업무</h2>
+              <div className="col-start-1 row-start-1">
+                <FilterBar query={query} pathname={PATHNAME} />
+              </div>
+            </div>
             {needsOwnerHint && (
-              // 아래 필터 바의 「담당자」 칸을 가리킨다. 입력을 하나 더 두면 같은 `?owner=`에
+              // 필터 바의 「담당자」 칸을 가리킨다. 입력을 하나 더 두면 같은 `?owner=`에
               // 두 소스가 생겨 어느 쪽이 현재 값인지 눌러 봐야 안다
-              <p className="text-ink-muted mt-1 text-xs">
-                담당자를 지정하면 내 업무만 볼 수 있습니다 — 아래 「담당자」 칸에 이름을 넣고
-                Enter를 누르세요.
+              <p className="text-ink-muted mt-2 text-xs">
+                담당자를 지정하면 내 업무만 볼 수 있습니다 — 「필터」를 열고 「담당자」 칸에 이름을
+                넣고 Enter를 누르세요.
               </p>
             )}
-            <div className="mt-3">
-              <FilterBar query={query} pathname={PATHNAME} />
-            </div>
             {/* 패널은 `fixed` 오버레이라 여기 있어도 오른쪽에 뜬다. 표 위에 두는 이유는
                 「필터 밖」 안내 한 줄이 붙을 자리가 여기이기 때문이다 (`UC-15`) */}
             <div className="mt-3">

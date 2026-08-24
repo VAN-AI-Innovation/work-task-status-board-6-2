@@ -28,8 +28,27 @@ import type { AssignmentRow, OutlineTask, WorkloadEntry } from '@/types/doc';
  */
 export const DIFFICULTY_MATCH_ORDER: readonly string[] = ['中上', '中下', '上', '中', '下'];
 
-/** **표시 순서다.** 드롭다운 목록(step 5)은 사람이 읽는 순서 — `上`에서 `下`로 내려간다 */
-export const DIFFICULTY_LEVELS: readonly string[] = ['上', '中上', '中', '中下', '下'];
+/**
+ * **문서 표기(한자) → 배정표 표기(한글).** 매칭은 한자로 하고 **담기는 값은 한글**이다.
+ *
+ * 문서가 `上`·`中上`으로 적는 것은 작성자의 관습이고, 배정표는 그것을 받아 **팀 사람들에게
+ * 배포되는 파일**이다. 한자 표기는 읽는 사람마다 「중상이 중보다 위인가」를 다시 생각하게 하고,
+ * 드롭다운에서 고를 때도 마찬가지다. 표기만 바꾸고 **매칭 규칙은 건드리지 않는다** —
+ * 문서 원문은 여전히 한자이므로 `DIFFICULTY_MATCH_ORDER`가 진실이다.
+ *
+ * 한글을 매칭 목록에 넣지 않는 이유: `(상세 협의 필요)` 같은 정당한 괄호에서 `상`이 걸린다.
+ * 한자는 이 문서군에서 난이도 말고 쓰이는 자리가 없다.
+ */
+export const DIFFICULTY_LABELS: Readonly<Record<string, string>> = {
+  上: '상',
+  中上: '중상',
+  中: '중',
+  中下: '중하',
+  下: '하',
+};
+
+/** **표시 순서다.** 드롭다운 목록(step 5)은 사람이 읽는 순서 — `상`에서 `하`로 내려간다 */
+export const DIFFICULTY_LEVELS: readonly string[] = ['상', '중상', '중', '중하', '하'];
 
 /** 시트 `공통_우선순위` 실측값. 배정표 드롭다운 목록의 단일 출처다 */
 export const PRIORITY_LEVELS: readonly string[] = ['긴급', '높음', '보통', '낮음'];
@@ -100,7 +119,8 @@ function parseHeading(task: OutlineTask, baseYear: number): HeadingParts {
   for (const segment of segments) {
     const level = DIFFICULTY.exec(segment)?.[0];
     if (level && difficulty === null) {
-      difficulty = level;
+      // 매칭은 한자, 담기는 값은 한글이다 (`DIFFICULTY_LABELS`)
+      difficulty = DIFFICULTY_LABELS[level] ?? level;
       continue;
     }
     if (deadlineRaw === null) deadlineRaw = segment;

@@ -58,10 +58,15 @@ export function BriefingCard({ markdown, note }: { markdown: string; note: strin
             회의록에 그대로 붙여넣는 마크다운입니다 · 화면에는 원문 그대로 둡니다
           </p>
         </div>
+        {/*
+         * 카드 **안**의 보조 동작이라 필터 바의 [필터] 버튼과 같은 규격을 쓴다
+         * (`px-3 py-1.5 text-xs`). 폼을 제출하는 Primary 크기(`px-4 py-2 text-sm`)로 두면
+         * 설명 두 줄 옆에서 카드의 주인공처럼 커 보인다 — 주인공은 브리핑 본문이다.
+         */}
         <button
           type="button"
           onClick={() => void copy()}
-          className="border-line bg-panel text-ink hover:bg-raise shrink-0 rounded border px-4 py-2 text-sm"
+          className="border-line bg-panel text-ink hover:bg-raise shrink-0 self-start rounded border px-3 py-1.5 text-xs"
         >
           {LABELS[state]}
         </button>

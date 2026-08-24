@@ -59,7 +59,7 @@ const assignmentRow = (extra: Partial<AssignmentRow> = {}): AssignmentRow => ({
   category: '콘텐츠 제작',
   taskNo: '1-1',
   title: '숏폼 시리즈 기획',
-  difficulty: '上',
+  difficulty: '상',
   deadlineRaw: '9/1까지',
   deadlineDate: '2026-09-01',
   priority: '긴급',
@@ -228,6 +228,33 @@ describe('buildAssignmentWorkbook — 파일 구조', () => {
     const sheet = await loadSheet(await buildAssignmentWorkbook([assignmentRow()]));
     // 1-based: 진행률 J(10). 값이 빈 셀이라 시트 파서로는 서식이 보이지 않는다
     expect(sheet.getRow(2).getCell(10).numFmt).toBe('0%');
+  });
+});
+
+/**
+ * **셀이 옆 칸을 침범하지 않는다.** 배정표는 담당자·상태·비고가 빈 채로 나가는 파일이라,
+ * 줄바꿈이 꺼져 있으면 세부항목 한 줄이 빈 칸들 위를 가로질러 어느 컬럼의 값인지 알 수 없다.
+ * 실제로 받은 파일에서 그렇게 보였고, 같은 속성이 개행(`\n`)도 화면에 나타나게 한다.
+ */
+describe('buildAssignmentWorkbook — 셀 줄바꿈', () => {
+  it('데이터 셀은 줄바꿈이 켜져 있고 위쪽 정렬이다', async () => {
+    const sheet = await loadSheet(
+      await buildAssignmentWorkbook([assignmentRow({ details: '가\n나\n다' })])
+    );
+
+    for (let column = 1; column <= 11; column += 1) {
+      const cell = sheet.getRow(2).getCell(column);
+      expect(cell.alignment?.wrapText).toBe(true);
+      expect(cell.alignment?.vertical).toBe('top');
+    }
+  });
+
+  it('행 높이를 박아 두지 않는다 — 엑셀이 접힌 줄 수에 맞춰 잡아야 한다', async () => {
+    const sheet = await loadSheet(
+      await buildAssignmentWorkbook([assignmentRow({ details: '가\n나\n다\n라\n마' })])
+    );
+
+    expect(sheet.getRow(2).height).toBeUndefined();
   });
 });
 

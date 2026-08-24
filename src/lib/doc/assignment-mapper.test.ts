@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildAssignmentRows,
+  DIFFICULTY_LABELS,
   DIFFICULTY_LEVELS,
   DIFFICULTY_MATCH_ORDER,
   PRIORITY_LEVELS,
@@ -45,25 +46,37 @@ describe('buildAssignmentRows — 난이도 (T7 완료 기준 3)', () => {
     expect(DIFFICULTY_MATCH_ORDER.indexOf('中下')).toBeLessThan(
       DIFFICULTY_MATCH_ORDER.indexOf('中')
     );
-    expect([...DIFFICULTY_MATCH_ORDER].sort()).toEqual([...DIFFICULTY_LEVELS].sort());
+    /*
+     * 매칭 목록(한자)과 표시 목록(한글)은 **같은 다섯 단계여야 한다.** 한쪽만 늘리면
+     * 문서에서 잡히는데 드롭다운에 없는 값(또는 그 반대)이 생기고, 그 배정표를 재업로드하면
+     * 미등록 값이 된다. 둘을 잇는 것이 `DIFFICULTY_LABELS`다.
+     */
+    expect([...DIFFICULTY_MATCH_ORDER].sort()).toEqual(Object.keys(DIFFICULTY_LABELS).sort());
+    expect([...DIFFICULTY_LEVELS].sort()).toEqual(Object.values(DIFFICULTY_LABELS).sort());
   });
 
-  it('표시용 배열은 사람이 읽는 순서다 — 上에서 下로 내려간다', () => {
-    expect(DIFFICULTY_LEVELS).toEqual(['上', '中上', '中', '中下', '下']);
+  it('표시용 배열은 사람이 읽는 순서다 — 상에서 하로 내려간다', () => {
+    expect(DIFFICULTY_LEVELS).toEqual(['상', '중상', '중', '중하', '하']);
+  });
+
+  it('한글 표기가 한자 단계와 1:1이다 — 두 단계가 같은 글자로 뭉개지지 않는다', () => {
+    expect(new Set(Object.values(DIFFICULTY_LABELS)).size).toBe(
+      Object.keys(DIFFICULTY_LABELS).length
+    );
   });
 
   it('`中上`이 `中`으로 떨어지지 않는다', () => {
-    expect(row('3-2. 이상치 리포트 (中上)').difficulty).toBe('中上');
+    expect(row('3-2. 이상치 리포트 (中上)').difficulty).toBe('중상');
   });
 
   it('`中下`가 `中`으로 떨어지지 않는다', () => {
-    expect(row('3-3. 회귀 점검 (中下)').difficulty).toBe('中下');
+    expect(row('3-3. 회귀 점검 (中下)').difficulty).toBe('중하');
   });
 
   it('한 글자짜리 셋도 그대로 잡힌다', () => {
-    expect(row('3-1. 과제 (上)').difficulty).toBe('上');
-    expect(row('3-1. 과제 (中)').difficulty).toBe('中');
-    expect(row('3-1. 과제 (下)').difficulty).toBe('下');
+    expect(row('3-1. 과제 (上)').difficulty).toBe('상');
+    expect(row('3-1. 과제 (中)').difficulty).toBe('중');
+    expect(row('3-1. 과제 (下)').difficulty).toBe('하');
   });
 
   it('난이도가 없으면 null이다 — 추론하지 않는다', () => {
@@ -134,7 +147,7 @@ describe('buildAssignmentRows — 마감', () => {
   it('추론에 실패해도 원문은 남는다 — 사람이 그 칸을 보고 채운다', () => {
     const mapped = row('3-4. 문서 정리 (下, 추후 협의)');
 
-    expect(mapped.difficulty).toBe('下');
+    expect(mapped.difficulty).toBe('하');
     expect(mapped.deadlineRaw).toBe('추후 협의');
     expect(mapped.deadlineDate).toBeNull();
   });
@@ -280,7 +293,7 @@ describe('buildAssignmentRows — 픽스처 (리더→빌더→파서→매퍼)'
   });
 
   it('난이도 5종이 모두 정확히 나온다', () => {
-    expect(rows.map((r) => r.difficulty)).toEqual(['上', '中上', '中下', '中', null, '下']);
+    expect(rows.map((r) => r.difficulty)).toEqual(['상', '중상', '중하', '중', null, '하']);
   });
 
   it('마감은 추론된 것과 원문만 남은 것이 갈린다', () => {
