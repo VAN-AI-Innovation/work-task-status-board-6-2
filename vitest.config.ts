@@ -13,7 +13,14 @@ import { defineConfig } from 'vitest/config';
 // `SKIP_LIVE_DB=1`이면 **읽지 않는다.** 원격 DB에 계약 테스트 것이 아닌 행이 남아 있으면
 // 계약 스위트가 전체 건수 단언에서 깨지는데(이슈 #20), 그때 저장소와 무관한 작업까지
 // 게이트에서 막힌다. 자격증명을 주지 않으면 스위트가 스스로 `it.skip`으로 흔적을 남기므로
-// 「조용히 0건 통과」가 되지 않는다. **기본값은 「돈다」이고, 끄는 것은 명시적 선택이다.**
+// 「조용히 0건 통과」가 되지 않는다.
+//
+// ⚠ **실측(T7 step 10): 아래 `process.env` 대입은 테스트 워커에 전달되지 않는다.**
+// Vitest 3.2.7의 워커에서 `process.env.NEXT_PUBLIC_SUPABASE_URL`을 찍으면 비어 있어서,
+// `SKIP_LIVE_DB` 값과 **무관하게** 계약 스위트가 늘 `it.skip`으로 접힌다. 라이브로 붙이려면
+// 셸에서 직접 export해야 한다 (`set -a; . ./.env.local; set +a`). 그러면 이슈 #20이 재현된다.
+// 전달을 고치는 것은 이슈 #20을 함께 다뤄야 하는 일이라 여기서 하지 않았다 —
+// 근거와 남은 일은 `docs/TICKETS.md` T7「감사에서 발견했으나 고치지 않은 것」.
 const env = process.env.SKIP_LIVE_DB === '1' ? {} : loadEnv('', process.cwd(), '');
 for (const name of [
   'NEXT_PUBLIC_SUPABASE_URL',

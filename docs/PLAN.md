@@ -452,13 +452,14 @@ src/
 │   │            adapter-marketing-team · adapter-goal-metrics
 │   │            adapter-settings-tab · sheet-pipeline
 │   ├── doc/     docx-reader · markdown-reader · outline-builder
-│   │            assignment-mapper · workload-parser
+│   │            assignment-mapper · workload-parser · doc-pipeline
 │   ├── xlsx/    assignment-writer
 │   ├── domain/  task-semantic · display-status · task-derive
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
 │   ├── store/   task-repository · memory-task-store
 │   │            supabase-task-store · store-factory
-│   └── fixtures/  sample-workbook.xlsx · sample-workload.md · seed-tasks.json
+│   └── fixtures/  sample-workbook.xlsx · sample-workload.md · sample-workload.docx
+│                  seed-tasks.json
 ├── supabase/migrations/   *.sql        # T4부터. 스키마 단일 소스
 └── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts
 ```
@@ -513,7 +514,7 @@ STAGE_GROUPS : { key:'concept', label:'컨셉·레퍼런스', slaDays:2,
 
 **제품이 받는 입력은 `.docx` 하나다** (사용자 확정). Google Docs에서 내보낸 파일을 그대로 올린다.
 
-- `.docx` → mammoth(`convertToHtml` + styleMap) → `node-html-parser` 순회 → `OutlineNode[]`
+- `.docx` → mammoth(`convertToHtml`, **옵션 없음** — T1에서 styleMap이 불필요하다고 판정됐다) → `node-html-parser` 순회 → `OutlineNode[]`
 
 `markdown-reader.ts`는 **테스트 픽스처 전용으로만 남긴다.** 제품 경로가 아니다. 이유는 두 가지다:
 
@@ -522,7 +523,7 @@ STAGE_GROUPS : { key:'concept', label:'컨셉·레퍼런스', slaDays:2,
 
 경계: `docx-reader.ts`와 `markdown-reader.ts`가 **같은 `OutlineNode[]`를 뱉고**, 그 아래(`outline-builder` → `assignment-mapper`)는 입력 형식을 모른다.
 
-**✅ 선행 스모크 테스트 완료 (T1)**: 실제 Google Docs를 `.docx`로 내보내 실측했다. mammoth **기본 옵션에서 heading이 인식된다 — styleMap 커스터마이즈가 필요 없다.** `h2` 12건(`N.` 접두사 9건) · `h3` 50건(`N-M.` 접두사 20건)이 잡혀 `## N. 대분류` → `h2`, `### N-M. 과제명` → `h3` 매핑이 그대로 성립했다. 따라서 `docx-reader.ts`는 `mammoth.convertToHtml({ path })`를 옵션 없이 호출하면 된다. 측정 방법과 전체 수치는 `scripts/smoke/RESULT.md`「H8」에 있다.
+**✅ 선행 스모크 테스트 완료 (T1)**: 실제 Google Docs를 `.docx`로 내보내 실측했다. mammoth **기본 옵션에서 heading이 인식된다 — styleMap 커스터마이즈가 필요 없다.** `h2` 12건(`N.` 접두사 9건) · `h3` 50건(`N-M.` 접두사 20건)이 잡혀 `## N. 대분류` → `h2`, `### N-M. 과제명` → `h3` 매핑이 그대로 성립했다. 따라서 `docx-reader.ts`는 `mammoth.convertToHtml`을 **옵션 없이** 호출한다. 다만 인자는 `{ path }`가 아니라 **`{ buffer }`**다 — 라우트가 받는 것은 업로드된 바이트이고, 디스크에 임시 파일을 쓰면 그 파일에 사람 이름이 남는다 (`S6`). 측정 방법과 전체 수치는 `scripts/smoke/RESULT.md`「H8」에 있다.
 
 단 `h3` 50건 중 **아웃라인 과제는 `N-M.` 접두사를 가진 20건이고 나머지 30건은 과제가 아닌 절 제목**이다. `outline-builder`는 태그 깊이만이 아니라 **번호 접두사도 함께** 봐야 한다 (T7 범위).
 
@@ -603,6 +604,25 @@ POST /api/export/assignment  행 JSON → 배정표 .xlsx 바이트 (Content-Dis
 |---|---|---|
 | `DOCUMENT_CORRUPT` | 422 | `WORKBOOK_CORRUPT`의 문구는 「워크북」이다. `.docx`를 올린 사람에게 워크북이라고 말하면 무엇을 잘못했는지 알 수 없다 |
 | `NO_OUTLINE_TASK` | 422 | 「알려진 탭이 하나도 없음」(`NO_KNOWN_TAB`)과 같은 강도의 중단이다. 과제 0건짜리 배정표를 내려보내면 사람은 그게 빈 문서인지 파서 고장인지 모른다 |
+
+#### T7 구현 중 확정 (2026-08-24, step 10 감사)
+
+착수 시점에 못박은 A~D는 그대로 섰다. 구현하면서 **새로 갈린 것 둘**을 여기 잇는다.
+
+**결정 E — `.docx` 픽스처를 커밋하되, 진짜 원본은 그것을 만드는 스크립트다.** 위
+「독스 → 배정표」 절은 「`.docx`는 바이너리라 픽스처로 최악이다 — git diff가 안 되고
+테스트가 뭘 검증하는지 읽을 수 없다」고 적었고 그 판단은 **지금도 맞다.** 그래서 바이너리를
+손으로 만들어 넣는 대신 `scripts/fixtures/build-sample-workload-docx.mjs`(`npm run fixture:docx`)가
+생성한다 — ZIP 엔트리 3개·무압축·CRC-32 직접 계산·타임스탬프 고정이라 **재실행해도 같은
+바이트**이고, 리뷰어가 읽을 것은 `.docx`가 아니라 그 스크립트다. `markdown-reader`가 픽스처
+전용이라는 `ADR-010`은 **바뀌지 않았다** — `.md`가 여전히 아웃라인 로직을 검증하고 `.docx`는
+리더 계층만 본다. 늘어난 것은 「리더 계층을 실제 바이너리로 한 번 밟는다」는 자리 하나다.
+
+**결정 F — `/extract`는 읽기 전용 모드에서도 정상 동작한다.** `ADR-005`가 「폴백 중 모든 쓰기
+경로는 `503`」이라고 정했지만 이 화면에는 **쓰기 경로가 없다**(결정 C). 그래서 화면이
+`readOnly`를 패널에 넘기지 않고 드롭존을 잠그지 않는다 — 잠그면 「저장소가 죽어도 배정표는
+뽑을 수 있다」는 사실을 화면이 스스로 부정한다. 배너는 그대로 뜬다: 배너가 말하는 것은
+**저장소 상태**이지 이 화면의 가용성이 아니다.
 
 ### 6. 집계·판정 — `src/lib/domain/` 순수 함수
 

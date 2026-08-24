@@ -30,7 +30,8 @@ src/
 │   └── api/  uploads/sheet · uploads/[id]/commit · uploads/seed · uploads/doc
 │             export/assignment · tasks · tasks/[id] · stats · alerts
 │             goals · report/weekly · health
-├── components/   dashboard/ charts/ tasks/ goals/ upload/ ui/   # props 받아 JSX만. 계산 금지
+├── components/   shell/ dashboard/ charts/ alerts/ tasks/ goals/ upload/ extract/
+│                                              # props 받아 JSX만. 계산 금지
 ├── lib/
 │   ├── sheet/   workbook-reader · header-resolver · tab-detector
 │   │            section-splitter · cell-normalizer
@@ -45,7 +46,13 @@ src/
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
 │   ├── store/   task-repository · repository-contract · memory-task-store
 │   │            supabase-task-store · upload-record-store · store-factory
-│   └── fixtures/  sample-workbook.xlsx · sample-workload.md · seed-tasks.json
+│   ├── upload/  upload-limits · zip-inspector · upload-guard · parse-runner
+│   │            upload-mapper · upload-preview · upload-commit · seed-loader
+│   ├── api/     api-error · read-context · task-response · viewer-role
+│   │            assignment-schema
+│   ├── view/    화면이 쓰는 표시 규칙 (role-layout · status-badge · chart-series …)
+│   └── fixtures/  sample-workbook.xlsx · sample-workload.md · sample-workload.docx
+│                  seed-tasks.json
 ├── supabase/migrations/   *.sql        # 스키마 단일 소스 (T4부터)
 └── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts
 ```
@@ -151,7 +158,7 @@ idle → validating → parsing → previewing → committing → done
 ### 독스 → 배정표
 
 ```
-.docx → mammoth(convertToHtml + styleMap) → node-html-parser → OutlineNode[]
+.docx → mammoth(convertToHtml, 옵션 없음) → node-html-parser → OutlineNode[]
                                                                     │
 sample-workload.md → markdown-reader ────────────────────────────────┤ 같은 타입
        (테스트 픽스처 전용. 제품 경로 아님)                             ▼

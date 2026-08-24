@@ -460,9 +460,74 @@ LLM 보강, DB 저장, `.md` 업로드 UI (제품은 `.docx`만 받는다 — `A
 **리스크·미결**
 
 - `9/1`의 연도 추론 → `baseYear` 파라미터 주입, 실패 시 `deadline_raw`만 보존하고 `deadline_date`는 null. 하드코딩 금지.
-- mammoth의 Google Docs 스타일 인식(`H8`)은 **T1에서 판정이 끝났다 — PASS.** 기본 옵션에서 `h2` 12건·`h3` 50건이 인식되며 **styleMap 커스터마이즈가 필요 없다.** `docx-reader.ts`는 `mammoth.convertToHtml({ path })`를 옵션 없이 호출한다. **예상 `L`을 재산정 없이 유지한다.** 문단 텍스트 패턴 매칭 대안은 쓰지 않는다. 근거: `scripts/smoke/RESULT.md`「H8」
+- mammoth의 Google Docs 스타일 인식(`H8`)은 **T1에서 판정이 끝났다 — PASS.** 기본 옵션에서 `h2` 12건·`h3` 50건이 인식되며 **styleMap 커스터마이즈가 필요 없다.** `docx-reader.ts`는 `mammoth.convertToHtml`을 **옵션 없이** 호출한다 (인자는 `{ path }`가 아니라 `{ buffer }` — 라우트가 받는 것이 바이트다). **예상 `L`을 재산정 없이 유지한다.** 문단 텍스트 패턴 매칭 대안은 쓰지 않는다. 근거: `scripts/smoke/RESULT.md`「H8」
 - 다만 `h3` 50건 중 **아웃라인 과제는 `N-M.` 접두사를 가진 20건이고 나머지 30건은 절 제목**이다. `outline-builder`는 태그 깊이만이 아니라 **번호 접두사도 함께** 보고 과제를 골라야 한다.
 - 「워크로드 공유」 섹션의 P0/P1과 ①②③④는 별도 블록이므로 `workload-parser.ts`로 분리 파싱 후 과제 번호로 조인해 `priority`를 채운다. 조인 실패는 무시.
+
+**구현 결과** — step 10(감사)에서 완료 기준 6개를 하나씩 실행해 판정했다. **6개 전부 통과.**
+
+산출물은 아래 15개다. 계층 넷(`doc` → `xlsx` → 라우트 → 화면)이 한 방향으로만 흐르고,
+아래 계층은 위를 모른다.
+
+| 계층 | 파일 |
+|---|---|
+| 타입 | `src/types/doc.ts` |
+| 리더 | `lib/doc/markdown-reader.ts`(픽스처 전용) · `lib/doc/docx-reader.ts`(제품 경로) |
+| 아웃라인 | `lib/doc/outline-builder.ts` · `lib/doc/workload-parser.ts` |
+| 매핑 | `lib/doc/assignment-mapper.ts` |
+| 파이프라인 | `lib/doc/doc-pipeline.ts` |
+| 쓰기 | `lib/xlsx/assignment-writer.ts` |
+| 경계 | `lib/api/assignment-schema.ts` · `lib/api/api-error.ts`(코드 2개 추가) |
+| 라우트 | `app/api/uploads/doc/route.ts` · `app/api/export/assignment/route.ts` |
+| 화면 | `app/extract/page.tsx` · `components/extract/doc-extract-panel.tsx` · `components/extract/assignment-preview.tsx` |
+| 픽스처 | `lib/fixtures/sample-workload.md` · `lib/fixtures/sample-workload.docx` (+ 생성기 `scripts/fixtures/build-sample-workload-docx.mjs`) |
+
+**완료 기준 6개의 증명** — 「통과했다」가 아니라 무엇을 실행해 무엇을 봤는지 적는다.
+
+| # | 증명 | 결과 |
+|---|---|---|
+| 1 | `npx vitest run src/app/api/uploads/doc/route.test.ts` | 거부 6갈래 통과. **판정은 확장자가 아니라 ZIP 내부 엔트리다** — `sample-workbook.xlsx`를 `위장.docx`로 올려도 `415 FILE_TYPE_MISMATCH`(`S3`). 라이브 서버에서도 같고, 반대 방향(`.docx`를 `/api/uploads/sheet`에)도 415다. 화면의 `accept=".docx"`는 편의일 뿐 방어가 아니다 |
+| 2 | `npx vitest run src/lib/doc/docx-reader.test.ts` | 대조 3건 통과. 같은 내용의 `.md`와 HTML이 **깊은 동등**이고, 「양쪽이 빈 배열이라 같은 것이 아니다」를 노드 7개로 따로 못박았다 — 그 단언이 없으면 대조 테스트가 아무것도 재지 않는다 |
+| 3 | `npx vitest run src/lib/doc/assignment-mapper.test.ts` | 난이도 7건 + 픽스처 대조 1건 통과. `中上`·`中下`가 `中`으로 떨어지지 않고 픽스처에서 5종이 모두 정확히 나온다. 라이브 라우트 응답에서도 `中上`이 그대로다 |
+| 4 | `npx vitest run src/lib/xlsx/assignment-writer.test.ts` + `node scripts/smoke/assignment-xlsx.mjs <내려받은.xlsx>` | **내려받은 실제 파일**에서 확인했다 — 난이도·우선순위·상태 세 컬럼의 **데이터 행에만** `type=list` 검증이 붙고 헤더 행에는 없다. 상태 목록은 시트 10단계 그대로(`업무 배정…취소`)라 재업로드에서 미매핑되지 않는다 |
+| 5 | 같은 스크립트 | 내려받은 파일에 **수식 셀 0개**, 문자열 셀은 전부 `numFmt="@"`, 페이로드가 든 칸에만 `'` 프리픽스 1개. `sanitizeCellText` 단위 테스트 17건이 `=`·`+`·`-`·`@`·탭·개행·`\r`·**앞 공백**·멱등·값 보존을 덮는다 |
+| 6 | `npx vitest run src/lib/xlsx/assignment-writer.test.ts` | 왕복 3건 통과. `sample-workload.md` → 4계층 → xlsx → **시트 파서**로 되읽어 행 전체가 같다. 「픽스처가 실제로 수식 페이로드를 싣고 있다」를 먼저 재는 단언이 앞에 있다 |
+
+**고리의 남은 한 칸** — `PLAN.md`「독스 추출 루프」는 배정표를 `/upload`에 재업로드해 고리가
+닫힌다고 그린다. 실제로 밟아 보면 **거부된다.**
+
+```
+POST /api/uploads/sheet  (배정표 xlsx)
+→ 422 {"code":"NO_KNOWN_TAB","message":"인식할 수 있는 팀 탭이 없습니다. …"}
+```
+
+**이것이 정상이고, T7에서 고치지 않았다.** 배정표 시트 이름은 `업무 배정표`이고 컬럼 11개는
+팀 탭 시그니처(필수 컬럼 3개 이상)와 겹치지 않는다. `tab-detector`가 이 파일을 받아들이게
+만들려면 판별을 느슨하게 해야 하는데, 그러면 **아무 xlsx나 팀 탭으로 오인**해 `X2`가 막으려던
+「빈 결과로 기존 데이터 덮어쓰기」의 문이 열린다. 지금 고리를 잇는 것은 **사람**이다 —
+배정표에서 채운 담당자·상태·진행률을 팀 시트에 옮겨 적고 그 시트를 올린다. 자동으로 이으려면
+「배정표 탭」을 `tab-detector`가 아는 종류로 **명시적으로** 추가해야 하고, 그것은 T7 범위 밖의
+새 어댑터다. 필요해지면 후속 티켓으로 연다.
+
+**범위 Out이라 하지 않은 것** — LLM 보강(`ENABLE_LLM=false`가 기본이고 키 없이 전 기능이
+돈다) · DB 저장(`ADR-022`) · `.md` 업로드 UI(제품은 `.docx`만 받는다, `ADR-010`).
+
+**감사에서 발견했으나 고치지 않은 것**
+
+- **라이브 Supabase 계약 스위트가 `npm run test`에서 한 번도 돌지 않는다.** `vitest.config.ts`가
+  `loadEnv`로 `process.env`를 채우지만 **그 변경이 Vitest 3.2.7의 테스트 워커에 전달되지 않는다** —
+  워커에서 `process.env.NEXT_PUBLIC_SUPABASE_URL`을 찍으면 비어 있고, 스위트는 스스로
+  `it.skip`으로 접힌다. 셸에서 `.env.local`을 export하고 돌리면 그제야 라이브로 붙고 **이슈 #20이
+  재현된다**(10건 실패, 전부 전체 건수 단언 — 원격 DB에 계약 테스트 것이 아닌 행이 남아 있다).
+  즉 T7이 더한 `SKIP_LIVE_DB=1` 스위치는 이미 동작하지 않던 장치 위에 얹혀 있었다.
+  **고치지 않은 이유**: 전달을 고치면 기본 게이트가 즉시 10건 실패로 붉어지고, 그 실패의 원인인
+  원격 잔여 행은 이슈 #20이라 이 티켓이 손댈 자리가 아니다. `vitest.config.ts`의 주석이
+  「기본값은 돈다」고 **사실과 다르게** 적고 있어 그 문장만 실측대로 고쳤다. `T4` 완료 기준 8
+  (「계약 테스트를 두 구현이 모두 통과한다」)을 기본 게이트가 실제로 지키게 하려면 이슈 #20과
+  함께 다뤄야 한다 — 후속 티켓 자리다.
+- `ARCHITECTURE.md`·`PLAN.md`의 디렉토리 블록이 T2 시점 스냅샷이라 `lib/api/`·`lib/upload/`·
+  `lib/view/`·`components/shell/`이 빠져 있었다. **누락은 T7이 만든 것이 아니지만** 같은 블록에
+  T7 파일을 넣으면서 함께 실제 트리에 맞췄다(존재하지 않던 `components/ui/`도 지웠다).
 
 ---
 
