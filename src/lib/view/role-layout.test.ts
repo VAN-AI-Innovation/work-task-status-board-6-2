@@ -316,22 +316,45 @@ describe('layoutFor — 화면별 옵션', () => {
     const spanOf = (key: SectionKey): number | undefined =>
       cells.find((cell) => cell.keys[0] === key)?.span;
 
-    expect(spanOf('alerts')).toBe(7);
-    expect(spanOf('alerts')).not.toBe(SECTION_SPAN.alerts);
+    expect(spanOf('charts')).toBe(6);
+    expect(spanOf('charts')).not.toBe(SECTION_SPAN.charts);
     expect(spanOf('kpi')).toBe(SECTION_SPAN.kpi);
   });
 
   /**
-   * 팀 화면에는 알림 옆에 세울 만큼 긴 카드가 없다. 그래서 **짧은 둘을 세로로 쌓아** 그
-   * 자리를 채운다 — 옆이 비면 무언가 빠진 것처럼 읽히고, 알림은 데이터에 따라 길어진다.
+   * **두 화면의 배치가 같아야 한다.** 같은 사람이 대시보드에서 팀 화면으로 넘어갈 때 카드가
+   * 자리를 바꾸면 매번 어디를 봐야 하는지 다시 찾는다. 값이 갈리는 것은 `only`(그릴 수 있는
+   * 섹션) 하나뿐이고, 폭과 짝은 같은 값을 쓴다.
    */
-  it('알림 오른쪽 칸에 상태 분포와 목표 대비 성과가 세로로 쌓인다', () => {
-    for (const role of ROLES) {
+  it('팀 화면의 폭과 요약 행 짝이 대시보드와 같다', () => {
+    // 요약 행 셋만 비교한다 — 목표 대비 성과는 팀 화면에서만 6칸이다(접히는 카드가 하나뿐)
+    for (const key of ['alerts', 'charts', 'kpi_compact'] as const) {
+      expect(TEAM_PAGE_LAYOUT.spans?.[key]).toBe(DASHBOARD_LAYOUT.spans?.[key]);
+    }
+    expect(TEAM_PAGE_LAYOUT.spans?.goals).toBe(TEAM_PAGE_LAYOUT.spans?.alerts);
+    expect(DASHBOARD_LAYOUT.spans?.goals).toBeUndefined();
+    // 대시보드에만 있는 짝은 「팀별 현황 + 완료율」 하나이고, 요약 행 짝은 두 화면이 공유한다
+    expect(DASHBOARD_LAYOUT.groups).toEqual(
+      expect.arrayContaining([...(TEAM_PAGE_LAYOUT.groups ?? [])])
+    );
+  });
+
+  it('알림 오른쪽 칸에 축약 KPI와 상태 분포가 세로로 쌓인다 — 대시보드와 같은 모양이다', () => {
+    const row = layoutFor('member', TEAM_PAGE_LAYOUT).find((item) =>
+      item.cells.some((cell) => cell.keys.includes('alerts'))
+    );
+
+    expect(row?.cells.map((cell) => cell.keys)).toEqual([['alerts'], ['kpi_compact', 'charts']]);
+  });
+
+  /** 축약 KPI가 없는 역할에서는 짝에서 그것만 빠지고 나머지는 그대로 선다 */
+  it('admin·lead에서는 오른쪽 칸이 상태 분포 하나로 줄어든다', () => {
+    for (const role of ['admin', 'lead'] as const) {
       const row = layoutFor(role, TEAM_PAGE_LAYOUT).find((item) =>
-        item.cells.some((cell) => cell.keys.includes('alerts'))
+        item.cells.some((cell) => cell.keys.includes('charts'))
       );
 
-      expect(row?.cells.map((cell) => cell.keys)).toEqual([['alerts'], ['charts', 'goals']]);
+      expect(row?.cells.every((cell) => !cell.keys.includes('kpi_compact'))).toBe(true);
     }
   });
 

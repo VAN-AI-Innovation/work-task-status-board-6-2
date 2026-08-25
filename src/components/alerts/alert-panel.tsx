@@ -2,10 +2,10 @@
  * 알림 패널 (과제 요구 3번 · `UC-12`·`UC-13`). **묶음 5개를 항상 그린다** — 0건이라고
  * 숨기면 「그 문제가 없는 것」과 「그 검사를 안 한 것」이 화면에서 같아진다.
  *
- * **폭에 맞춰 열 수가 바뀐다** (`@container`). 대시보드에서는 5칸(약 490px)이라 한 열이고,
- * 팀 화면에서는 폭 전체라 두 열이다 — 뷰포트가 아니라 **제 칸의 폭**을 보므로 어느 화면에
- * 놓이든 이름과 건수 사이가 벌어지지 않는다. 12칸을 혼자 쓰면서 그 사이가 화면 폭만큼
- * 벌어졌던 것이 이 패널을 좁힌 이유다 (`ADR-019`).
+ * **폭에 맞춰 열 수가 바뀐다** (`@container`). 대시보드·팀 화면 모두 6칸이라 지금은 한
+ * 열이고, 더 넓은 자리에 놓이면 두 열로 갈라진다 — 뷰포트가 아니라 **제 칸의 폭**을 보므로
+ * 어느 화면에 놓이든 이름과 건수 사이가 벌어지지 않는다. 12칸을 혼자 쓰면서 그 사이가 화면
+ * 폭만큼 벌어졌던 것이 이 패널을 좁힌 이유다 (`ADR-019`).
  *
  * 0건 묶음은 **한 줄**이다. 「해당 없음」을 아래 줄에 따로 두면 묶음 다섯이 열 줄이 되어,
  * 아무 문제가 없는 날 이 패널이 화면에서 가장 큰 카드가 된다.
@@ -102,12 +102,18 @@ export function AlertPanel({
             </>
           );
 
+          /*
+           * **줄 높이가 카드 높이를 채운다.** 이 패널은 같은 행에서 [축약 KPI + 상태 분포]와
+           * 높이를 맞추는데(`items-stretch`), 묶음 다섯이 촘촘하면 아래가 통째로 희게 남는다.
+           * 늘리는 것은 **줄의 여백**이지 묶음 수가 아니다 — 0건 묶음까지 다섯을 항상 그리는
+           * 규칙은 그대로고, 빈 공간을 카드가 아니라 누를 수 있는 자리가 가져간다.
+           */
           const HEAD_CLASS =
-            'bg-raise -mx-2 flex items-center justify-between gap-2 rounded px-2 py-1.5';
+            'bg-raise -mx-2 flex items-center justify-between gap-2 rounded px-2 py-2.5';
 
           return empty ? (
             // 펼칠 것이 없으면 `<details>`로 만들지 않는다 — 눌러서 빈 상자가 열리면 안 된다
-            <div key={group.kind} className={`${HEAD_CLASS} mb-1.5 last:mb-0`}>
+            <div key={group.kind} className={`${HEAD_CLASS} mb-2 last:mb-0`}>
               {head}
             </div>
           ) : (
@@ -118,7 +124,7 @@ export function AlertPanel({
             <details
               key={group.kind}
               name="alert-group"
-              className="group/ag mb-1.5 break-inside-avoid last:mb-0"
+              className="group/ag mb-2 break-inside-avoid last:mb-0"
             >
               <summary
                 className={`${HEAD_CLASS} hover:bg-brand-soft group-open/ag:bg-brand-soft cursor-pointer list-none`}
@@ -126,7 +132,7 @@ export function AlertPanel({
                 {head}
               </summary>
 
-              <ul className="mt-1 space-y-0.5">
+              <ul className="mt-1.5 space-y-1">
                 {group.items.map((alert) => (
                   <li key={`${alert.taskId}:${alert.stageKey ?? ''}`}>
                     {/*
@@ -137,7 +143,7 @@ export function AlertPanel({
                      */}
                     <Link
                       href={hrefOf(alert.taskId)}
-                      className="group/row hover:bg-brand-soft -mx-2 flex items-center justify-between gap-2 rounded px-2 py-1"
+                      className="group/row hover:bg-brand-soft -mx-2 flex items-center justify-between gap-2 rounded px-2 py-2"
                     >
                       <span className="text-ink-body group-hover/row:text-brand truncate text-sm">
                         {titleOf(alert.taskId)}

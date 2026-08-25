@@ -62,6 +62,28 @@ function UploadIcon() {
   );
 }
 
+/** 독스 → 배정표. 왼쪽이 문서, 오른쪽이 거기서 나오는 표다 */
+function ExtractIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <path d="M2.5 2.5h5v11h-5z" />
+      <path d="M9.5 5h4v6h-4z" />
+      <path d="M9.5 7h4" />
+    </svg>
+  );
+}
+
 /** 부서별 탭. 셋이 같은 아이콘을 쓴다 — 구분은 아이콘이 아니라 한글 이름이 진다 */
 function TeamIcon() {
   return (
@@ -92,6 +114,9 @@ const ITEMS: readonly { href: string; label: string; icon: ReactNode }[] = [
     icon: <TeamIcon />,
   })),
   { href: '/upload', label: '시트 업로드', icon: <UploadIcon /> },
+  // 「시트 업로드」 바로 아래다. 둘 다 데이터를 넣는 화면이고, 이 순서가 곧 `UC-05`→`UC-06`
+  // 이다 — 배정표를 뽑아(`/extract`) 채운 뒤 시트로 다시 올리면 고리가 닫힌다
+  { href: '/extract', label: '독스 → 배정표', icon: <ExtractIcon /> },
 ];
 
 export function AppSidebar() {

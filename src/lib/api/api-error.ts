@@ -19,6 +19,8 @@ export const API_ERROR_CODES = [
   'WORKBOOK_CORRUPT',
   'NO_KNOWN_TAB',
   'SETTINGS_TAB_MISSING',
+  'DOCUMENT_CORRUPT',
+  'NO_OUTLINE_TASK',
   'UPLOAD_NOT_FOUND',
   'UPLOAD_ALREADY_COMMITTED',
   'TASK_NOT_FOUND',
@@ -37,6 +39,10 @@ export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
  *   할 일이 `FILE_TOO_LARGE`와 같다(줄여서 다시 올린다). 400으로 두면 "형식이 틀렸나"로 읽힌다.
  * - `WORKBOOK_CORRUPT`·`NO_KNOWN_TAB`이 422인 이유: 415(형식 불일치)는 이미 통과한 상태다.
  *   xlsx인 것은 맞는데 **내용이 처리 불가**라는 구분을 뭉개지 않는다.
+ * - `DOCUMENT_CORRUPT`·`NO_OUTLINE_TASK`가 422인 이유: 위와 같다. 415(형식 불일치)는 이미
+ *   통과한 상태다 — `.docx`인 것은 맞는데 **내용이 처리 불가**다. 「과제 0건」이 200이 아닌
+ *   이유는 `NO_KNOWN_TAB`이 그런 것과 같다: 빈 배정표를 성공으로 내려보내면 받는 사람은
+ *   그게 빈 문서인지 파서 고장인지 알 수 없다.
  * - `PARSE_TIMEOUT`이 504인 이유: 5xx여야 클라이언트가 재시도 가능한 실패로 읽는다.
  *   입력이 잘못된 게 아니라 우리가 시간 안에 못 끝냈다.
  * - `TASK_NOT_FOUND`가 404인 이유: `UPLOAD_NOT_FOUND`와 같은 「없는 것을 가리켰다」이지만
@@ -59,6 +65,8 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   FILE_TYPE_MISMATCH: 415,
   WORKBOOK_CORRUPT: 422,
   NO_KNOWN_TAB: 422,
+  DOCUMENT_CORRUPT: 422,
+  NO_OUTLINE_TASK: 422,
   SETTINGS_TAB_MISSING: 200,
   STORAGE_READONLY: 503,
   STORAGE_UNAVAILABLE: 503,
@@ -78,6 +86,11 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   WORKBOOK_CORRUPT: '워크북을 읽을 수 없습니다. 파일이 손상되었거나 지원하지 않는 형식입니다.',
   NO_KNOWN_TAB: '알아볼 수 있는 팀 탭이 없습니다. 기존 데이터를 지우지 않고 중단했습니다.',
   SETTINGS_TAB_MISSING: '설정 탭을 찾지 못해 기본 항목으로 해석했습니다.',
+  // 아래 둘은 `doc/doc-pipeline.ts`의 문장을 **그대로** 옮긴 것이다. 그쪽이 자기 문장을 들고
+  // 오므로 여기 값은 대체값이지만, 글자가 갈리면 같은 실패가 두 문장으로 보인다.
+  DOCUMENT_CORRUPT: '문서를 읽을 수 없습니다. 파일이 손상되었거나 지원하지 않는 형식입니다.',
+  NO_OUTLINE_TASK:
+    '문서에서 과제를 찾지 못했습니다. 과제 제목에 1-1 형태의 번호가 있는지 확인해 주세요.',
   UPLOAD_NOT_FOUND: '해당 업로드를 찾을 수 없습니다. 파일을 다시 올려 주세요.',
   UPLOAD_ALREADY_COMMITTED: '이미 확정된 업로드입니다.',
   TASK_NOT_FOUND: '해당 업무를 찾을 수 없습니다. 링크가 낡았을 수 있습니다.',

@@ -452,13 +452,14 @@ src/
 │   │            adapter-marketing-team · adapter-goal-metrics
 │   │            adapter-settings-tab · sheet-pipeline
 │   ├── doc/     docx-reader · markdown-reader · outline-builder
-│   │            assignment-mapper · workload-parser
+│   │            assignment-mapper · workload-parser · doc-pipeline
 │   ├── xlsx/    assignment-writer
 │   ├── domain/  task-semantic · display-status · task-derive
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
 │   ├── store/   task-repository · memory-task-store
 │   │            supabase-task-store · store-factory
-│   └── fixtures/  sample-workbook.xlsx · sample-workload.md · seed-tasks.json
+│   └── fixtures/  sample-workbook.xlsx · sample-workload.md · sample-workload.docx
+│                  seed-tasks.json
 ├── supabase/migrations/   *.sql        # T4부터. 스키마 단일 소스
 └── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts
 ```
@@ -513,7 +514,7 @@ STAGE_GROUPS : { key:'concept', label:'컨셉·레퍼런스', slaDays:2,
 
 **제품이 받는 입력은 `.docx` 하나다** (사용자 확정). Google Docs에서 내보낸 파일을 그대로 올린다.
 
-- `.docx` → mammoth(`convertToHtml` + styleMap) → `node-html-parser` 순회 → `OutlineNode[]`
+- `.docx` → mammoth(`convertToHtml`, **옵션 없음** — T1에서 styleMap이 불필요하다고 판정됐다) → `node-html-parser` 순회 → `OutlineNode[]`
 
 `markdown-reader.ts`는 **테스트 픽스처 전용으로만 남긴다.** 제품 경로가 아니다. 이유는 두 가지다:
 
@@ -522,13 +523,14 @@ STAGE_GROUPS : { key:'concept', label:'컨셉·레퍼런스', slaDays:2,
 
 경계: `docx-reader.ts`와 `markdown-reader.ts`가 **같은 `OutlineNode[]`를 뱉고**, 그 아래(`outline-builder` → `assignment-mapper`)는 입력 형식을 모른다.
 
-**✅ 선행 스모크 테스트 완료 (T1)**: 실제 Google Docs를 `.docx`로 내보내 실측했다. mammoth **기본 옵션에서 heading이 인식된다 — styleMap 커스터마이즈가 필요 없다.** `h2` 12건(`N.` 접두사 9건) · `h3` 50건(`N-M.` 접두사 20건)이 잡혀 `## N. 대분류` → `h2`, `### N-M. 과제명` → `h3` 매핑이 그대로 성립했다. 따라서 `docx-reader.ts`는 `mammoth.convertToHtml({ path })`를 옵션 없이 호출하면 된다. 측정 방법과 전체 수치는 `scripts/smoke/RESULT.md`「H8」에 있다.
+**✅ 선행 스모크 테스트 완료 (T1)**: 실제 Google Docs를 `.docx`로 내보내 실측했다. mammoth **기본 옵션에서 heading이 인식된다 — styleMap 커스터마이즈가 필요 없다.** `h2` 12건(`N.` 접두사 9건) · `h3` 50건(`N-M.` 접두사 20건)이 잡혀 `## N. 대분류` → `h2`, `### N-M. 과제명` → `h3` 매핑이 그대로 성립했다. 따라서 `docx-reader.ts`는 `mammoth.convertToHtml`을 **옵션 없이** 호출한다. 다만 인자는 `{ path }`가 아니라 **`{ buffer }`**다 — 라우트가 받는 것은 업로드된 바이트이고, 디스크에 임시 파일을 쓰면 그 파일에 사람 이름이 남는다 (`S6`). 측정 방법과 전체 수치는 `scripts/smoke/RESULT.md`「H8」에 있다.
 
 단 `h3` 50건 중 **아웃라인 과제는 `N-M.` 접두사를 가진 20건이고 나머지 30건은 과제가 아닌 절 제목**이다. `outline-builder`는 태그 깊이만이 아니라 **번호 접두사도 함께** 봐야 한다 (T7 범위).
 
 **미리 박아두는 주의점 3개:**
 
 - **난이도 정규식 순서**: `上|中上|中|中下|下` 그대로 쓰면 `中上`이 `中`에 먼저 걸린다. **긴 것부터 정렬** (`中上|中下|上|中|下`). 실제로 나는 버그다.
+- **난이도 표기(2026-08-24 확정)**: 문서 원문은 한자지만 **배정표에 담기는 값은 한글**이다 (`상`·`중상`·`중`·`중하`·`하`). 배정표는 팀에 배포되는 파일이고 드롭다운에서 고르는 값이라, 한자 표기는 고를 때마다 「중상이 중보다 위인가」를 다시 생각하게 한다. **매칭 규칙은 그대로다** — 원문이 한자이므로 `DIFFICULTY_MATCH_ORDER`(긴 것부터)가 진실이고, 변환표(`DIFFICULTY_LABELS`)가 그 뒤에 붙는다. 한글을 매칭 목록에 넣지 않는 이유는 `(상세 협의 필요)` 같은 정당한 괄호에서 `상`이 걸리기 때문이다.
 - **연도 추론**: `9/1`에 연도가 없다. 하드코딩 금지 — `baseYear`를 파라미터로 주입, UI에서 기본값 제공. 실패 시 `deadline_raw`만 보존하고 `deadline_date`는 null.
 - **「워크로드 공유」 섹션**: P0/P1과 ①②③④가 별도 블록이므로 `workload-parser.ts`로 분리 파싱 후 과제 번호로 조인해 `priority`를 채운다. 조인 실패는 무시.
 
@@ -541,9 +543,87 @@ STAGE_GROUPS : { key:'concept', label:'컨셉·레퍼런스', slaDays:2,
 
 1행 틀고정, 열너비, 헤더 굵게. `상태`·`난이도`·`우선순위`에 **데이터 검증 드롭다운** — 값은 `설정` 탭에서 읽은 `enum_options` 재사용. **이러면 뽑은 배정표를 그대로 입력해 다시 시스템에 올릴 수 있다.** 두 기능이 한 바퀴로 닫힌다. 데모의 클라이맥스다.
 
+> 위 문장의 「`설정` 탭에서 읽은 `enum_options` 재사용」은 **T7 시점에 성립하지 않는다** — 아래
+> 「T7 착수 시 확정」 결정 B를 본다. 원래 의도가 근거로 남아야 해서 문장은 지우지 않았다.
+
 **왕복 테스트**: `sample-workload.md` → rows → xlsx 버퍼 → 시트 파서로 다시 읽기 → rows 동일. 두 파이프라인을 한 번에 검증하는 가장 가치 있는 통합 테스트.
 
 **LLM은 옵션.** `ENABLE_LLM=false`가 기본. 키가 없으면 보조 필드만 빈칸이고 나머지는 그대로 동작한다. 이 경계를 넘지 않는다.
+
+#### T7 착수 시 확정 (2026-08-23)
+
+위 문단들은 T2 시점의 설계다. T7에 착수하면서 **뒤 단계 열 개가 갈라지지 않도록** 네 가지를
+못박는다. 기존 문단은 근거로 남기고 여기에 이어 붙인다.
+
+**결정 A — 우선순위는 시트 enum 값으로 옮겨 적는다.** 문서의 「워크로드 공유」 절은 우선순위를
+`P0`·`P1`로 적지만, 배정표의 `우선순위` 컬럼은 시트 `공통_우선순위` 드롭다운을 달고 나간다.
+`P0`을 그대로 쓰면 셀 값이 드롭다운 목록 밖이라 엑셀이 경고를 띄우고, 그 파일을 `/upload`에
+재업로드하면 `task-semantic.ts`의 `UNREGISTERED_PRIORITY` 경고가 뜬다. **고리가 닫히지 않는다.**
+
+| 문서 | 배정표 `우선순위` |
+|---|---|
+| `P0` | `긴급` |
+| `P1` | `높음` |
+| `P2` | `보통` |
+| `P3` | `낮음` |
+| 그 밖 · 조인 실패 | 빈칸 (경고도 내지 않는다 — `TICKETS.md` T7 「조인 실패는 무시」) |
+
+원문(`P0`)을 버리지는 않는다. 행이 `priorityRaw`로 들고 있고 배정표 셀에는 매핑된 값만 쓴다.
+결정 이력은 `ADR-021`.
+
+**결정 B — 드롭다운 목록은 `assignment-writer`가 인자로 받는다.** 위 문단의 「`설정` 탭에서 읽은
+`enum_options` 재사용」은 T7 시점에 읽을 곳이 없다 — `enum_options` 테이블은 있지만
+`TaskRepository`에 읽기 메서드가 없고, `/extract`는 시트 업로드와 무관하게 단독으로 돈다
+(`TICKETS.md`가 T7을 T2 직후에 두는 이유다). 기본값은 **코드에 이미 있는 단일 출처**에서 만든다.
+
+| 컬럼 | 기본 목록 | 출처 |
+|---|---|---|
+| `상태` | 시트 10단계 | `STATUS_SEMANTIC_MAP`의 키 순서 (`lib/domain/task-semantic.ts`) |
+| `난이도` | `上`·`中上`·`中`·`中下`·`下` | `assignment-mapper.ts`의 `DIFFICULTY_LEVELS` |
+| `우선순위` | `긴급`·`높음`·`보통`·`낮음` | `assignment-mapper.ts`의 `PRIORITY_LEVELS` (`공통_우선순위` 실측값) |
+
+**상태 문자열을 `assignment-writer.ts`에 다시 적지 않는다.** 한 글자만 달라져도
+(`게시·이관 대기`의 가운뎃점은 `·`) 재업로드에서 조용히 미매핑된다 — `ADR-009`가 상태 원문의
+출처를 한 곳으로 몰아 둔 이유가 그것이고, 배정표도 그 규칙 밖이 아니다.
+
+**결정 C — `/extract`는 아무것도 저장하지 않는다. 왕복 두 번이다.** `TICKETS.md` T7 범위 Out에
+「DB 저장」이 있으므로 `ADR-008`의 미리보기→확정 2단계를 쓰지 않는다 — 확정할 저장소가 없다.
+라우트는 둘이며 이름은 `ARCHITECTURE.md`가 이미 적어 둔 것을 그대로 쓴다.
+
+```
+POST /api/uploads/doc        .docx  → 배정표 행 미리보기(JSON). uploads 행을 만들지 않는다
+POST /api/export/assignment  행 JSON → 배정표 .xlsx 바이트 (Content-Disposition: attachment)
+```
+
+`uploads` 행을 만들지 않는 이유는 스코프만이 아니다. 그 행의 `parse_result`에 문서 본문이
+통째로 남는데 **워크로드 문서에는 사람 이름이 들어 있다** (`S6`). 결정 이력은 `ADR-022`.
+
+**결정 D — 에러 코드 2개를 추가한다.** 아래 두 코드를 `X1` 목록에 넣는다. ADR을 만들지 않는
+것은 되돌릴 수 있는 구현 선택이기 때문이다.
+
+| 코드 | 상태 | 왜 기존 코드로 안 되는가 |
+|---|---|---|
+| `DOCUMENT_CORRUPT` | 422 | `WORKBOOK_CORRUPT`의 문구는 「워크북」이다. `.docx`를 올린 사람에게 워크북이라고 말하면 무엇을 잘못했는지 알 수 없다 |
+| `NO_OUTLINE_TASK` | 422 | 「알려진 탭이 하나도 없음」(`NO_KNOWN_TAB`)과 같은 강도의 중단이다. 과제 0건짜리 배정표를 내려보내면 사람은 그게 빈 문서인지 파서 고장인지 모른다 |
+
+#### T7 구현 중 확정 (2026-08-24, step 10 감사)
+
+착수 시점에 못박은 A~D는 그대로 섰다. 구현하면서 **새로 갈린 것 둘**을 여기 잇는다.
+
+**결정 E — `.docx` 픽스처를 커밋하되, 진짜 원본은 그것을 만드는 스크립트다.** 위
+「독스 → 배정표」 절은 「`.docx`는 바이너리라 픽스처로 최악이다 — git diff가 안 되고
+테스트가 뭘 검증하는지 읽을 수 없다」고 적었고 그 판단은 **지금도 맞다.** 그래서 바이너리를
+손으로 만들어 넣는 대신 `scripts/fixtures/build-sample-workload-docx.mjs`(`npm run fixture:docx`)가
+생성한다 — ZIP 엔트리 3개·무압축·CRC-32 직접 계산·타임스탬프 고정이라 **재실행해도 같은
+바이트**이고, 리뷰어가 읽을 것은 `.docx`가 아니라 그 스크립트다. `markdown-reader`가 픽스처
+전용이라는 `ADR-010`은 **바뀌지 않았다** — `.md`가 여전히 아웃라인 로직을 검증하고 `.docx`는
+리더 계층만 본다. 늘어난 것은 「리더 계층을 실제 바이너리로 한 번 밟는다」는 자리 하나다.
+
+**결정 F — `/extract`는 읽기 전용 모드에서도 정상 동작한다.** `ADR-005`가 「폴백 중 모든 쓰기
+경로는 `503`」이라고 정했지만 이 화면에는 **쓰기 경로가 없다**(결정 C). 그래서 화면이
+`readOnly`를 패널에 넘기지 않고 드롭존을 잠그지 않는다 — 잠그면 「저장소가 죽어도 배정표는
+뽑을 수 있다」는 사실을 화면이 스스로 부정한다. 배너는 그대로 뜬다: 배너가 말하는 것은
+**저장소 상태**이지 이 화면의 가용성이 아니다.
 
 ### 6. 집계·판정 — `src/lib/domain/` 순수 함수
 
@@ -917,6 +997,7 @@ React가 기본 이스케이프하므로 태스크 제목·비고의 XSS 위험�
 ```
 FILE_TOO_LARGE · FILE_TYPE_MISMATCH · ARCHIVE_LIMIT_EXCEEDED · PARSE_TIMEOUT
 WORKBOOK_CORRUPT · NO_KNOWN_TAB · SETTINGS_TAB_MISSING
+DOCUMENT_CORRUPT · NO_OUTLINE_TASK
 UPLOAD_NOT_FOUND · UPLOAD_ALREADY_COMMITTED · TASK_NOT_FOUND
 STORAGE_READONLY · STORAGE_UNAVAILABLE · FORBIDDEN · VALIDATION_FAILED
 ```

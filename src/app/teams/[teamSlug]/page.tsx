@@ -175,16 +175,20 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
       case 'tasks':
         return (
           <section className="border-line bg-panel rounded-md border p-4">
-            <h2 className="text-brand text-sm font-semibold">업무</h2>
+            {/* `/`와 **같은 격자**다 — 제목과 필터를 겹쳐 놓아 버튼은 제목 줄 오른쪽 끝에 서고
+                펼친 패널은 카드 폭 전체를 쓴다. 안내문은 격자 밖에 둔다 */}
+            <div className="grid grid-cols-1 items-start">
+              <h2 className="text-brand col-start-1 row-start-1 text-sm font-semibold">업무</h2>
+              <div className="col-start-1 row-start-1">
+                <FilterBar query={query} pathname={pathname} showTeamChips={false} />
+              </div>
+            </div>
             {needsOwnerHint && (
-              <p className="text-ink-muted mt-1 text-xs">
-                담당자를 지정하면 내 업무만 볼 수 있습니다 — 아래 「담당자」 칸에 이름을 넣고
-                Enter를 누르세요.
+              <p className="text-ink-muted mt-2 text-xs">
+                담당자를 지정하면 내 업무만 볼 수 있습니다 — 「필터」를 열고 「담당자」 칸에 이름을
+                넣고 Enter를 누르세요.
               </p>
             )}
-            <div className="mt-3">
-              <FilterBar query={query} pathname={pathname} showTeamChips={false} />
-            </div>
             {/* `/`와 같은 자리다 — 패널은 오버레이지만 「필터 밖」 안내는 표 위에 붙는다 */}
             <div className="mt-3">
               <TaskPanelSlot

@@ -2,9 +2,26 @@
 
 ## 목적
 
-T1(`docs/TICKETS.md`)의 선행 확인 2건 — `H8`(mammoth heading 인식)과 `A7`(시트 크기) —
-을 실제 파일로 실측하는 **일회성 검증 스크립트 모음**이다. 제품 경로가 아니며
-`next build` 번들에 포함되지 않는다.
+문서가 「그렇다」고 적은 것을 **실제 파일로** 확인하는 검증 스크립트 모음이다.
+제품 경로가 아니며 `next build` 번들에 포함되지 않는다.
+
+| 스크립트 | 무엇을 재나 |
+|---|---|
+| `docx-headings.mjs` | `H8` — mammoth가 `.docx`의 heading을 `h1~h3`으로 인식하는가 (T1) |
+| `sheet-metrics.mjs` | `A7`·`S2` — 시트 `.xlsx`의 크기·시트 수·셀 수 (T1) |
+| `assignment-xlsx.mjs` | T7 완료 기준 4·5 — **내려받은** 배정표에 드롭다운이 붙었는가, 수식 셀이 0개인가 |
+
+`assignment-xlsx.mjs`는 앞의 둘과 성격이 다르다 — 실업무 원본이 아니라 **라우트가 방금
+내려보낸 파일**을 받는다. 단위 테스트는 `buildAssignmentWorkbook`의 출력 버퍼를 보지만
+이 스크립트는 직렬화·응답 헤더를 거쳐 나온 바이트를 보므로, 그 구간에서 무언가 달라지면
+여기서만 드러난다.
+
+```bash
+# 예: 라우트에서 받아 그대로 검사
+curl -s -X POST localhost:3000/api/export/assignment \
+  -H 'Content-Type: application/json' --data-binary @rows.json -o /tmp/a.xlsx
+node scripts/smoke/assignment-xlsx.mjs /tmp/a.xlsx
+```
 
 ## 입력 파일 배치 규약
 

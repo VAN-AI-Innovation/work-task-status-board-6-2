@@ -59,7 +59,12 @@ export function SectionGrid({
           요약 줄과 카드 **사이를 띄우지 않는다.** 둘 사이에 여백과 테두리가 두 겹 들어가면
           펼친 내용이 요약 줄에 딸린 것이 아니라 그 아래 놓인 별개 카드로 읽힌다. 위쪽
           모서리와 테두리를 지워 요약 줄에 이어 붙인다 */}
-      <div className="[&>section]:rounded-t-none [&>section]:border-t-0 [&>section>h2]:sr-only">
+      {/*
+       * 제목 숨김은 **자손 선택자**여야 한다. `>section>h2`로 두었더니 제목을 `<div>`로 한 번
+       * 감싼 카드(주간 브리핑·승인 대기함)에서 빗나가, 펼치면 「주간 브리핑」이 요약 줄과
+       * 카드에 두 번 떴다. 접히는 카드 셋 다 `h2`는 하나씩이라 자손으로 잡아도 안전하다.
+       */}
+      <div className="[&>section]:rounded-t-none [&>section]:border-t-0 [&>section_h2]:sr-only">
         {render(key)}
       </div>
     </details>

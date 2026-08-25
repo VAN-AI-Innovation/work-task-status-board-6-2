@@ -194,20 +194,44 @@ const widthOf = (row: LayoutRow): number =>
   row.cells.reduce((acc, cell) => acc + cell.span, 0);
 
 /**
- * 팀 화면의 배치. **대시보드와 다르다** — 전사 요약표·완료율 차트·승인 대기함·브리핑이
- * 없어서 알림 옆에 세울 만큼 긴 카드가 하나도 없다. 그래서 짧은 둘(상태 분포·목표 대비
- * 성과)을 **알림 오른쪽에 세로로 쌓아** 그 자리를 채운다.
+ * **두 화면이 공유하는 요약 행.** 「지금 문제(알림)」 옆에 「전체 그림(축약 KPI + 상태 분포)」을
+ * 세우는 짝이며, 폭은 6 + 6이다 — 어느 쪽도 곁다리가 아니라서 한쪽이 좁으면 그쪽이 부속처럼
+ * 읽힌다.
  *
- * 알림이 12칸을 다 먹지 않는 것도 요점이다 — 그러면 이름과 건수 사이가 화면 폭만큼
- * 벌어진다. 7칸이면 패널이 제 폭을 보고 두 단으로 갈라져 그 간격도 좁다 (`@container`).
+ * 값을 한곳에 두는 이유: 대시보드와 팀 화면이 이 행을 다르게 두면 같은 사람이 화면을 옮길 때
+ * **카드가 자리를 바꾼다.** 예전에 팀 화면이 알림 7 + [상태 분포·목표] 5였고 축약 KPI는 제
+ * 줄을 통째로 썼는데, 그 차이를 설명할 수 있는 사람이 아무도 없었다.
+ */
+const SUMMARY_ROW = {
+  spans: { alerts: 6, charts: 6, kpi_compact: 6 },
+  groups: [['alerts', ['kpi_compact', 'charts']]],
+} as const satisfies Pick<ScreenLayout, 'spans' | 'groups'>;
+
+/**
+ * 팀 화면의 배치. **대시보드와 같은 값이다** — `spans`·`groups`가 `DASHBOARD_LAYOUT`과
+ * 글자까지 같고, 다른 것은 `only`(그릴 수 있는 섹션이 적다) 하나뿐이다.
+ *
+ * 예전에는 달랐다(알림 7 + [상태 분포·목표] 5, 축약 KPI는 12칸 제 줄). 그러면 같은 사람이
+ * 대시보드에서 팀 화면으로 넘어갈 때 **카드가 자리를 바꾼다** — KPI 타일이 위 한 줄에서
+ * 알림 오른쪽으로, 알림은 두 단에서 한 단으로. 화면 둘이 같은 것을 다르게 배치하면
+ * 사용자는 매번 어디를 봐야 하는지 다시 찾는다.
+ *
+ * `only`가 걸러 낸 자리는 `layoutFor`가 알아서 접는다 — 짝에서 없는 섹션이 빠지면 남은
+ * 칸만 세운다. 그래서 역할별로 축약 KPI가 없어도(admin·lead) 이 값을 갈라 둘 필요가 없다.
  *
  * 화면이 아니라 여기 두는 이유는 배치가 화면 지식이 아니라 **`layoutFor`의 입력**이고,
  * 화면과 테스트가 같은 값을 봐야 하기 때문이다.
  */
 export const TEAM_PAGE_LAYOUT: ScreenLayout = {
   only: ['kpi', 'kpi_compact', 'charts', 'goals', 'alerts', 'tasks'],
-  spans: { alerts: 7, charts: 5 },
-  groups: [['alerts', ['charts', 'goals']]],
+  ...SUMMARY_ROW,
+  /*
+   * 목표 대비 성과만 대시보드와 폭이 다르다. **접히는 카드가 팀 화면에는 이것 하나뿐**이라
+   * 기본 4칸으로 두면 넓은 화면에 좁은 줄 하나가 왼쪽에 홀로 남는다. 알림과 같은 6칸으로
+   * 맞추면 위 행의 왼쪽 카드와 세로 선이 이어진다. 대시보드는 접히는 카드가 셋(목표·브리핑·
+   * 승인 대기)이라 4 + 4 + 4로 한 행이 차므로 그대로 둔다.
+   */
+  spans: { ...SUMMARY_ROW.spans, goals: 6 },
 };
 
 /**
@@ -220,11 +244,9 @@ export const TEAM_PAGE_LAYOUT: ScreenLayout = {
  * 여기 넣지 않는다: 5열 그리드를 6칸에 밀어 넣으면 라벨이 두 줄로 접힌다.
  */
 export const DASHBOARD_LAYOUT: ScreenLayout = {
-  spans: { alerts: 6, charts: 6, kpi_compact: 6 },
-  groups: [
-    ['teams', 'completion'],
-    ['alerts', ['kpi_compact', 'charts']],
-  ],
+  spans: SUMMARY_ROW.spans,
+  // 전사 요약표 짝은 대시보드에만 있다 — 팀 화면에는 그 두 섹션 자체가 없다(`only`)
+  groups: [['teams', 'completion'], ...SUMMARY_ROW.groups],
 };
 
 /**

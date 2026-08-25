@@ -23,6 +23,8 @@ const CODES_FROM_ARCHITECTURE = [
   'WORKBOOK_CORRUPT',
   'NO_KNOWN_TAB',
   'SETTINGS_TAB_MISSING',
+  'DOCUMENT_CORRUPT',
+  'NO_OUTLINE_TASK',
   'UPLOAD_NOT_FOUND',
   'UPLOAD_ALREADY_COMMITTED',
   'TASK_NOT_FOUND',
@@ -32,7 +34,18 @@ const CODES_FROM_ARCHITECTURE = [
   'VALIDATION_FAILED',
 ] as const;
 
-/** step 5에서 확정한 대응표 */
+/**
+ * `doc-pipeline.ts`의 문장을 **손으로 옮겨 적은 것**이다. 그 모듈을 import하면 mammoth가
+ * 이 유닛 테스트에 딸려 오고, 두 표가 함께 틀려도 테스트는 통과한다. 실제로 라우트가 그
+ * 문장을 그대로 흘려보내는지는 `uploads/doc/route.test.ts`가 진짜 파이프라인으로 잰다.
+ */
+const DOC_MESSAGES = {
+  DOCUMENT_CORRUPT: '문서를 읽을 수 없습니다. 파일이 손상되었거나 지원하지 않는 형식입니다.',
+  NO_OUTLINE_TASK:
+    '문서에서 과제를 찾지 못했습니다. 과제 제목에 1-1 형태의 번호가 있는지 확인해 주세요.',
+} as const;
+
+/** step 5에서 확정한 대응표. 아래 둘은 step 8이 더한 독스 경로다 (`PLAN.md` 결정 D) */
 const EXPECTED_STATUS: Record<(typeof CODES_FROM_ARCHITECTURE)[number], number> = {
   VALIDATION_FAILED: 400,
   FORBIDDEN: 403,
@@ -44,6 +57,8 @@ const EXPECTED_STATUS: Record<(typeof CODES_FROM_ARCHITECTURE)[number], number> 
   FILE_TYPE_MISMATCH: 415,
   WORKBOOK_CORRUPT: 422,
   NO_KNOWN_TAB: 422,
+  DOCUMENT_CORRUPT: 422,
+  NO_OUTLINE_TASK: 422,
   SETTINGS_TAB_MISSING: 200,
   STORAGE_READONLY: 503,
   STORAGE_UNAVAILABLE: 503,
@@ -51,7 +66,7 @@ const EXPECTED_STATUS: Record<(typeof CODES_FROM_ARCHITECTURE)[number], number> 
 };
 
 describe('API_ERROR_CODES', () => {
-  it('ARCHITECTURE.md의 코드 14개와 정확히 일치한다 (빠짐도 남음도 없다)', () => {
+  it('ARCHITECTURE.md의 코드 16개와 정확히 일치한다 (빠짐도 남음도 없다)', () => {
     expect([...API_ERROR_CODES].sort()).toEqual([...CODES_FROM_ARCHITECTURE].sort());
   });
 
@@ -92,6 +107,18 @@ describe('API_ERROR_MESSAGES', () => {
       expect(message).not.toContain('/src/');
       expect(message).not.toContain('Error:');
     }
+  });
+});
+
+describe('독스 경로 코드 2개 (PLAN.md 결정 D)', () => {
+  it('문구가 doc-pipeline의 것과 글자까지 같다 — 같은 실패가 두 문장으로 갈리지 않는다', () => {
+    expect(API_ERROR_MESSAGES.DOCUMENT_CORRUPT).toBe(DOC_MESSAGES.DOCUMENT_CORRUPT);
+    expect(API_ERROR_MESSAGES.NO_OUTLINE_TASK).toBe(DOC_MESSAGES.NO_OUTLINE_TASK);
+  });
+
+  it('WORKBOOK_CORRUPT와 다른 문장이다 — 그게 코드를 따로 둔 이유다', () => {
+    expect(API_ERROR_MESSAGES.DOCUMENT_CORRUPT).not.toBe(API_ERROR_MESSAGES.WORKBOOK_CORRUPT);
+    expect(API_ERROR_MESSAGES.DOCUMENT_CORRUPT).not.toContain('워크북');
   });
 });
 

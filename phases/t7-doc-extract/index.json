@@ -1,0 +1,107 @@
+{
+  "project": "work-task-status-board",
+  "phase": "t7-doc-extract",
+  "steps": [
+    {
+      "step": 0,
+      "name": "doc-decisions",
+      "commit": "docs: 독스 추출 경로 결정과 워크로드 픽스처 반영",
+      "status": "completed",
+      "started_at": "2026-08-23T20:19:32+0900",
+      "summary": "T7 결정 4건을 문서에 확정: PLAN.md「T7 착수 시 확정」 소절(A 우선순위 P0→긴급 매핑 · B 드롭다운 목록은 assignment-writer 인자 · C /extract 무저장 2라우트 · D 에러 코드 2개), ADR-021·ADR-022 신설, ARCHITECTURE.md에 DOCUMENT_CORRUPT·NO_OUTLINE_TASK와 doc-pipeline 반영, TICKETS.md T7 산출물 갱신(완료 기준 6개 불변). 계층 4개가 주고받는 src/types/doc.ts(OutlineNode·OutlineTask·WorkloadEntry·AssignmentRow) 신설, 익명화 픽스처 sample-workload.md 작성 — 난이도 5종·마감 3갈래·번호 없는 절 4개·수식 주입 페이로드 6종(=·+·-·@·탭·개행)·조인 실패용 9-9 포함.",
+      "completed_at": "2026-08-23T20:58:30+0900"
+    },
+    {
+      "step": 1,
+      "name": "markdown-reader",
+      "commit": "feat: 마크다운 픽스처를 아웃라인으로 읽는 markdown-reader 추가",
+      "status": "completed",
+      "started_at": "2026-08-23T20:59:01+0900",
+      "summary": "readMarkdownOutline(markdown) → OutlineNode[]. 리더는 문서 형식만 알고 의미를 모른다 — 제목 정규식 하나(#1~6 + 공백)로 level·text를 잡고 text는 trim만 해 번호·난이도 표기를 원문 그대로 둔다. 불릿(-·*·+·•·1.·1)·①~⑳)은 줄 맨 앞에서 한 번만 떼되 뒤에 공백을 요구해 -20%·+15%·1.5배의 부호가 살아남는다. 제목 앞 본문은 버리지 않고 level 0 서두 노드에 담고, 빈 줄은 lines에 넣지 않으며 어떤 입력에도 던지지 않는다. 테스트 28건 — 문자열 리터럴 22건 + 픽스처 6건(과제 6개 level 3, 번호 없는 절 4개, 워크로드 공유 level 2, 수식 페이로드 보존). 구현이 선행 실행분으로 이미 있어 red→green을 직접 보지 못한 대신 변이 테스트 3종으로 계약을 검증했고, 그중 '불릿 공백 요구 제거'가 살아남아 테스트 2건을 보강해 잡았다.",
+      "completed_at": "2026-08-23T21:08:18+0900"
+    },
+    {
+      "step": 2,
+      "name": "outline-builder",
+      "commit": "feat: 번호 접두사로 과제를 고르는 outline-builder 추가",
+      "status": "completed",
+      "started_at": "2026-08-23T21:08:42+0900",
+      "summary": "buildOutline(nodes) → {tasks, warnings}. 과제 판별을 level이 아니라 번호 접두사로 한다 — 실측(h3 50건 중 과제 20건)이 깊이를 못 믿게 만든 자리다. 명세의 과제 정규식 /^(\\d+-\\d+)[.)]?\\s*/은 `3-1-1. 하위`를 `3-1`로 잡아 표의 기대와 어긋나서, 번호 뒤 구분자를 필수(`.`·`)`·공백·줄끝)로 바꿔 `3-1.과제`·`3-1) 과제`는 살리고 두 단 초과 번호는 막았다. 번호 없는 절은 버리지 않고 제목 한 줄 + lines를 직전 과제 details로 흡수하며, 대분류가 바뀌면 흡수를 끊는다(다음 대분류 절이 이전 과제에 붙지 않게). 붙을 과제가 없으면 ORPHAN_SECTION, 대분류 없는 과제는 category null + NO_CATEGORY:번호(과제는 버리지 않음), 중복은 둘 다 남기고 DUPLICATE_TASK_NO:번호 — 경고는 코드와 번호만 담고 원문을 담지 않는다. WORKLOAD_SECTION_PATTERN을 여기서 소유하고 절 범위(같거나 얕은 다음 제목 직전)를 통째로 건너뛴다. 던지지 않고 시간을 읽지 않는다. 테스트 37건(리터럴 31 + 픽스처 6), 변이 3종(정규식 원안 되돌리기·대분류 리셋 제거·level 판별)이 모두 잡혔다.",
+      "completed_at": "2026-08-23T21:14:48+0900"
+    },
+    {
+      "step": 3,
+      "name": "workload-parser",
+      "commit": "feat: 워크로드 공유 절의 우선순위 블록 파서 추가",
+      "status": "completed",
+      "started_at": "2026-08-23T21:15:28+0900",
+      "summary": "parseWorkloadPriorities(nodes) → WorkloadEntry[]. 「워크로드 공유」 절만 따로 읽어 taskNo → 우선순위 대응표만 만든다 — 과제·세부항목을 만들지 않고 OutlineTask를 몰라 조인도 하지 않는다. 절 판별 정규식(WORKLOAD_SECTION_PATTERN)에 더해 **절 범위 규칙도 outline-builder가 소유**하도록 sectionBody(nodes, headingIndex)를 거기서 export해 공유했다 — 같은 규칙을 한쪽은 건너뛰는 데, 한쪽은 읽는 데 쓰므로 두 벌이 되면 절이 두 파서 모두에서 사라지거나 두 번 읽힌다. outline-builder는 workloadLevel 상태 추적을 이 헬퍼 호출로 바꿨고 기존 37건 그대로 통과. 스캔은 절 제목의 lines + 본문 노드의 text·lines를 문서 순서로 이은 줄 목록이고, /\\bP([0-9])\\b/i 토큰이 나오면 현재 우선순위가 바뀌어 다음 토큰까지 이어진다. 토큰 전의 번호는 담지 않고, 중복은 처음 것이 이기며(문서 위쪽이 더 강하다), 9-9 같은 없는 번호도 그대로 담는다(조인 실패 판단은 step 4). p0도 인식하되 priorityRaw는 `P0`으로 정규화한다 — 원문 대소문자를 넘기면 매핑에서 조용히 조인 실패가 된다. 시트 enum 값(긴급…)으로 바꾸지 않고, 던지지도 경고하지도 않는다. 테스트 20건(리터럴 18 + 픽스처 2), 변이 5종(중복 last-wins·절 범위 무시·대소문자 정규화 제거·토큰 전 번호 수집·\\b 제거)이 모두 잡혔다.",
+      "completed_at": "2026-08-23T21:22:33+0900"
+    },
+    {
+      "step": 4,
+      "name": "assignment-mapper",
+      "commit": "feat: 난이도·마감·우선순위를 배정표 행으로 만드는 assignment-mapper 추가",
+      "status": "completed",
+      "started_at": "2026-08-23T21:23:02+0900",
+      "summary": "buildAssignmentRows(tasks, workload, {baseYear}) → AssignmentRow[]. 문서의 산문 표기를 배정표 한 줄로 옮기는 계층이고 판단 셋이 전부 여기 모인다. 난이도는 DIFFICULTY_MATCH_ORDER(['中上','中下','上','中','下'])를 |로 이어 정규식을 만들어 긴 것부터 매칭한다 — 배열 자체가 규칙이라 코드에서 다시 정렬하지 않고, 드롭다운용 표시 순서(DIFFICULTY_LEVELS: 上→下)는 별도로 export해 두 용도가 서로를 덮지 않게 했다(완료 기준 3). 제목은 빌더가 확정한 taskNo로 접두사를 떼(번호 정규식이 두 벌이 되지 않는다) 끝에 이어 붙은 괄호 덩어리만 본다 — 괄호 안에 난이도도 날짜도 없으면 떼지 않는다('촬영 가이드 (2부)'는 제목의 일부다). 마감은 YYYY-MM-DD → M/D → N월 M일 순으로 날짜 토큰만 떼어 시트 쪽 toDateString(token,{baseYear})에 넘긴다 — 날짜 파서를 새로 쓰지 않아 시트와 문서가 같은 날짜를 낸다. 연도는 코드 어디에도 리터럴로 없고(grep 확인) new Date()·Date.now()를 부르지 않는다. 추론이 실패해도 deadlineRaw는 남는다('추후 협의'·'13/45까지') — 값을 버리는 것이 가장 나쁜 실패다. 우선순위는 taskNo 조인 후 WORKLOAD_PRIORITY_MAP(P0→긴급…)으로 옮기고, 조인 실패와 표에 없는 원문(P7)은 조용히 빈칸이되 priorityRaw는 남긴다 — 드롭다운 목록 밖 값을 셀에 쓰지 않는다(ADR-021). 담당자·상태·진행률을 만들지 않고 던지지 않는다. 테스트 39건(리터럴 32 + 픽스처 7). 구현이 선행 실행분으로 이미 있어 red→green을 직접 보지 못한 대신 변이 6종(난이도 순서를 ❌원안으로·baseYear 하드코딩·추론 실패 시 deadlineRaw 버리기·표에 없는 우선순위를 셀에 쓰기·괄호 무조건 떼기·중복 last-wins)을 넣어 전부 잡히는 것을 확인했다.",
+      "completed_at": "2026-08-23T21:54:51+0900"
+    },
+    {
+      "step": 5,
+      "name": "assignment-writer",
+      "commit": "feat: 드롭다운과 수식 주입 방어를 갖춘 배정표 xlsx 생성기 추가",
+      "status": "completed",
+      "started_at": "2026-08-23T21:55:24+0900",
+      "completed_at": "2026-08-23T23:12:43+0900",
+      "summary": "buildAssignmentWorkbook(rows, {dropdowns, sheetName}) → Uint8Array. 제품 코드에서 exceljs를 쓰기로 여는 유일한 파일이고(grep 확인 — workbook-reader.ts와 이 파일 두 줄뿐) 수식 주입 방어가 여기 한 곳에 모인다. sanitizeCellText는 =·+·-·@·탭·개행으로 시작하면 ' 프리픽스를 붙이되 값을 삭제하지 않고(ADR-012), 앞 공백을 건너뛰고 한 번 더 본다 — 엑셀은 ' =SUM(A1)'을 수식으로 읽는다. 이미 붙은 값에 두 번 붙이지 않아 멱등이다. 헤더도 같은 함수를 통과한다 — 한 칸이라도 예외를 두면 다음 사람이 우회 경로를 만든다. 모든 문자열 셀은 numFmt '@'이고 cell.value에는 문자열만 넣는다 ({formula} 객체를 만들 길이 이 파일에 없다). 마감은 deadlineDate ?? deadlineRaw를 **문자열로** 쓴다 — 추론 성공·실패가 같은 컬럼에 섞이는데 타입이 갈리면 재업로드에서 한 컬럼이 두 가지로 읽힌다. ASSIGNMENT_COLUMNS가 헤더·너비·드롭다운·서식의 단일 출처이고(11칸), 드롭다운은 난이도·우선순위·상태의 **데이터 행에만** 건다(헤더에 걸면 헤더가 목록 밖 값이 된다). DEFAULT_DROPDOWNS는 결정 B대로 이미 있는 출처만 가리킨다 — status는 Object.keys(STATUS_SEMANTIC_MAP)라 상태 10개 문자열이 이 파일에 없고(가운뎃점 하나만 달라져도 재업로드에서 조용히 미매핑된다, ADR-009), difficulty·priority는 assignment-mapper의 DIFFICULTY_LEVELS·PRIORITY_LEVELS다. 인라인 목록 255자 한도와 값 안의 쉼표가 목록을 가른다는 것은 주석으로 남겼다. 꾸미기는 틀고정·굵은 헤더·열 너비까지 — 색·조건부 서식·필터·차트 없음. 테스트 38건. 되읽기는 원칙적으로 시트 파서(readWorkbook + findHeaderBands/resolveHeaders/toText)로만 하고, exceljs 직접 로드는 두 자리로 한정했다 — dataValidation은 격자가 담지 않고, 값이 빈 셀의 numFmt는 리더가 버리기 때문이다(workbook-reader가 빈 셀을 {value:null,numFmt:null}로 채운다). 왕복(완료 기준 6)은 sample-workload.md → 4계층 → xlsx → 시트 파서로 되읽어 행 전체를 sanitizeCellText(원본)과 비교하고, 픽스처가 실제로 =·+·-·@·개행 페이로드를 싣고 있는지를 먼저 잰다 (그 단언이 없으면 왕복 테스트가 아무것도 재지 않는다). src/lib/doc/는 한 줄도 고치지 않았다 — 앞 계층 계약이 그대로 맞았다. 변이 6종(앞 공백 재검사 제거·데이터 행 sanitize 생략·numFmt 미지정·드롭다운을 헤더에도·상태 목록 하드코딩 오타·마감을 Date 타입으로)이 모두 잡혔다. lint·build·test(70파일 1171건) 통과."
+    },
+    {
+      "step": 6,
+      "name": "docx-reader",
+      "commit": "feat: mammoth로 docx를 같은 아웃라인으로 읽는 docx-reader 추가",
+      "status": "completed",
+      "started_at": "2026-08-23T23:13:08+0900",
+      "completed_at": "2026-08-23T23:42:49+0900",
+      "summary": "readDocxOutline(buffer) → Promise<OutlineNode[]> + outlineFromHtml(html) → OutlineNode[]. mammoth를 convertToHtml({buffer}) 한 인자로만 부르고 styleMap·옵션을 주지 않는다(H8이 기본 옵션 PASS로 끝냈다). messages는 읽지 않는다 — 경고에 스타일 이름이 담기고 그것은 사용자에게 보일 것이 아니다. 이 step의 위험은 mammoth가 아니라 경계라서, HTML→아웃라인을 순수 함수 outlineFromHtml로 떼어 바이너리 없이 문자열로 재고 대조 테스트를 걸었다(완료 기준 2) — 같은 내용의 md·html이 toEqual 깊은 동등이고, '양쪽이 빈 배열이라 같은 것이 아니다'를 노드 7개·줄 6개로 따로 못박았다(그 단언이 없으면 대조 테스트가 아무것도 재지 않는다). markdown-reader와 규칙 셋을 맞췄다: 빈 줄 제외, trim()만, 제목 앞 본문은 level 0 서두 노드. 불릿 기호는 떼지 않는다 — docx의 li·p 텍스트에는 애초에 글자가 없고(Word가 글리프를 그린다) 규칙을 늘리면 두 벌이 된다. 중첩 목록은 ownText로 평평해진다: li.text를 그냥 쓰면 바깥 항목이 안쪽을 삼켜 '가나'가 된다. table 등은 무시하고 던지지 않되, 손상된 바이트는 던진다 — 에러 코드로 옮기는 것은 doc-pipeline(step 7)의 몫이다. exceljs를 import하지 않는다. 픽스처 src/lib/fixtures/sample-workload.docx(2,583 B)는 scripts/fixtures/build-sample-workload-docx.mjs가 만든다(npm run fixture:docx) — ZIP 엔트리 3개·무압축(stored)·CRC-32 직접 계산·DOS 타임스탬프 고정이라 재실행해도 같은 바이트다(md5 일치 확인). word/styles.xml을 일부러 넣지 않았다: mammoth 기본 styleMap이 스타일 ID로도 걸어 Heading1~3이 h1~h3으로 인식되고(경고 3건은 나오지만 변환은 된다), 목록 문단이 <p>로 떨어지는 것은 리더가 p와 li를 같은 본문 줄로 다루므로 문제가 아니다. 내용은 sample-workload.md 앞부분의 익명 데이터다. 테스트 23건. 변이 6종(중첩 li를 .text로·빈 줄 허용·제목 앞 본문 버리기·trim 생략·ol 무시·기본 styleMap 끄기)이 모두 잡혔다. 다만 한 가지는 테스트로 못 막는다 — 커스텀 styleMap 규칙은 mammoth의 기본 맵이 이겨서 조용한 no-op이 되므로 (includeDefaultStyleMap:false를 함께 주어야 비로소 바뀐다) 「옵션을 주지 마라」는 테스트가 아니라 grep·리뷰로만 지켜진다. src/lib/doc의 기존 파일은 한 줄도 고치지 않았다. lint·build·test(71파일 1194건) 통과."
+    },
+    {
+      "step": 7,
+      "name": "doc-pipeline",
+      "commit": "feat: 독스 추출 4단계를 잇는 doc-pipeline 추가",
+      "status": "completed",
+      "started_at": "2026-08-23T23:43:18+0900",
+      "summary": "runDocExtract(bytes,{baseYear,timeoutMs?}) → Promise<DocExtractOutcome> + extractFromOutline(nodes,{baseYear}) → {rows,warnings}. 네 계층의 순서를 아는 유일한 곳이고, 그래서 픽스처 테스트는 기댓값을 옮겨 적지 않고 «손으로 이어 붙인 리더→빌더→파서→매퍼»와 결과가 같은지로 잰다(값 자체는 계층별 테스트가 이미 전수로 덮는다). 「바이트→노드」를 runDocExtract에, 「노드→행」을 extractFromOutline에 갈라 둬서 마크다운 픽스처 경로가 mammoth를 건드리지 않는다(완료 기준 2의 경계). 빌더와 워크로드 파서는 같은 노드 배열을 본다 — 파서가 읽는 것은 과제가 아니라 「워크로드 공유」 절이라서다. 과제 0건은 성공이 아니라 NO_OUTLINE_TASK 중단이고, 리더가 던지면 DOCUMENT_CORRUPT로 접는다 — 아래 계층은 던지지 않기로 계약돼 있지만 그 계약이 깨져도 예외가 라우트로 새지 않게 try로 한 겹 더 감쌌다. 타임아웃은 parse-runner의 Promise+setTimeout 패턴 그대로이고 기본값은 PARSE_TIMEOUT_MS를 재사용한다(새 숫자 0개, grep 확인). 실패 문구 셋은 step 8의 api-error.ts가 그대로 옮겨 적을 단일 출처다 — 다만 PARSE_TIMEOUT은 시트 쪽과 코드가 같아도 뒷 절을 갈랐다: 「탭을 나눠 올려 주세요」는 .docx에 탭이 없어 같은 문장이 아니라 틀린 안내가 된다(사실을 말하는 앞 절은 글자까지 같다). 파일 크기·ZIP 엔트리를 재지 않고(upload-guard의 몫) 저장소를 부르지 않으며(ADR-022) 경고를 늘리지 않고 new Date()·Date.now()를 부르지 않는다. 테스트 19건. 「과제 0건」 한 갈래만 vi.mock으로 리더를 갈아 끼웠다 — 과제 없는 .docx 픽스처를 하나 더 만드는 대신 판정 자체를 쟀고, 나머지는 전부 실제 mammoth 경로다. 변이 5종(워크로드 조인 생략·0건도 성공·WORKBOOK_CORRUPT 문장 재사용·타이머 미정리·리더 실패를 다시 던지기)이 모두 잡혔다. src/lib/doc의 기존 파일은 한 줄도 고치지 않았다. lint·build·test(72파일 1213건) 통과.",
+      "completed_at": "2026-08-23T23:51:44+0900"
+    },
+    {
+      "step": 8,
+      "name": "extract-api",
+      "commit": "feat: 독스 업로드와 배정표 내려받기 API 라우트 추가",
+      "status": "completed",
+      "started_at": "2026-08-23T23:52:08+0900",
+      "completed_at": "2026-08-24T00:20:16+0900",
+      "summary": "라우트 둘로 /extract 경로를 열었다. POST /api/uploads/doc(.docx → 행 JSON)와 POST /api/export/assignment(행 JSON → xlsx 바이트). 둘 다 getStorage를 부르지 않고 import조차 하지 않는다 — uploads 행을 만들면 parse_result에 사람 이름이 든 문서 본문이 통째로 남는데 확정이 없어 비울 시점도 없다(ADR-022·S6). 「부르지 않는다」를 「행이 안 생겼다」로 재지 않고 store-factory를 던지는 mock으로 갈아 끼워 호출 자체를 쟀다 — 읽기만 하는 코드도 통과해서는 안 되기 때문이다. 문 앞 판정은 새로 쓰지 않고 checkUpload({expect:'doc'})를 그대로 쓴다(크기·ZIP 엔트리·압축 폭탄이 이미 그 안에 있고, 여기서 다시 재면 한도가 두 벌이 된다). 완료 기준 1은 확장자가 아니라 내용으로 선다 — sample-workbook.xlsx를 '위장.docx'로 올려도 415다(S3). api-error.ts에는 DOCUMENT_CORRUPT·NO_OUTLINE_TASK 둘을 422로 추가하고 문장을 doc-pipeline에서 글자까지 그대로 옮겼다(같은 실패가 두 문장으로 보이지 않게). baseYear는 요청 경계에서 만들고 폼 값이 1900~2200 밖이면 거부가 아니라 오늘 연도로 되돌린다 — 연도가 틀렸다고 문서 전체를 거부하면 deadlineRaw까지 잃는다. 응답에 파일명을 되돌려주지 않는다(반사형 노출 자리). 내려받기 쪽은 행이 브라우저를 왕복해 돌아온 신뢰할 수 없는 입력이라 방어를 둘로 갈랐다 — 모양·규모는 assignment-schema(.strict + 제목 500자·세부항목 20,000자·2,000행 상한)가 문 앞에서, 내용(=·+·-·@)은 assignment-writer가 쓰기 한 곳에서(ADR-012). 라우트가 새로 지는 판단은 Content-Disposition뿐이라 ASCII filename에는 고정 대체값을, filename*에는 encodeURIComponent한 실제 이름을 싣는다(한글이 ASCII 자리에 들어가면 헤더가 깨지고, 사용자 문자열을 그대로 넣으면 헤더 인젝션 자리다). 선행 step이 남긴 assignment-schema.ts의 FILENAME_STRIP에는 원시 제어 바이트(NUL~US)가 소스에 박혀 있어 \\u0000-\\u001f\\u007f 이스케이프 표기로 바꿨다(동작은 같다). 본문이 JSON이 아닌 것만 공통 catch에서 떼어 400으로 낸다 — toApiErrorCode에 맡기면 503이 나가는데 이 라우트에는 불러올 저장소가 없다. 되읽기는 시트 파서(readWorkbook+toText)로만 해 src/app 아래에서 exceljs를 열지 않았다(ADR-003 유지, grep으로 두 파일뿐임 확인). 테스트 33건(doc 16 + export 17) + 스키마 24건. 변이 5종(expect를 'sheet'로·checkUpload 판정 무시·safeDownloadFilename 우회·ASCII filename에 사용자 문자열·JSON 파싱 실패를 공통 catch로)이 모두 잡혔다. src/lib/doc·src/lib/xlsx는 한 줄도 고치지 않았다. lint·build·test(75파일 1274건) 통과."
+    },
+    {
+      "step": 9,
+      "name": "extract-page",
+      "commit": "feat: 독스 추출 화면과 배정표 미리보기 추가",
+      "status": "completed",
+      "started_at": "2026-08-24T00:20:57+0900",
+      "summary": "/extract 화면을 열었다. 서버 컴포넌트(src/app/extract/page.tsx)는 upload/page.tsx와 같은 뼈대로 getStorage()를 직접 부르고(자기 API를 fetch하지 않는다, ADR-007) 배너·「마지막 반영」·역할을 PageShell에 넘긴다 — 다만 readOnly를 패널에 넘기지 않는다: 이 화면은 저장소에 쓰지 않아 읽기 전용 모드에서도 정상 동작하고(ADR-022), 잠그면 「저장소가 죽어도 배정표는 뽑을 수 있다」는 사실을 화면이 부정한다. doc-extract-panel.tsx는 sheet-upload-panel을 본떴지만 공통 컴포넌트로 묶지 않았다 — 저장하는 것이 없으니 확정 단계도 취소의 의미도 없어 상태 머신이 다르다(idle→validating→parsing→previewing + rejected·failed). REJECT_CODES 집합은 시트 쪽과 같게 뒀다(같은 코드를 화면마다 다른 성격으로 분류하면 안 된다) 대신 실패 문구는 서버가 준 message를 그대로 쓴다. 내려받기는 blob → URL.createObjectURL → 임시 <a download> → revokeObjectURL이고, 파일 이름은 서버의 Content-Disposition이 이 경로에 닿지 않으므로(fetch+blob이면 <a download>가 이긴다) 화면 상수로 준다. assignment-preview.tsx는 rows·warnings만 받아 JSX를 뱉고, 컬럼 11개를 ASSIGNMENT_COLUMNS와 같은 순서로 **손으로 적었다** — 그 상수를 import하면 exceljs가 통째로 클라이언트 번들에 실린다(ADR-003). 빈 칸 넷(담당자·상태·진행률·비고)도 컬럼으로 남겨 「사람이 채울 자리」를 보이게 하되 편집은 만들지 않았다(ADR-001). 세는 것은 요약 줄의 filter().length 둘뿐이라 lib/view 파일을 새로 만들지 않았고, 경고는 코드 원문(NO_CATEGORY:1-2) 대신 한국어 한 줄로 건수만 알린다. 라우트가 baseYear를 응답에 싣는 의도대로 「연도 없는 마감은 N년 기준」 한 줄을 패널이 밝힌다. 사이드바 ITEMS에 「독스 → 배정표」를 시트 업로드 바로 아래 붙였다(순서가 곧 UC-05→UC-06). AC: lint·build·test(75파일 1274건) 통과, 팔레트 클래스 grep 0건·안티패턴 grep 0건. 헤드리스 브라우저로 실제 흐름을 밟았다 — sample-workload.docx 업로드 → 표 11칸(순서 일치)·2행·빈 칸 4개가 「—」 → 「업무 배정표.xlsx」 7,475B 내려받기 → 「채워서 시트 업로드에 올리면 반영됩니다」 + /upload 링크. sample-workbook.xlsx를 「위장.docx」로 올리면 서버 문구 그대로 거부되고 표는 뜨지 않는다(S3). 콘솔·페이지 에러 0건, 1280·1024 둘 다 페이지 가로 스크롤 0px. sheet-upload-panel은 한 줄도 고치지 않았다.",
+      "completed_at": "2026-08-24T08:18:24+0900"
+    },
+    {
+      "step": 10,
+      "name": "t7-audit",
+      "commit": "docs: T7 완료 기준 전수 검증과 문서 갱신",
+      "status": "completed",
+      "started_at": "2026-08-24T08:18:51+0900",
+      "summary": "T7 완료 기준 6개를 하나씩 실행해 증명했다 — 6개 전부 통과. 기준 1: uploads/doc 라우트의 거부 6갈래 (.xlsx 415 · 내용이 xlsx인데 이름만 .docx 415 · ZIP 아님 415 · file 없음 400 · 4MB 413 · 과제 0건 422), 판정은 확장자가 아니라 ZIP 내부 엔트리라 라이브 서버에서 sample-workbook.xlsx를 「위장.docx」로 올려도 415이고 반대 방향(.docx → /api/uploads/sheet)도 415다. 기준 2: docx-reader 대조 3건 — 같은 내용의 md와 HTML이 깊은 동등이고 「양쪽이 빈 배열이라 같은 것이 아니다」를 노드 7개로 따로 못박았다. 기준 3: 난이도 7건 + 픽스처 1건, 中上·中下가 中으로 떨어지지 않고 라이브 라우트 응답에서도 中上이 그대로다. 기준 4·5는 테스트 버퍼가 아니라 **라우트가 내려보낸 실제 파일**로 쟀다 — scripts/smoke/assignment-xlsx.mjs를 새로 두고(제품 경로 아님, exceljs 예외는 scripts/에만) 확인한 결과 난이도·우선순위·상태 세 컬럼의 데이터 행(2,3)에만 type=list 검증이 붙고 헤더 행에는 없으며, 상태 목록이 시트 10단계 그대로였다. 수식 셀 0개 · 문자열 셀 전부 numFmt='@' · 페이로드 칸에만 ' 프리픽스 1개. 기준 6: 왕복 3건 (md → 4계층 → xlsx → 시트 파서 재파싱 → 행 동일). 실제 흐름도 한 번 밟았다 — .docx 업로드 → 행 2건·baseYear 2026 → xlsx 7,476B 내려받기 → 되읽기. 그 xlsx를 /upload에 올리면 422 NO_KNOWN_TAB이고 **이것이 정상이다** — 「고리의 남은 한 칸」으로 TICKETS.md에 기록했다. tab-detector를 배정표에 맞춰 느슨하게 하면 아무 xlsx나 팀 탭으로 오인해 X2가 막던 「빈 결과로 덮어쓰기」 문이 열린다. 2-B(스위치 없는 게이트): 실패 0건 — 75파일 1274건 통과. 다만 그 과정에서 **SKIP_LIVE_DB가 애초에 무의미하다**는 것을 발견했다: vitest.config.ts가 loadEnv로 채운 process.env가 Vitest 3.2.7 워커에 전달되지 않아(워커에서 찍으면 비어 있다) 계약 스위트가 스위치 값과 무관하게 늘 it.skip으로 접힌다. 셸에서 .env.local을 export하면 그제야 라이브로 붙고 이슈 #20이 재현된다 — 실패 10건, 전부 supabase-task-store.test.ts의 계약 스위트이고 전부 전체 건수 단언(원격 잔여 행)이라 T7과 무관하다. 전달을 고치면 기본 게이트가 즉시 붉어지고 그 원인이 이슈 #20이라 고치지 않았고, 대신 사실과 다르게 「기본값은 돈다」고 적혀 있던 vitest.config.ts 주석만 실측대로 정정했다. CRITICAL 대조 전부 통과 — exceljs import 2줄(workbook-reader·assignment-writer)뿐, lib/doc·lib/xlsx에 new Date()/Date.now() 0건, api 라우트 전부 runtime='nodejs', src/lib basename 중복 0건, src/services 없음, 팔레트 클래스·UI 안티패턴 grep 0건. git status에 실업무 데이터 0건(추적되는 바이너리는 익명 픽스처 2개뿐). 문서를 구현에 맞췄다 — PLAN·ARCHITECTURE·TICKETS가 「mammoth.convertToHtml({path})」라고 적고 있었으나 실제는 {buffer}이고 (라우트가 받는 것이 바이트이고 임시 파일을 쓰면 사람 이름이 디스크에 남는다, S6), ARCHITECTURE 흐름도의 「+ styleMap」은 쓰지 않는 것이라 지웠다. PLAN에 「T7 구현 중 확정」 소절을 잇고 결정 E(.docx 픽스처는 커밋하되 진짜 원본은 생성 스크립트다)와 F(/extract는 쓰기가 없어 읽기 전용 모드에서도 동작한다)를 남겼으며, F는 ADR-022에도 「따라 나온 것」으로 이어 붙였다. 디렉토리 블록이 T2 스냅샷이라 lib/api·lib/upload·lib/view·components/shell·components/extract가 빠지고 없는 components/ui가 적혀 있어 실제 트리에 맞췄다. TICKETS T7에 「구현 결과」 소절 신설 — 산출물 15개 표, 완료 기준 6개의 증명 표, 고리의 남은 한 칸, 범위 Out, 감사에서 발견했으나 고치지 않은 것 2건. README에 「화면」 절과 /extract 사용법을 더했다(이전에는 이 기능을 아는 사람이 만든 사람뿐이었다). scripts/smoke/README.md에 새 스크립트를 표로 추가. 기능은 추가하지 않았고 src/lib·src/app·src/components의 제품 코드는 한 줄도 고치지 않았다. AC: lint·build·test(75파일 1274건 통과) 통과.",
+      "completed_at": "2026-08-24T09:02:07+0900"
+    }
+  ],
+  "created_at": "2026-08-23T20:19:32+0900",
+  "completed_at": "2026-08-24T09:02:33+0900"
+}

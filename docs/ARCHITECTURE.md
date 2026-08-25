@@ -30,7 +30,8 @@ src/
 │   └── api/  uploads/sheet · uploads/[id]/commit · uploads/seed · uploads/doc
 │             export/assignment · tasks · tasks/[id] · stats · alerts
 │             goals · report/weekly · health
-├── components/   dashboard/ charts/ tasks/ goals/ upload/ ui/   # props 받아 JSX만. 계산 금지
+├── components/   shell/ dashboard/ charts/ alerts/ tasks/ goals/ upload/ extract/
+│                                              # props 받아 JSX만. 계산 금지
 ├── lib/
 │   ├── sheet/   workbook-reader · header-resolver · tab-detector
 │   │            section-splitter · cell-normalizer
@@ -39,13 +40,19 @@ src/
 │   │            adapter-marketing-team · adapter-goal-metrics
 │   │            adapter-settings-tab · sheet-pipeline
 │   ├── doc/     docx-reader · markdown-reader · outline-builder
-│   │            assignment-mapper · workload-parser
+│   │            assignment-mapper · workload-parser · doc-pipeline
 │   ├── xlsx/    assignment-writer
 │   ├── domain/  task-semantic · display-status · task-derive · kst-today
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
 │   ├── store/   task-repository · repository-contract · memory-task-store
 │   │            supabase-task-store · upload-record-store · store-factory
-│   └── fixtures/  sample-workbook.xlsx · sample-workload.md · seed-tasks.json
+│   ├── upload/  upload-limits · zip-inspector · upload-guard · parse-runner
+│   │            upload-mapper · upload-preview · upload-commit · seed-loader
+│   ├── api/     api-error · read-context · task-response · viewer-role
+│   │            assignment-schema
+│   ├── view/    화면이 쓰는 표시 규칙 (role-layout · status-badge · chart-series …)
+│   └── fixtures/  sample-workbook.xlsx · sample-workload.md · sample-workload.docx
+│                  seed-tasks.json
 ├── supabase/migrations/   *.sql        # 스키마 단일 소스 (T4부터)
 └── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts
 ```
@@ -151,11 +158,13 @@ idle → validating → parsing → previewing → committing → done
 ### 독스 → 배정표
 
 ```
-.docx → mammoth(convertToHtml + styleMap) → node-html-parser → OutlineNode[]
+.docx → mammoth(convertToHtml, 옵션 없음) → node-html-parser → OutlineNode[]
                                                                     │
 sample-workload.md → markdown-reader ────────────────────────────────┤ 같은 타입
        (테스트 픽스처 전용. 제품 경로 아님)                             ▼
                                             outline-builder → assignment-mapper
+                                                       ▲ workload-parser 조인
+                                          └── 여기까지 doc-pipeline 하나가 잇는다 ──┘
                                                                     ▼
                                     assignment-writer → 드롭다운 붙은 xlsx
                                                                     ▼
@@ -223,9 +232,16 @@ TaskRepository  (저장/조회만)                domain/  (판정/집계만)
 ```
 FILE_TOO_LARGE · FILE_TYPE_MISMATCH · ARCHIVE_LIMIT_EXCEEDED · PARSE_TIMEOUT
 WORKBOOK_CORRUPT · NO_KNOWN_TAB · SETTINGS_TAB_MISSING
+DOCUMENT_CORRUPT · NO_OUTLINE_TASK
 UPLOAD_NOT_FOUND · UPLOAD_ALREADY_COMMITTED · TASK_NOT_FOUND
 STORAGE_READONLY · STORAGE_UNAVAILABLE · FORBIDDEN · VALIDATION_FAILED
 ```
+
+셋째 줄 둘은 독스 경로(`/extract`) 전용이며 기존 코드로 대신할 수 없다.
+`DOCUMENT_CORRUPT` — `WORKBOOK_CORRUPT`의 문구는 「워크북」이라, `.docx`를 올린 사람에게
+무엇을 잘못했는지 알려주지 못한다.
+`NO_OUTLINE_TASK` — `NO_KNOWN_TAB`과 같은 강도의 중단이다. 과제 0건짜리 배정표를 내려보내면
+사람은 그게 빈 문서인지 파서 고장인지 알 수 없다.
 
 실패 강도 3단계를 뭉개지 않는다.
 

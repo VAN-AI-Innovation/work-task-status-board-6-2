@@ -100,8 +100,13 @@ export function FilterBar({
        * 위의 설명문과 구분되지 않아 눌리는 자리인 줄 몰랐다. 테두리가 있으면 누를 것이라는
        * 사실이 hover 전에 보인다.
        */}
-      <summary className="flex cursor-pointer list-none items-center justify-end">
-        <span className="border-line text-ink-muted hover:border-brand hover:text-brand group-open:border-brand group-open:bg-brand-soft group-open:text-brand inline-flex shrink-0 items-center gap-1.5 rounded border px-3 py-1.5 text-xs">
+      {/*
+       * **요약 줄은 카드 제목 줄 위에 겹쳐 깔린다** (화면 쪽 격자 참조). 줄 전체가 눌리면
+       * 제목을 클릭했을 때 필터가 열리고 제목 글자를 선택할 수도 없다. 그래서 줄은 클릭을
+       * 통과시키고(`pointer-events-none`) **버튼 모양만** 받는다.
+       */}
+      <summary className="pointer-events-none flex list-none items-center justify-end">
+        <span className="border-line text-ink-muted hover:border-brand hover:text-brand group-open:border-brand group-open:bg-brand-soft group-open:text-brand pointer-events-auto inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded border px-3 py-1.5 text-xs">
           필터
           {/*
            * 걸린 개수는 배지가 진다. **필터가 걸린 줄 모르는 것이 이 화면의 가장 흔한
