@@ -24,7 +24,10 @@
       "step": 2,
       "name": "repo-contract-ext",
       "commit": "feat: 구성원 조회와 태스크 단건 수정을 저장소 계약에 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-27T03:08:21+0900",
+      "summary": "TaskRepository에 updateTask(준 필드만 갱신·없으면 null·updatedAt 주입)와 listMembers 둘을 더하고 memory·supabase 두 구현이 같이 통과하게 했다(계약 20→22건, 두 스위트 모두 22). MemberRecord는 types/auth.ts에 둔다(업무가 아니라 신원). supabase는 toTaskRow 대신 부분 갱신 전용 toTaskPatchRow를 써서 주지 않은 컬럼이 null로 덮이지 않고, getTask와 같은 uuid 모양 검사를 앞에 둔다. updateTask는 lastProgressAt·task_events를 건드리지 않는다(사람의 수정은 업로드가 아니다). toReadOnly가 updateTask를 STORAGE_READONLY로 막고 listMembers는 읽기라 통과시킨다. listMembers는 계약이 아니라 두 구현의 각자 테스트가 잰다 — 구성원을 만드는 쓰기 메서드가 제품 코드에 없어서다. 변이 3종(memory가 undefined도 대입 / supabase가 toTaskRow / scope에서 updateTask 위임 제거)을 넣어 전부 잡히는 것을 확인했다. 게이트 1360건 전부 통과(supabase 계약 라이브, SKIP_LIVE_DB 없이). 원격 members는 step 전후 모두 0행이고 contract:: 잔여 0. ⚠ 남은 갈래 하나: supabase는 updateTask가 tasks.updated_at을 쓰고 getLastSyncedAt이 max(updated_at)이라 PATCH가 「마지막 반영」을 앞당기는데 memory는 그렇지 않다. 계약이 재지 않는 자리이고 「PATCH가 반영인가」는 제품 결정이라 step 9에 넘겼다(양쪽 코드에 주석으로 남겼다).",
+      "completed_at": "2026-08-27T03:20:17+0900"
     },
     {
       "step": 3,
