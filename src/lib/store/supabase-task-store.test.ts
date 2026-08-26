@@ -10,12 +10,13 @@
  * **흔적을 남긴다.**
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 
 import {
   CONTRACT_KEY_PREFIX,
   CONTRACT_UPLOAD_IDS,
   describeRepositoryContract,
+  scopeToContractRows,
 } from '@/lib/store/repository-contract';
 import {
   createServiceRoleClient,
@@ -412,12 +413,38 @@ if (canRun) {
     reset: resetContractRows,
   });
 
+  // 정리는 케이스 **앞**에서 도므로 마지막 케이스의 행이 DB에 남는다. 그 행은 화면의 업무
+  // 목록과 「마지막 반영」에 그대로 섞여 보인다 (`updated_at`이 계약 시간대라 더 눈에 띈다).
+  afterAll(resetContractRows);
+
   /**
    * 1차 시도에서 계약 10건이 깨진 원인이 여기였다 — `reset`이 `tasks`만 지워서 앞 케이스가
    * 넣은 `goal_metrics`가 다음 케이스에 보였다. 정리가 실제로 0건을 만드는지를 **세어서**
    * 확인한다. 특히 단계·이벤트는 `on delete cascade`에 기대고 있어, 그 전제가 조용히
    * 무너지면 다시 같은 방식으로 계약이 산발적으로 깨진다.
    */
+  /**
+   * 계약 10번의 `limit` 단언은 `scopeToContractRows`가 가져갔다 — 남의 행이 앞자리를 채우지
+   * 않게 하려고 `limit`을 떼어 받은 뒤 자르기 때문이다(`ADR-023`). 그래서 **서버 측
+   * `.limit()`이 실제로 걸리는지**는 여기서 따로 본다. `sourceKeys`로 좁혀 놓으면 실업무
+   * 행이 몇 건이든 결과가 정해진다.
+   */
+  describe('서버 측 limit', () => {
+    it('listTasks({ limit })가 PostgREST 쪽에서 잘려 온다', async () => {
+      const repo = createSupabaseTaskStore(client);
+      await resetContractRows();
+
+      const sourceKeys = [1, 2, 3].map((n) => `${CONTRACT_KEY_PREFIX}limit-${n}`);
+      await repo.upsertTasks(
+        sourceKeys.map((sourceKey) => ({ ...CONTRACT_SEED_TASK, sourceKey })),
+        { occurredAt: '2099-07-20T09:00:00.000Z', uploadId: CONTRACT_UPLOAD_IDS[0] },
+      );
+
+      expect(await repo.listTasks({ sourceKeys })).toHaveLength(3);
+      expect(await repo.listTasks({ sourceKeys, limit: 2 })).toHaveLength(2);
+    });
+  });
+
   describe('계약 정리(reset)', () => {
     it('태스크·단계·이벤트·목표 지표를 남김없이 지운다 (cascade 전제 검증)', async () => {
       const repo = createSupabaseTaskStore(client);
@@ -441,7 +468,9 @@ if (canRun) {
       );
       await repo.upsertGoalMetrics([CONTRACT_SEED_GOAL], { occurredAt: '2026-07-27T09:00:00.000Z' });
 
-      const taskIds = (await repo.listTasks()).map((task) => task.id);
+      // 계약 행만 센다. 전체를 세면 실업무 행이 있을 때 오탐한다 (이슈 #20).
+      const scoped = scopeToContractRows(repo);
+      const taskIds = (await scoped.listTasks()).map((task) => task.id);
       expect(taskIds).toHaveLength(1);
 
       // 지우기 전에는 네 테이블 모두 행이 있다 (없으면 아래 0건이 의미가 없다).
@@ -450,8 +479,8 @@ if (canRun) {
 
       await resetContractRows();
 
-      expect(await repo.listTasks()).toHaveLength(0);
-      expect(await repo.listGoalMetrics()).toHaveLength(0);
+      expect(await scoped.listTasks()).toHaveLength(0);
+      expect(await scoped.listGoalMetrics()).toHaveLength(0);
       // 자식 테이블은 방금 지운 태스크 id로 직접 센다. 전체 건수를 세면 실업무 행이 있을 때
       // 엉뚱하게 실패한다.
       expect(await countRows('task_stages', 'task_id', taskIds)).toBe(0);
