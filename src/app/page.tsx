@@ -3,7 +3,7 @@
  * 전부 같은 방식으로 읽는다.
  *
  * ```
- * getStorage() → buildReadContext(storage, now, …) → lib/domain 집계 함수
+ * currentViewerContext() → buildReadContext(view, now, …) → lib/domain 집계 함수
  * ```
  *
  * `buildReadContext`를 조회 라우트와 **같이** 쓰는 것이 요점이다. 화면이 따로 세기 시작하면
@@ -66,11 +66,11 @@ import { TaskTable } from '@/components/tasks/task-table';
 import { SeedButton } from '@/components/upload/seed-button';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
 import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
+import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { collectAlerts } from '@/lib/domain/alert-rules';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip, summarizeAllTeams } from '@/lib/domain/progress-stats';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
-import { getStorage } from '@/lib/store/store-factory';
 import { approvalQueue, groupAlerts } from '@/lib/view/alert-groups';
 import {
   buildCompletionBars,
@@ -115,12 +115,12 @@ const BRIEFING_NOTE =
   '변경 건수는 이력 조회 경로가 없어 집계되지 않습니다 (T9에서 `listEvents`를 더한다).';
 
 export default async function Home({ searchParams }: PageProps<'/'>) {
-  const storage = await getStorage();
+  const view = await currentViewerContext();
   // Next 16에서 `searchParams`는 Promise다
   const sp = toURLSearchParams(await searchParams);
 
   const query = parseDashboardQuery(sp);
-  const read = await buildReadContext(storage, new Date(), {
+  const read = await buildReadContext(view, new Date(), {
     as: sp.get('as'),
     ...parseTaskQuery(sp),
   });
@@ -167,7 +167,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
    *
    * 저장소는 **한 번만** 읽는다 — 같은 목록을 목표 섹션과 브리핑이 함께 본다.
    */
-  const goals = await storage.repo.listGoalMetrics();
+  const goals = await view.repo.listGoalMetrics();
   const goalStats = summarizeGoals(goals);
   const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
 

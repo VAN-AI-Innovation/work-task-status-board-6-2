@@ -4,8 +4,8 @@ export const runtime = 'nodejs';
 import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { buildReadContext } from '@/lib/api/read-context';
 import { toGoalResponse } from '@/lib/api/task-response';
+import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
-import { getStorage } from '@/lib/store/store-factory';
 
 /**
  * 목표 대비 성과 (`UC-10`, 과제 요구 4번). 시트의 `달성률`을 그대로 쓰지 않고
@@ -21,13 +21,13 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
 
   try {
-    const storage = await getStorage();
-    const read = await buildReadContext(storage, new Date(), {
+    const view = await currentViewerContext();
+    const read = await buildReadContext(view, new Date(), {
       as: url.searchParams.get('as'),
       filter: {},
     });
 
-    const stats = summarizeGoals(await storage.repo.listGoalMetrics());
+    const stats = summarizeGoals(await view.repo.listGoalMetrics());
 
     return Response.json({
       items: toGoalResponse(stats.items, read.role),

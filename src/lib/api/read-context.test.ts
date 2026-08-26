@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
+import type { SessionOutcome } from '@/lib/auth/viewer-session';
+import type { ViewerRole } from '@/lib/domain/extras-visibility';
 import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
 import { createStorage, type StorageHandle } from '@/lib/store/store-factory';
 import { createMemoryUploadStore } from '@/lib/store/upload-record-store';
+import type { ViewerContext } from '@/lib/store/viewer-storage';
 import type { Task, TaskStage } from '@/types/task';
 
 /** KST 01:30 = UTC 전날 16:30. 이 값이 `2026-08-21`이면 UTC로 자른 것이 아니다 (`E4`) */
@@ -57,7 +60,7 @@ function makeStage(taskId: string): TaskStage {
   };
 }
 
-function makeStorage(tasks: readonly Task[], stages: readonly TaskStage[] = []): StorageHandle {
+function makeHandle(tasks: readonly Task[], stages: readonly TaskStage[] = []): StorageHandle {
   return {
     repo: createMemoryTaskStore({ tasks, stages }),
     uploads: createMemoryUploadStore(),
@@ -67,14 +70,47 @@ function makeStorage(tasks: readonly Task[], stages: readonly TaskStage[] = []):
   };
 }
 
+/**
+ * 로그인하지 않은 조회 문맥. **조회는 `view.repo`로 나가고 `base`는 따라만 다닌다** —
+ * `base.repo`를 조회에 쓰면 라이브에서 `service_role`이 RLS를 통째로 우회한다. 그래서
+ * 여기서는 둘을 **일부러 다르게** 둔다: `base.repo`는 태스크가 하나도 없는 저장소다.
+ */
+function makeView(
+  tasks: readonly Task[],
+  stages: readonly TaskStage[] = [],
+  session: SessionOutcome = { status: 'anonymous' }
+): ViewerContext {
+  return {
+    repo: createMemoryTaskStore({ tasks, stages }),
+    session,
+    base: makeHandle([], []),
+  };
+}
+
+/** 저장소 핸들 하나를 조회에도 그대로 쓰는 문맥 (`meta`가 그 핸들의 값인지 볼 때) */
+function viewOf(base: StorageHandle): ViewerContext {
+  return { repo: base.repo, session: { status: 'anonymous' }, base };
+}
+
+const signedIn = (role: ViewerRole, over: Partial<{ teamId: Task['teamId'] | null; memberId: string | null }> = {}): SessionOutcome => ({
+  status: 'ok',
+  viewer: {
+    userId: 'u1',
+    email: 'u1@example.com',
+    role,
+    teamId: over.teamId === undefined ? 'edit' : over.teamId,
+    memberId: over.memberId === undefined ? 'member-1' : over.memberId,
+  },
+});
+
 const OVERDUE = makeTask({ id: 'task-late', sourceKey: 'edit-late', dueAt: '2026-08-10' });
 const ON_TIME = makeTask({ id: 'task-ok', sourceKey: 'edit-ok', dueAt: '2026-09-30' });
 
 describe('buildReadContext', () => {
   it('태스크·단계·메타를 채우고 today가 주입한 now의 KST 날짜다', async () => {
-    const storage = makeStorage([ON_TIME], [makeStage('task-ok')]);
+    const view = makeView([ON_TIME], [makeStage('task-ok')]);
 
-    const context = await buildReadContext(storage, NOW, { as: null, filter: {} });
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
 
     expect(context.tasks.map((task) => task.id)).toEqual(['task-ok']);
     expect(context.stages.map((stage) => stage.taskId)).toEqual(['task-ok']);
@@ -83,10 +119,10 @@ describe('buildReadContext', () => {
   });
 
   it('같은 now를 두 번 넣으면 결과가 같다 — 시계를 읽지 않는다', async () => {
-    const storage = makeStorage([OVERDUE, ON_TIME]);
+    const view = makeView([OVERDUE, ON_TIME]);
 
-    const first = await buildReadContext(storage, NOW, { as: null, filter: {} });
-    const second = await buildReadContext(storage, NOW, { as: null, filter: {} });
+    const first = await buildReadContext(view, NOW, { as: null, filter: {} });
+    const second = await buildReadContext(view, NOW, { as: null, filter: {} });
 
     expect(second.meta).toEqual(first.meta);
     expect(second.tasks).toEqual(first.tasks);
@@ -94,9 +130,9 @@ describe('buildReadContext', () => {
   });
 
   it('플래그를 미리 계산해 ctx에 실어 준다 — 라우트가 다시 계산할 일이 없다', async () => {
-    const storage = makeStorage([OVERDUE, ON_TIME]);
+    const view = makeView([OVERDUE, ON_TIME]);
 
-    const context = await buildReadContext(storage, NOW, { as: null, filter: {} });
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
 
     expect(context.ctx.flags?.size).toBe(2);
     expect(context.ctx.flags?.get('task-late')?.isOverdue).toBe(true);
@@ -104,9 +140,9 @@ describe('buildReadContext', () => {
   });
 
   it('overdueOnly면 지연 건만 남는다 — 저장소가 아니라 여기서 거른다', async () => {
-    const storage = makeStorage([OVERDUE, ON_TIME], [makeStage('task-late'), makeStage('task-ok')]);
+    const view = makeView([OVERDUE, ON_TIME], [makeStage('task-late'), makeStage('task-ok')]);
 
-    const context = await buildReadContext(storage, NOW, {
+    const context = await buildReadContext(view, NOW, {
       as: null,
       filter: {},
       overdueOnly: true,
@@ -119,9 +155,9 @@ describe('buildReadContext', () => {
 
   it('저장소 필터를 그대로 넘긴다', async () => {
     const shoot = makeTask({ id: 'task-shoot', teamId: 'shoot', sourceKey: 'shoot-001' });
-    const storage = makeStorage([ON_TIME, shoot]);
+    const view = makeView([ON_TIME, shoot]);
 
-    const context = await buildReadContext(storage, NOW, {
+    const context = await buildReadContext(view, NOW, {
       as: null,
       filter: { teamKeys: ['shoot'] },
     });
@@ -130,9 +166,9 @@ describe('buildReadContext', () => {
   });
 
   it('조회한 태스크가 없으면 단계도 비어 있다', async () => {
-    const storage = makeStorage([], []);
+    const view = makeView([], []);
 
-    const context = await buildReadContext(storage, NOW, { as: null, filter: {} });
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
 
     expect(context.tasks).toEqual([]);
     expect(context.stages).toEqual([]);
@@ -141,7 +177,7 @@ describe('buildReadContext', () => {
   it('meta.driver·mode·readOnly가 storage의 값과 같다', async () => {
     const fallback = await createStorage({} as NodeJS.ProcessEnv);
 
-    const context = await buildReadContext(fallback, NOW, { as: null, filter: {} });
+    const context = await buildReadContext(viewOf(fallback), NOW, { as: null, filter: {} });
 
     expect(fallback.mode).toBe('fallback');
     expect(context.meta.mode).toBe('fallback');
@@ -150,24 +186,133 @@ describe('buildReadContext', () => {
   });
 
   it('meta.lastSyncedAt이 저장소의 값이다', async () => {
-    const storage = makeStorage([ON_TIME]);
+    const view = makeView([ON_TIME]);
 
-    const context = await buildReadContext(storage, NOW, { as: null, filter: {} });
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
 
     expect(context.meta.lastSyncedAt).toBeNull();
   });
 
   it('역할은 ?as=의 해석 결과이고 기본은 member다', async () => {
-    const storage = makeStorage([ON_TIME]);
+    const view = makeView([ON_TIME]);
 
-    const asAdmin = await buildReadContext(storage, NOW, { as: 'admin', filter: {} });
-    const asNothing = await buildReadContext(storage, NOW, { as: null, filter: {} });
-    const asGarbage = await buildReadContext(storage, NOW, { as: 'owner', filter: {} });
+    const asAdmin = await buildReadContext(view, NOW, { as: 'admin', filter: {} });
+    const asNothing = await buildReadContext(view, NOW, { as: null, filter: {} });
+    const asGarbage = await buildReadContext(view, NOW, { as: 'owner', filter: {} });
 
     expect(asAdmin.role).toBe('admin');
     expect(asAdmin.meta.role).toBe('admin');
     expect(asNothing.role).toBe('member');
     expect(asGarbage.role).toBe('member');
+  });
+
+  it('세션이 있으면 그 역할이 ?as=를 이긴다 — 판정은 resolveViewerRole이 지고 여기는 옮긴다', async () => {
+    const view = makeView([ON_TIME], [], signedIn('member'));
+
+    const context = await buildReadContext(view, NOW, { as: 'admin', filter: {} });
+
+    expect(context.role).toBe('member');
+    expect(context.meta.role).toBe('member');
+  });
+
+  it('조회는 view.repo로 한다 — base.repo(service_role)로 읽으면 RLS가 우회된다', async () => {
+    // `makeView`의 `base.repo`는 비어 있다. `base`로 읽으면 0건이 나온다
+    const view = makeView([ON_TIME, OVERDUE]);
+
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
+
+    expect(context.tasks.map((task) => task.id)).toEqual(['task-ok', 'task-late']);
+  });
+
+  it('meta.driver·mode·readOnly는 base의 값이다 — 저장소의 성질이지 사용자의 성질이 아니다', async () => {
+    const view = makeView([ON_TIME]);
+
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
+
+    expect(context.meta.driver).toBe(view.base.driver);
+    expect(context.meta.mode).toBe(view.base.mode);
+    expect(context.meta.readOnly).toBe(view.base.readOnly);
+  });
+
+  it('로그인하지 않았으면 viewer가 null이고 범위를 거르지 않는다', async () => {
+    const mine = makeTask({ id: 'task-mine', sourceKey: 'edit-mine', ownerMemberId: 'member-1' });
+    const view = makeView([mine, ON_TIME]);
+
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
+
+    expect(context.viewer).toBeNull();
+    expect(context.tasks.map((task) => task.id)).toEqual(['task-mine', 'task-ok']);
+  });
+
+  it('member 세션이면 본인 담당 건만 남고 viewer가 실린다 (viewer-scope)', async () => {
+    const mine = makeTask({ id: 'task-mine', sourceKey: 'edit-mine', ownerMemberId: 'member-1' });
+    const theirs = makeTask({ id: 'task-theirs', sourceKey: 'edit-theirs', ownerMemberId: 'member-2' });
+    const view = makeView([mine, theirs, ON_TIME], [], signedIn('member'));
+
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
+
+    expect(context.tasks.map((task) => task.id)).toEqual(['task-mine']);
+    expect(context.viewer?.memberId).toBe('member-1');
+  });
+
+  it('lead 세션이면 자기 팀만 남는다', async () => {
+    const shoot = makeTask({ id: 'task-shoot', teamId: 'shoot', sourceKey: 'shoot-001' });
+    const view = makeView([ON_TIME, shoot], [], signedIn('lead'));
+
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
+
+    expect(context.tasks.map((task) => task.id)).toEqual(['task-ok']);
+  });
+
+  it('admin 세션은 전부 본다', async () => {
+    const shoot = makeTask({ id: 'task-shoot', teamId: 'shoot', sourceKey: 'shoot-001' });
+    const view = makeView([ON_TIME, shoot], [], signedIn('admin', { teamId: null }));
+
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
+
+    expect(context.tasks.map((task) => task.id)).toEqual(['task-ok', 'task-shoot']);
+  });
+
+  /**
+   * **범위를 먼저 거르고 그다음 지연을 거른다.** 순서가 뒤집히면 플래그 표가 범위 밖 건까지
+   * 담은 채로 남아 목록과 모수가 어긋나고, 그때 집계가 화면과 갈라진다.
+   */
+  it('범위 거르기가 overdue 거르기보다 먼저다 — 플래그 표의 모수가 목록과 같다', async () => {
+    const myLate = makeTask({
+      id: 'task-my-late',
+      sourceKey: 'edit-my-late',
+      dueAt: '2026-08-10',
+      ownerMemberId: 'member-1',
+    });
+    const theirLate = makeTask({
+      id: 'task-their-late',
+      sourceKey: 'edit-their-late',
+      dueAt: '2026-08-10',
+      ownerMemberId: 'member-2',
+    });
+    const view = makeView(
+      [myLate, theirLate, ON_TIME],
+      [makeStage('task-my-late'), makeStage('task-their-late')],
+      signedIn('member')
+    );
+
+    const context = await buildReadContext(view, NOW, { as: null, filter: {}, overdueOnly: true });
+
+    expect(context.tasks.map((task) => task.id)).toEqual(['task-my-late']);
+    expect(context.ctx.flags.size).toBe(1);
+    expect([...context.ctx.flags.keys()]).toEqual(['task-my-late']);
+    expect(context.stages.map((stage) => stage.taskId)).toEqual(['task-my-late']);
+  });
+
+  it('범위를 거른 뒤에도 지연이 없으면 플래그 표는 범위 목록과 같다', async () => {
+    const mine = makeTask({ id: 'task-mine', sourceKey: 'edit-mine', ownerMemberId: 'member-1' });
+    const theirs = makeTask({ id: 'task-theirs', sourceKey: 'edit-theirs', ownerMemberId: 'member-2' });
+    const view = makeView([mine, theirs], [], signedIn('member'));
+
+    const context = await buildReadContext(view, NOW, { as: null, filter: {} });
+
+    expect(context.ctx.flags.size).toBe(1);
+    expect([...context.ctx.flags.keys()]).toEqual(['task-mine']);
   });
 });
 

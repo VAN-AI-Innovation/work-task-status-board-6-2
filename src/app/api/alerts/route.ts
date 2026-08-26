@@ -3,8 +3,8 @@ export const runtime = 'nodejs';
 
 import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
+import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { collectAlerts } from '@/lib/domain/alert-rules';
-import { getStorage } from '@/lib/store/store-factory';
 
 /**
  * 알림 4종 + 담당자 오타 의심 (`UC-12`·`UC-13`, 과제 요구 3번).
@@ -17,9 +17,9 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
 
   try {
-    const storage = await getStorage();
+    const view = await currentViewerContext();
     const query = parseTaskQuery(url.searchParams);
-    const read = await buildReadContext(storage, new Date(), {
+    const read = await buildReadContext(view, new Date(), {
       as: url.searchParams.get('as'),
       ...query,
     });

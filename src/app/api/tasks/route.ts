@@ -4,7 +4,7 @@ export const runtime = 'nodejs';
 import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
 import { toTaskListResponse } from '@/lib/api/task-response';
-import { getStorage } from '@/lib/store/store-factory';
+import { currentViewerContext } from '@/lib/auth/request-viewer';
 
 /**
  * 업무 목록. **초기 렌더는 서버 컴포넌트가 `lib/`를 직접 부르므로 이 라우트를 쓰지 않는다**
@@ -19,9 +19,9 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
 
   try {
-    const storage = await getStorage();
+    const view = await currentViewerContext();
     const query = parseTaskQuery(url.searchParams);
-    const read = await buildReadContext(storage, new Date(), {
+    const read = await buildReadContext(view, new Date(), {
       as: url.searchParams.get('as'),
       ...query,
     });
