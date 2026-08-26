@@ -51,7 +51,10 @@
       "step": 5,
       "name": "auth-accounts",
       "commit": "chore: 역할 계정 시드와 RLS 실효 검증 스크립트 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-27T03:42:24+0900",
+      "summary": "scripts/db/seed-auth.ts(npm run seed:auth)와 scripts/smoke/rls-check.mjs 둘을 신설하고 .env.example에 T8_SEED_PASSWORD·T8_SEED_EMAIL_DOMAIN을 빈 값으로 더했다. src/ 제품 코드는 한 줄도 고치지 않았다. seed-auth는 멱등하다 — 1회차 members 6 생성/계정 3/profiles 3/구성원 연결 2/시드 확정 9건, 2회차 전부 '이미 있음'이고 에러 없이 끝난다(생성 0·확정 0). 이름을 하드코딩하지 않고 buildSeedPayload()의 (팀, 담당자) 조합을 세어 members를 만들고, member 계정은 edit 팀에서 태스크가 가장 많은 이름에(동률은 이름 오름차순으로 결정적) lead는 그 다음 이름에 잇는다. 태스크는 uploads.create → commitUpload라는 /api/uploads/seed와 같은 제품 경로로 넣고, 잔여 백필은 owner-link.ts의 buildOwnerIndex를 import해 쓴다(규칙이 두 벌이 아니다). 비밀번호는 없으면 32바이트 난수를 .env.local에 덧붙이고 값은 찍지 않는다 — 표준출력·커밋·문서 어디에도 없고 git status에 .env.local이 없다. rls-check.mjs는 anon 키로 세 계정에 실제 로그인해 잰다(anon===service_role이면 스스로 종료 코드 2로 죽는다). 10개 항목 전부 통과: 1 로그아웃 0행 / 2 admin 10=전체 10 / 3 lead 6=팀 6 <전체 10 / 4 member 2=담당 2 <lead 6 / 5 세 건수 10·6·2로 서로 다름 / 6 남의 태스크 update 갱신 0행 / 7 자기 태스크 update 1행(원래 값으로 되돌림) / 8 title update 거부 42501(grant update 컬럼 제한) / 9 member의 uploads 0행 / 10 admin의 profiles 1행. 기대값 3·4는 하드코딩하지 않고 service_role로 그때그때 센다. 변이 확인 둘 다 성립: anon 자리에 service_role을 넣으면 가드가 종료 코드 2로 막고, tasks_select_scope를 using(true)로 바꾸면 정확히 3·4·5만 FAIL(lead 10·member 10)한다 — 확인 후 원래 정책으로 되돌려 pg_policies의 qual이 0003_auth_rls.sql과 글자 그대로 같은 것을 확인하고 재실행 10건 통과. MCP 실측: profiles 3 / members 6 / auth_user_id 붙은 members 2 / tasks 10 / owner_member_id 붙은 tasks 9 / 실업무 행 1건 그대로 · goal_metrics 3 · 탐침 잔여 0. 문서는 scripts/smoke/README.md 표+실행법, scripts/smoke/RESULT.md 「T8 RLS 실효」 절(무엇을 증명하고 무엇을 증명하지 않는지·변이 표 포함), README.md 명령어 표에 각각 반영. 게이트 lint·build·test 1379건 전부 통과(supabase 계약 라이브, SKIP_LIVE_DB 없이).",
+      "completed_at": "2026-08-27T03:54:11+0900"
     },
     {
       "step": 6,
