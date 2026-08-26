@@ -10,6 +10,7 @@ import { PageShell } from '@/components/shell/page-shell';
 import { SheetUploadPanel } from '@/components/upload/sheet-upload-panel';
 import { resolveViewerRole } from '@/lib/api/viewer-role';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
+import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
 import { parseDashboardQuery } from '@/lib/view/dashboard-query';
 import { describeSync } from '@/lib/view/sync-freshness';
@@ -37,7 +38,15 @@ export default async function UploadPage() {
   );
 
   return (
-    <PageShell mode={mode} driver={driver} freshness={freshness} role={role} query={query}>
+    <PageShell
+      mode={mode}
+      driver={driver}
+      freshness={freshness}
+      role={role}
+      query={query}
+      /* 로그인했으면 상단 바가 역할 전환 대신 계정을 말한다 (`ADR-026`) */
+      account={toAccount(view.session)}
+    >
       <h1 className="text-brand text-xl font-semibold">시트 업로드</h1>
       <p className="text-ink-body mt-1 text-sm">
         Google Sheets에서 내보낸 .xlsx를 올리면 신규·변경·유지 건수를 먼저 보여 줍니다.

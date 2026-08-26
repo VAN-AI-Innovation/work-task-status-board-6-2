@@ -13,12 +13,15 @@
  * 자기 API를 `fetch`하지 않는다 (`ADR-007`). 계산도 한 줄 두지 않는다 (`CLAUDE.md` CRITICAL) —
  * 숫자는 전부 `buildKpiStrip`·`summarizeAllTeams`가 낸 것이다.
  *
- * 이 화면이 지는 갈래는 여전히 `X3`의 둘이다.
+ * 이 화면이 지는 갈래는 `X3`의 둘에 T8이 하나를 더한 셋이다.
  *
  * ```
- * 데이터 없음      → "아직 데이터가 없습니다" + [샘플 데이터 불러오기] [시트 업로드하기]
- * 저장소 연결 실패  → "읽기 전용 — 저장소 연결 실패" 배너 (PageShell)
+ * 데이터 없음        → "아직 데이터가 없습니다" + [샘플 데이터 불러오기] [시트 업로드하기]
+ * 담당자 미연결(member) → "담당자로 연결된 계정이 없어…" (진입점을 주지 않는다)
+ * 저장소 연결 실패    → "읽기 전용 — 저장소 연결 실패" 배너 (PageShell)
  * ```
+ *
+ * 가운데 갈래를 고르는 것은 화면이 아니라 `lib/view/empty-reason.ts`다.
  *
  * 「조회 실패」는 `error.tsx`가 지고, **「필터 결과 0건」은 업무 표가 따로 진다** —
  * 전체가 0건인 것과 조건에 맞는 게 없는 것은 다른 사실이라 문구를 섞지 않는다.
@@ -30,8 +33,9 @@
  * **섹션 순서도 배치도 역할이 정한다** (`layoutFor`, 완료 기준 7 · `ADR-019`). 섹션을 세로로
  * 쌓지 않고 12열 그리드에 흘려보내며, 행 묶음은 `lib/view/role-layout.ts`가 낸다 — 이 파일은
  * 받은 행을 그리기만 한다. 세 역할이 보는 것은 같은 데이터이고 같은 섹션이며, 다른 것은
- * 무엇이 맨 위에 오느냐뿐이다. **삭제하지 않는 것이 요점이다**: 지금 섹션을 빼면 권한을
- * 구현한 것처럼 보이지만 서버는 아무것도 막지 않아 URL 하나로 뚫린다. 권한은 T8이다.
+ * 무엇이 맨 위에 오느냐뿐이다. **삭제하지 않는 것이 요점이다**: 인증이 붙은 뒤에도 그대로다 —
+ * 범위 축소는 이미 **데이터에서** 일어났고(`viewer-scope.ts`·RLS), 화면이 섹션을 또 지우면
+ * 같은 규칙이 두 벌이 된다. 화면이 하는 일은 막는 것이 아니라 **사실을 말하는 것**이다.
  * `detail` zone(목표·브리핑·승인 대기)은 접히지만 **제목 줄은 항상 남는다** — 접힌 것과
  * 없는 것이 화면에서 같아 보이면 안 된다.
  *
@@ -67,9 +71,12 @@ import { SeedButton } from '@/components/upload/seed-button';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
 import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
+import { toAccount } from '@/lib/auth/viewer-session';
 import { collectAlerts } from '@/lib/domain/alert-rules';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip, summarizeAllTeams } from '@/lib/domain/progress-stats';
+import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
+import { scopeTasks } from '@/lib/domain/viewer-scope';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 import { approvalQueue, groupAlerts } from '@/lib/view/alert-groups';
 import {
@@ -86,6 +93,7 @@ import {
   parseDashboardQuery,
   toURLSearchParams,
 } from '@/lib/view/dashboard-query';
+import { emptyReason } from '@/lib/view/empty-reason';
 import { toGoalRows } from '@/lib/view/goal-view';
 import {
   COMPACT_KPI_KEYS,
@@ -145,6 +153,24 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
    * 걸린 필터가 하나도 없는데 0건일 때만 진짜 빈 저장소다.
    */
   const activeFilters = countActiveFilters(query);
+
+  /*
+   * **비었을 때 무엇을 시킬 것인가.** 로그인 뒤로 「데이터 없음」이 두 뜻을 갖는다 —
+   * 저장소가 진짜 빈 것과, `member`인데 계정이 시트 담당자에 이어지지 않은 것
+   * (`unknown_owner` · `PLAN.md` 결정 D). 고르는 것은 화면이 아니라 `emptyReason`이다.
+   */
+  const reason = emptyReason(read.viewer, activeFilters);
+
+  /*
+   * **고칠 수 있는 업무의 id.** `read.tasks`는 이미 범위가 걸린 목록이라 라이브에서는 이
+   * 계산이 대개 항등이지만, 그렇다고 「보이면 고칠 수 있다」를 화면이 가정하게 두지 않는다 —
+   * 열람과 수정이 갈리는 날 그 가정은 조용히 틀린다. 판정은 다시 쓰지 않고 부른다
+   * (`viewer-scope.ts`). 세션이 없으면 빈 집합이고, 그때 수정 폼은 뜨지 않는다.
+   */
+  const editableIds =
+    read.viewer === null
+      ? new Set<string>()
+      : new Set(scopeTasks(read.tasks, read.viewer).map((task) => task.id));
 
   /*
    * 알림·승인 대기함이 보는 목록은 **표에 실제로 보이는 것**(`visible`)이다. 이름을 붙일 수
@@ -330,6 +356,8 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
                 role={read.role}
                 query={query}
                 pathname={PATHNAME}
+                editableIds={editableIds}
+                statusOptions={STATUS_OPTIONS}
               />
             </div>
             {visible.length === 0 ? (
@@ -356,10 +384,17 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       freshness={freshness}
       role={read.role}
       query={query}
+      account={toAccount(view.session)}
     >
       <h1 className="text-brand text-xl font-semibold">전사 업무 현황판</h1>
 
-      {read.tasks.length === 0 && activeFilters === 0 ? (
+      {read.tasks.length === 0 && reason === 'unlinked-member' ? (
+        /*
+         * 로그인한 부원인데 계정이 담당자에 이어지지 않았다. **진입점을 주지 않는다** —
+         * 그 사람이 시트를 올려도 자기 업무는 여전히 보이지 않고, 필요한 것은 계정 연결이다.
+         */
+        <EmptyState kind="unlinked-member" />
+      ) : read.tasks.length === 0 && activeFilters === 0 ? (
         // 빈 상태 화면은 `UI_GUIDE.md`가 중앙 정렬을 금지하면서 **예외로 둔 유일한 자리**다
         <div className="mt-16 flex flex-col items-center gap-4 text-center">
           <p className="text-ink-muted text-sm">아직 데이터가 없습니다</p>

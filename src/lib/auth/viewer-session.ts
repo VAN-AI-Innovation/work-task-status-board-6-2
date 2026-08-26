@@ -24,7 +24,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
-import type { Viewer } from '@/types/auth';
+import type { SessionAccount, Viewer } from '@/types/auth';
 import type { TeamKey } from '@/types/task';
 
 export type SessionOutcome =
@@ -103,4 +103,22 @@ export async function resolveSession(client: SupabaseClient): Promise<SessionOut
   }
 
   return { status: 'ok', viewer: { userId, email, role, teamId, memberId } };
+}
+
+/**
+ * 상단 바가 그릴 것만 뽑는다. 세션이 없으면 `null`이고, 그때 화면은 역할 전환(`?as=`)을
+ * 그대로 보여 준다 (`ADR-026` — 세션이 없을 때만 URL이 역할을 정한다).
+ *
+ * **`no_profile`도 계정이다.** 로그인은 됐으므로 로그아웃 버튼이 필요하고, 그것이 없으면
+ * 그 계정은 아무것도 못 보는 화면에 갇힌다 (step 10에서 남겨 둔 자리).
+ */
+export function toAccount(outcome: SessionOutcome): SessionAccount | null {
+  switch (outcome.status) {
+    case 'anonymous':
+      return null;
+    case 'no_profile':
+      return { email: outcome.email, role: null };
+    case 'ok':
+      return { email: outcome.viewer.email, role: outcome.viewer.role };
+  }
 }

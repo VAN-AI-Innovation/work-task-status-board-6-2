@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { describe, expect, it, vi } from 'vitest';
 
-import { resolveSession } from '@/lib/auth/viewer-session';
+import { resolveSession, toAccount } from '@/lib/auth/viewer-session';
 
 interface ProfileRow {
   role: unknown;
@@ -268,5 +268,39 @@ describe('resolveSession — 무엇을 읽는가', () => {
     const { client, calls } = fakeClient({ user: LEAD, profile: null });
     await resolveSession(client);
     expect(calls.tables).toEqual(['profiles']);
+  });
+});
+
+
+/**
+ * 상단 바에 무엇을 내려 줄지 고른다. **`no_profile`도 계정이다** — 로그인은 됐으므로
+ * 로그아웃 버튼이 필요하고, 그것이 없으면 그 계정은 아무것도 못 보는 화면에 갇힌다.
+ */
+describe('toAccount', () => {
+  it('세션이 없으면 null이다 — 그때만 `?as=`가 역할을 정한다 (`ADR-026`)', () => {
+    expect(toAccount({ status: 'anonymous' })).toBeNull();
+  });
+
+  it('프로필이 없으면 이메일만 있고 역할은 null이다', () => {
+    expect(toAccount({ status: 'no_profile', userId: 'u-1', email: 'ghost@van.test' })).toEqual({
+      email: 'ghost@van.test',
+      role: null,
+    });
+  });
+
+  /** `userId`·`teamId`·`memberId`는 내려보내지 않는다 — 화면이 쓰지 않는 값이다 (`S6`) */
+  it('정상 세션에서 이메일과 역할만 뽑는다', () => {
+    expect(
+      toAccount({
+        status: 'ok',
+        viewer: {
+          userId: 'u-2',
+          email: 'lead@van.test',
+          role: 'lead',
+          teamId: 'edit',
+          memberId: 'm-1',
+        },
+      })
+    ).toEqual({ email: 'lead@van.test', role: 'lead' });
   });
 });

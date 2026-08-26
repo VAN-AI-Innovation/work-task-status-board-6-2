@@ -26,6 +26,16 @@ export interface Viewer {
 }
 
 /**
+ * 상단 바가 그리는 로그인 상태. **`Viewer`를 그대로 내리지 않는다** — 화면은 `userId`·
+ * `teamId`·`memberId`를 쓸 일이 없고, 쓰지 않는 값을 클라이언트 번들까지 내려보낼 이유가
+ * 없다 (`S6`). `role`이 `null`이면 로그인은 됐는데 `profiles` 행이 없는 계정이다.
+ */
+export interface SessionAccount {
+  email: string;
+  role: ViewerRole | null;
+}
+
+/**
  * `PATCH /api/tasks/[id]`가 받는 전부. **두 필드다** (`UC-16` 「내 업무 상태·진행률 수정」).
  * `note`·`dueAt`·`ownerNameRaw`를 열지 않는다 — 시트가 진실의 원천이라 재업로드가 덮어쓸
  * 필드를 화면에서 고치게 하면 사용자는 자기 수정이 사라지는 것을 본다 (`ADR-008`).

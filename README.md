@@ -18,6 +18,11 @@ npm run dev      # http://localhost:3000
 | `/teams/edit` · `/teams/shoot` · `/teams/marketing` | 부서별 탭 |
 | `/upload` | 팀 시트 `.xlsx` 업로드 → 미리보기 → 확정 |
 | `/extract` | 워크로드 `.docx` → 업무 배정표 `.xlsx` |
+| `/login` | 로그인. 세션이 있으면 역할·열람 범위를 **서버가** 정한다 (`?as=`는 무시된다) |
+
+로그인 계정은 `npm run seed:auth`가 만든다 — 역할마다 하나씩 **`admin` · `lead` · `member`**
+셋이다. 이메일·비밀번호는 `.env.local`에 있고 저장소·문서 어디에도 적지 않는다.
+`STORAGE_DRIVER=memory`(데모)에서는 로그인이 필요 없고 `?as=`가 그대로 역할을 정한다.
 
 ### `/extract` — 독스에서 배정표 뽑기
 

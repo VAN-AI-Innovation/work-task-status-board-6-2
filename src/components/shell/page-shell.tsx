@@ -16,6 +16,7 @@ import type { ViewerRole } from '@/lib/domain/extras-visibility';
 import type { StorageDriver, StorageMode } from '@/lib/store/store-factory';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
 import type { SyncFreshness } from '@/lib/view/sync-freshness';
+import type { SessionAccount } from '@/types/auth';
 
 export function PageShell({
   mode,
@@ -23,6 +24,7 @@ export function PageShell({
   freshness,
   role,
   query,
+  account,
   children,
 }: {
   mode: StorageMode;
@@ -30,6 +32,11 @@ export function PageShell({
   freshness: SyncFreshness;
   role: ViewerRole;
   query: DashboardQuery;
+  /**
+   * 로그인한 사람. 페이지가 `toAccount(view.session)`으로 만들어 넘긴다 — 이 컴포넌트는
+   * 세션을 해석하지 않는다.
+   */
+  account: SessionAccount | null;
   children: ReactNode;
 }) {
   return (
@@ -39,12 +46,18 @@ export function PageShell({
         freshness={freshness}
         role={role}
         query={query}
+        account={account}
         /*
          * 역할 전환은 `?as=`가 실제로 먹는 자리에서만 보인다 (`S4`·`ADR-013`). 프로덕션 +
          * 실제 저장소에서는 `lib/api/viewer-role.ts`가 그것을 무시하는데, 그때도 버튼이 남아 있으면
          * 눌러도 안 바뀌는 버튼이 되어 사용자에게는 고장으로 보인다.
+         *
+         * **세션이 있으면 환경과 무관하게 없다** (`ADR-026`) — 판정은 `AppTopbar`가 아니라
+         * 여기서 한 번 더 못박는다. 데모·폴백에서는 세션 자체가 잡히지 않으므로
+         * (`viewer-storage.ts`) 두 조건이 부딪히는 자리는 없지만, 규칙을 적어 두지 않으면
+         * 다음에 세션 해석이 넓어질 때 이 버튼이 조용히 되살아난다.
          */
-        showRoleSwitch={mode === 'demo' || driver === 'memory'}
+        showRoleSwitch={account === null && (mode === 'demo' || driver === 'memory')}
       />
       {/*
        * 아래 여백이 위보다 넓다(`pb-16`). 마지막 카드가 뷰포트 바닥에 붙으면 스크롤이 끝난

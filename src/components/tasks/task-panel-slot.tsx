@@ -38,6 +38,8 @@ export function TaskPanelSlot({
   role,
   query,
   pathname,
+  editableIds,
+  statusOptions,
 }: {
   /** **화면에 실제로 보이는 목록.** 칩으로 가린 업무의 패널이 열리면 표와 어긋난다 */
   tasks: TaskResponse[];
@@ -45,6 +47,14 @@ export function TaskPanelSlot({
   role: ViewerRole;
   query: DashboardQuery;
   pathname: string;
+  /**
+   * 이 사람이 고칠 수 있는 업무의 id. **페이지가 `lib/domain/viewer-scope.ts`의 범위 판정을
+   * 불러 만들어 넘긴다** — 여기서 역할을 읽지 않는다. 로그인하지 않았으면 빈 집합이라
+   * 폼이 아예 뜨지 않는다.
+   */
+  editableIds: ReadonlySet<string>;
+  /** 상태 드롭다운 목록. 문자열은 `STATUS_SEMANTIC_MAP` 한 곳에서 온다 (`ADR-009`) */
+  statusOptions: readonly string[];
 }) {
   const openId = query.task;
   if (openId === null) return null;
@@ -87,6 +97,9 @@ export function TaskPanelSlot({
       // 변환은 서버에서 끝낸다 — 패널은 마스킹도 스킴 검사도 다시 하지 않는다 (`S6`·`S7`)
       cells={toExtraCells(task.extras, role)}
       closeHref={closeHref}
+      // 판정 결과를 **찾아보기만** 한다. 숨김은 방어가 아니고 거부는 `PATCH`가 한다
+      canEdit={editableIds.has(task.id)}
+      statusOptions={statusOptions}
     />
   );
 }

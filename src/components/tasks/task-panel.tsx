@@ -16,6 +16,12 @@
  * **마운트**되므로 옮겨갈 이전 상태가 없다. 시작 위치를 `useState`로 한 번 푸는 방법도
  * 있지만, 그러면 패널이 열림 여부를 자기 상태로 들고 있는 것처럼 읽힌다.
  *
+ * ## 수정 폼도 판정을 하지 않는다
+ *
+ * `canEdit`은 페이지가 `lib/domain/viewer-scope.ts`의 범위 판정을 불러 내려 준다. 여기서
+ * 역할을 다시 읽으면 「누가 무엇을 고칠 수 있나」의 규칙이 셋째 자리에 생기고, 그 자리는
+ * 서버가 보지 않는다.
+ *
  * ## 마스킹을 여기서 하지 않는다
  *
  * `cells`는 서버가 `toExtraCells`로 만들어 넘긴다. 민감 값은 그 전에 이미 응답 계층이
@@ -29,6 +35,7 @@ import { useEffect, useRef } from 'react';
 
 import { CopyButton } from '@/components/tasks/copy-button';
 import { StatusBadge } from '@/components/tasks/status-badge';
+import { TaskEditForm } from '@/components/tasks/task-edit-form';
 import { safeHref, type ExtraCell } from '@/lib/view/extras-render';
 import { EMPTY, formatDate, formatDday, formatPercent } from '@/lib/view/kpi-format';
 import { teamLabel } from '@/lib/view/team-slug';
@@ -112,11 +119,20 @@ export function TaskPanel({
   stages,
   cells,
   closeHref,
+  canEdit,
+  statusOptions,
 }: {
   task: TaskResponse;
   stages: TaskStage[];
   cells: ExtraCell[];
   closeHref: string;
+  /**
+   * 범위 판정(`lib/domain/viewer-scope.ts`)의 결과를 **페이지가 계산해 내려 준다.**
+   * 이 컴포넌트는 역할을 다시 해석하지 않는다 — 숨김은 방어가 아니고
+   * (`task-edit-form.tsx` 머리말) 실제 거부는 `PATCH`가 한다.
+   */
+  canEdit: boolean;
+  statusOptions: readonly string[];
 }) {
   const router = useRouter();
   const closeRef = useRef<HTMLAnchorElement>(null);
@@ -192,6 +208,21 @@ export function TaskPanel({
               <Row label="비고" value={text(task.note)} />
             </dl>
           </section>
+
+          {canEdit && (
+            <section>
+              <h3 className="text-brand text-sm font-semibold">수정</h3>
+              {/* 열리는 필드는 둘뿐이다 (`UC-16`). 나머지는 시트가 진실의 원천이다 */}
+              <div className="mt-2">
+                <TaskEditForm
+                  taskId={task.id}
+                  status={task.status}
+                  progress={task.progress}
+                  statusOptions={statusOptions}
+                />
+              </div>
+            </section>
+          )}
 
           <section>
             <h3 className="text-brand text-sm font-semibold">단계</h3>

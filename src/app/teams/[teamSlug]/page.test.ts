@@ -7,6 +7,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { SessionOutcome } from '@/lib/auth/viewer-session';
 import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
 import { createMemoryUploadStore } from '@/lib/store/upload-record-store';
 import type { StorageHandle } from '@/lib/store/store-factory';
@@ -25,11 +26,18 @@ import {
 import { teamLabel } from '@/lib/view/team-slug';
 import type { ExtraCell } from '@/lib/view/extras-render';
 import type { TaskResponse } from '@/types/api';
+import type { Viewer } from '@/types/auth';
 
 let handle: StorageHandle;
+/** `app/page.test.ts`와 같은 이유로 세션을 테스트가 쥔다 — 기본값은 「로그인하지 않음」이다 */
+let session: SessionOutcome;
 
 vi.mock('@/lib/store/store-factory', () => ({
   getStorage: async () => handle,
+}));
+
+vi.mock('@/lib/auth/request-viewer', () => ({
+  currentViewerContext: async () => ({ repo: handle.repo, session, base: handle }),
 }));
 
 const TeamPage = (await import('./page')).default;
@@ -157,7 +165,20 @@ async function seed(): Promise<void> {
   });
 }
 
+/** 로그인한 사람 하나. 갈래마다 필요한 칸만 덮어쓴다 */
+function viewer(overrides: Partial<Viewer> = {}): Viewer {
+  return {
+    userId: 'user-1',
+    email: 'lead@van.test',
+    role: 'lead',
+    teamId: 'edit',
+    memberId: null,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
+  session = { status: 'anonymous' };
   handle = {
     repo: createMemoryTaskStore(),
     uploads: createMemoryUploadStore(),
@@ -276,6 +297,54 @@ describe('/teams/[teamSlug] — 화면 구성', () => {
 
     expect(empty?.props?.kind).toBe('no-data');
     expect(empty?.props?.resetHref).toBeUndefined();
+  });
+
+  /*
+   * 세 번째 갈래 (`PLAN.md` 결정 D). 이 사람에게는 필터를 지워도 결과가 같으므로
+   * 초기화 링크를 주지 않는다 — 필요한 것은 계정 연결이다.
+   */
+  it('계정이 담당자에 안 붙은 부원에게는 원인을 말하고 초기화 링크를 주지 않는다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer({ role: 'member', memberId: null }) };
+
+    const empty = findComponent(await TeamPage(props('edit')), 'EmptyState');
+
+    expect(empty?.props?.kind).toBe('unlinked-member');
+    expect(empty?.props?.resetHref).toBeUndefined();
+  });
+});
+
+describe('/teams/[teamSlug] — 로그인 상태 (T8 완료 기준 1·6)', () => {
+  it('세션이 상단 바까지 전해지고 `?as=`를 이긴다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer() };
+
+    const shell = findComponent(await TeamPage(props('edit', { as: 'admin' })), 'PageShell');
+
+    expect(shell?.props?.role).toBe('lead');
+    expect(shell?.props?.account).toEqual({ email: 'lead@van.test', role: 'lead' });
+  });
+
+  it('로그인하지 않았으면 계정이 없다 — 데모의 역할 전환이 그대로 남는다', async () => {
+    await seed();
+
+    expect(findComponent(await TeamPage(props('edit')), 'PageShell')?.props?.account).toBeNull();
+  });
+
+  it('범위 안의 업무에만 수정 폼이 뜬다 — 판정은 `taskInScope`가 한다', async () => {
+    await seed();
+    const id = await idOf('edit');
+
+    expect(
+      findComponent(openSlot(await TeamPage(props('edit', { task: id }))), 'TaskPanel')?.props
+        ?.canEdit
+    ).toBe(false);
+
+    session = { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) };
+    expect(
+      findComponent(openSlot(await TeamPage(props('edit', { task: id }))), 'TaskPanel')?.props
+        ?.canEdit
+    ).toBe(true);
   });
 });
 

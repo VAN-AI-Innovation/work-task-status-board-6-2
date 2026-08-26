@@ -5,18 +5,18 @@
  * 여기서 보여 주는 것은 `lib/api/viewer-role.ts`가 **판정한 결과**이지 URL에 적힌 문자열이 아니다.
  * 프로덕션 + 실제 저장소에서는 `?as=admin`이 무시되고 `member`로 떨어지는데(`S4`), 그때
  * 화면이 「admin」이라고 말하면 사용자는 권한이 있다고 믿는다.
+ *
+ * **로그인한 사람에게는 아예 그려지지 않는다** (`PageShell`이 정한다). 세션이 있으면
+ * `?as=`가 지므로(`ADR-026`) 이 버튼은 눌러도 아무 일이 없고, 그것은 사용자에게 고장이다.
+ * 라벨 표가 `lib/view/role-label.ts`로 나간 것도 그 때문이다 — 상단 바가 로그인한 사람의
+ * 역할을 같은 낱말로 말해야 한다.
  */
 
 import Link from 'next/link';
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
 import { buildHref, type DashboardQuery } from '@/lib/view/dashboard-query';
-
-const ROLES: readonly { key: ViewerRole; label: string }[] = [
-  { key: 'admin', label: '대표·실장' },
-  { key: 'lead', label: '팀장' },
-  { key: 'member', label: '부원' },
-];
+import { ROLE_LABELS } from '@/lib/view/role-label';
 
 export function RoleSwitch({
   pathname,
@@ -29,7 +29,7 @@ export function RoleSwitch({
 }) {
   return (
     <nav aria-label="역할 전환" className="flex shrink-0 items-center gap-1">
-      {ROLES.map((item) => {
+      {ROLE_LABELS.map((item) => {
         const active = item.key === role;
         return (
           <Link

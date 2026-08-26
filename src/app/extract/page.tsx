@@ -11,6 +11,7 @@ import { DocExtractPanel } from '@/components/extract/doc-extract-panel';
 import { PageShell } from '@/components/shell/page-shell';
 import { resolveViewerRole } from '@/lib/api/viewer-role';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
+import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
 import { parseDashboardQuery } from '@/lib/view/dashboard-query';
 import { describeSync } from '@/lib/view/sync-freshness';
@@ -36,7 +37,15 @@ export default async function ExtractPage() {
   );
 
   return (
-    <PageShell mode={mode} driver={driver} freshness={freshness} role={role} query={query}>
+    <PageShell
+      mode={mode}
+      driver={driver}
+      freshness={freshness}
+      role={role}
+      query={query}
+      /* 로그인했으면 상단 바가 역할 전환 대신 계정을 말한다 (`ADR-026`) */
+      account={toAccount(view.session)}
+    >
       <h1 className="text-brand text-xl font-semibold">독스 → 배정표</h1>
       <p className="text-ink-body mt-1 text-sm">
         워크로드 문서(.docx)를 올리면 드롭다운이 붙은 업무 배정표 xlsx를 만들어 드립니다.
