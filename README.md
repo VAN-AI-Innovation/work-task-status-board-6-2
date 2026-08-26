@@ -47,6 +47,7 @@ Google Docs 워크로드 문서를 `.docx`로 내보내 올리면, 사람이 이
 | `npm run build` | 프로덕션 빌드 |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest |
+| `npm run seed:auth` | 원격 Supabase에 역할 계정·구성원·시드를 만든다 (T8, 멱등) |
 
 ## 하네스
 
