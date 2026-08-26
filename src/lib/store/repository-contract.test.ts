@@ -8,11 +8,18 @@ import { describe, expect, it } from 'vitest';
 
 import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
 import {
+  CONTRACT_EPOCH,
+  CONTRACT_KEY_PREFIX,
   REPOSITORY_CONTRACT_CASES,
   assertRepositoryContract,
+  scopeToContractRows,
   type RepositoryFixture,
 } from '@/lib/store/repository-contract';
-import type { TaskRepository } from '@/lib/store/task-repository';
+import type {
+  GoalMetricUpsertInput,
+  TaskRepository,
+  TaskUpsertInput,
+} from '@/lib/store/task-repository';
 
 const memoryFixture: RepositoryFixture = {
   create: async () => createMemoryTaskStore(),
@@ -84,5 +91,135 @@ describe('assertRepositoryContract', () => {
       };
     });
     await expect(assertRepositoryContract(fixture)).rejects.toThrow();
+  });
+});
+
+/**
+ * 이슈 #20. 원격 Supabase는 **계약 테스트 혼자 쓰는 저장소가 아니다** — 실업무 행이 같이 산다.
+ * 그 상황을 메모리 드라이버로 재현한다: `reset`이 계약 행만 지우고 남의 행은 남긴다
+ * (supabase 픽스처의 `source_key like 'contract::%'` 삭제와 같은 모양이다).
+ *
+ * 라이브 DB 없이 도는 것이 요점이다. 이슈 #20은 원격 DB에 실업무 행이 생겨야만 재현됐고,
+ * 그래서 T4 시점의 게이트가 초록인 채로 결함이 들어왔다.
+ */
+const FOREIGN_TASK: TaskUpsertInput = {
+  teamId: 'edit',
+  departmentId: null,
+  sourceKey: '[남의업무] 계약 접두사가 없는 실업무 행',
+  title: '남의 업무',
+  ownerMemberId: null,
+  ownerNameRaw: '남의담당자',
+  coOwnerNames: [],
+  status: '진행 중',
+  approvalStatus: null,
+  priority: null,
+  riskStatus: null,
+  progress: 50,
+  assignedAt: '2026-08-20',
+  dueAt: '2026-08-30',
+  nextAction: null,
+  nextActionOwner: null,
+  nextActionDue: null,
+  delayReason: null,
+  note: null,
+  extras: {},
+  raw: {},
+  sourceUploadId: null,
+  sourceSheetTab: '01_편집팀',
+  sourceRowIndex: 3,
+  stages: [],
+};
+
+const FOREIGN_GOAL: GoalMetricUpsertInput = {
+  teamId: 'marketing',
+  periodLabel: '2026-08 4주차',
+  title: '남의 목표 지표',
+  goalText: null,
+  kpiName: null,
+  targetValue: null,
+  actualValue: null,
+  achievementRate: null,
+  prevPeriodDelta: null,
+  channel: null,
+  ownerMemberId: null,
+  ownerNameRaw: null,
+  execStatus: null,
+  analysis: null,
+  wentWell: null,
+  needsImprovement: null,
+  startedAt: null,
+  dueAt: null,
+  extras: {},
+  sourceUploadId: null,
+  sourceSheetTab: '03_마케팅·관리팀',
+  sourceRowIndex: 9,
+};
+
+/** 남의 행이 계약 시각(2099)보다 **뒤**라고 우기는 시각. 실업무 업로드는 늘 「지금」이다 */
+const FOREIGN_UPLOAD_AT = '2026-08-24T14:16:04.742Z';
+
+/** 계약 행만 지우고 남의 행은 남기는 픽스처. 원격 DB를 나눠 쓰는 상황 그대로다 */
+const sharedFixture: RepositoryFixture = {
+  create: async () => createMemoryTaskStore(),
+  reset: async (repo) => {
+    (repo as ReturnType<typeof createMemoryTaskStore>).clear();
+    await repo.upsertTasks([FOREIGN_TASK], { occurredAt: FOREIGN_UPLOAD_AT });
+    await repo.upsertGoalMetrics([FOREIGN_GOAL], { occurredAt: FOREIGN_UPLOAD_AT });
+  },
+};
+
+describe('계약 행 격리 (이슈 #20)', () => {
+  it('남의 행이 이미 들어 있는 저장소에서도 계약 전체가 통과한다', async () => {
+    await expect(assertRepositoryContract(sharedFixture)).resolves.toBeUndefined();
+  });
+
+  it('남의 행은 조회에서 보이지 않는다 (전체 건수 단언의 근거)', async () => {
+    const store = createMemoryTaskStore();
+    await sharedFixture.reset(store);
+    const scoped = scopeToContractRows(store);
+
+    expect(await store.listTasks()).toHaveLength(1);
+    expect(await scoped.listTasks()).toHaveLength(0);
+    expect(await store.listGoalMetrics()).toHaveLength(1);
+    expect(await scoped.listGoalMetrics()).toHaveLength(0);
+  });
+
+  it('limit은 계약 행 기준으로 센다 (남의 행이 자리를 먼저 채우지 않는다)', async () => {
+    const store = createMemoryTaskStore();
+    await sharedFixture.reset(store);
+    const scoped = scopeToContractRows(store);
+    await scoped.upsertTasks(
+      [
+        { ...FOREIGN_TASK, sourceKey: `${CONTRACT_KEY_PREFIX}a`, title: '계약 A' },
+        { ...FOREIGN_TASK, sourceKey: `${CONTRACT_KEY_PREFIX}b`, title: '계약 B' },
+      ],
+      { occurredAt: CONTRACT_EPOCH },
+    );
+
+    expect(await scoped.listTasks({ limit: 2 })).toHaveLength(2);
+    expect(await scoped.listTasks({ limit: 0 })).toHaveLength(0);
+  });
+
+  it('남의 행의 id로는 getTask가 null이다', async () => {
+    const store = createMemoryTaskStore();
+    await sharedFixture.reset(store);
+    const foreignId = (await store.listTasks())[0].id;
+
+    expect(await store.getTask(foreignId)).not.toBeNull();
+    expect(await scopeToContractRows(store).getTask(foreignId)).toBeNull();
+  });
+
+  it('남의 업로드가 만든 반영 시각은 계약에게 null이다 (계약 17번의 「빈 저장소」)', async () => {
+    const store = createMemoryTaskStore();
+    await sharedFixture.reset(store);
+    const scoped = scopeToContractRows(store);
+
+    expect(await store.getLastSyncedAt()).toBe(FOREIGN_UPLOAD_AT);
+    expect(await scoped.getLastSyncedAt()).toBeNull();
+
+    await scoped.upsertTasks([{ ...FOREIGN_TASK, sourceKey: `${CONTRACT_KEY_PREFIX}a` }], {
+      occurredAt: CONTRACT_EPOCH,
+    });
+    expect(await scoped.getLastSyncedAt()).toBe(CONTRACT_EPOCH);
   });
 });

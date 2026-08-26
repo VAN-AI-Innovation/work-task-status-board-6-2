@@ -34,27 +34,41 @@ export interface RepositoryContractCase {
   run(repo: TaskRepository): Promise<void>;
 }
 
-/** 업로드 시각. 저장소는 시간을 읽지 않고 이 값을 주입받는다 */
-const FIRST_UPLOAD_AT = '2026-07-20T09:00:00.000Z';
-const SECOND_UPLOAD_AT = '2026-07-27T09:00:00.000Z';
+/**
+ * **계약이 점유하는 시간대의 시작.** 계약 17번(`getLastSyncedAt`)만 이 값을 쓴다.
+ *
+ * 왜 미래인가: `getLastSyncedAt`은 「저장소에서 가장 최근에 업로드가 돌아간 시각」이라
+ * **전역**이다. 접두사로 좁힐 수 있는 조회와 달리, 남의 행이 하나라도 계약 행보다 최근이면
+ * 계약이 무엇을 넣든 그 값이 나온다 — 실업무 업로드는 늘 「지금」이라 2026년 날짜로는 항상
+ * 진다. 그래서 계약은 아무도 쓰지 않는 시간대를 점유하고, `scopeToContractRows`가 이보다
+ * 이른 시각을 「남의 것」으로 보아 `null`로 돌린다.
+ */
+export const CONTRACT_EPOCH = '2099-01-01T00:00:00.000Z';
+
+/** 업로드 시각. 저장소는 시간을 읽지 않고 이 값을 주입받는다. 전부 `CONTRACT_EPOCH` 뒤다 */
+const FIRST_UPLOAD_AT = '2099-07-20T09:00:00.000Z';
+const SECOND_UPLOAD_AT = '2099-07-27T09:00:00.000Z';
 /**
  * 계약 17번 전용. `getLastSyncedAt`의 의미가 "마지막 업로드 시각"이라는 것을 보이려면
  * 서로 다른 시각이 넷 필요하다. **뒤로 가는 시각은 계약이 정의하지 않는다** — 업로드
  * 시각은 단조로우므로(실제로 과거로 올릴 방법이 없다) 그 갈래를 규정하지 않고 둔다.
  */
-const THIRD_UPLOAD_AT = '2026-08-03T09:00:00.000Z';
-const FOURTH_UPLOAD_AT = '2026-08-10T09:00:00.000Z';
+const THIRD_UPLOAD_AT = '2099-08-03T09:00:00.000Z';
+const FOURTH_UPLOAD_AT = '2099-08-10T09:00:00.000Z';
 
 /**
  * 자연키·기간 라벨에 붙이는 접두사. 계약 테스트는 **실제 저장소에도** 붙어 도는데(supabase),
  * 접두사가 없으면 정리(`reset`)가 실업무 행까지 지울 근거를 갖게 된다. 접두사 덕분에
  * `reset`은 `source_key like 'contract::%'`인 행만 지우면 된다.
  *
- * ⚠ **같은 저장소에 계약 테스트를 두 벌 동시에 돌리지 마라.** 계약 1·17번이 "빈 저장소"를
- * 전제하는데 `listTasks()`는 접두사로 좁혀지지 않으므로, 두 실행은 서로의 행을 보고
- * 서로의 `reset`에 지워진다. 그러면 **저장소 오류 없이 행만 사라져** 구현이 멀쩡한데도
- * 계약이 산발적으로 깨진다 (실측으로 재현했다 — 실행마다 다른 접두사를 줘도 해결되지 않는다.
- * 남의 행이 여전히 `listTasks()`에 보이기 때문이다).
+ * 조회 쪽도 같은 접두사로 좁힌다 (`scopeToContractRows`). 그래야 「2건 넣었으니 2건이다」류의
+ * 단언이 성립한다 — 원격 Supabase는 실업무 행과 **같이 쓰는** 저장소라, 전체를 세면 남의 행
+ * 하나에 계약이 통째로 무너진다 (이슈 #20).
+ *
+ * ⚠ **같은 저장소에 계약 테스트를 두 벌 동시에 돌리지 마라.** 두 실행이 같은 접두사를 쓰므로
+ * 서로의 행을 보고 서로의 `reset`에 지워진다. 그러면 **저장소 오류 없이 행만 사라져** 구현이
+ * 멀쩡한데도 계약이 산발적으로 깨진다 (실측으로 재현했다 — 실행마다 다른 접두사를 줘도
+ * 접두사가 갈리는 것은 조회뿐이고 `reset`이 여전히 남의 실행 행을 지운다).
  */
 export const CONTRACT_KEY_PREFIX = 'contract::';
 
@@ -78,6 +92,67 @@ const UPLOAD_2 = '22222222-2222-4222-8222-222222222222';
  * 실행마다 같아도 된다 — 계약은 이 행을 **지우지 않고** 참조만 한다.
  */
 export const CONTRACT_UPLOAD_IDS: readonly string[] = [UPLOAD_1, UPLOAD_2];
+
+/** 계약이 만든 행인가. 태스크는 `sourceKey`, 목표 지표는 `periodLabel`에 접두사가 붙는다 */
+const isContractTask = (task: Task): boolean => task.sourceKey.startsWith(CONTRACT_KEY_PREFIX);
+// `periodLabel`은 null일 수 있다 (시트에 기간 칸이 비면 그렇게 들어온다). 계약이 만든 행은
+// 항상 접두사를 붙이므로, null은 남의 행이다.
+const isContractGoal = (metric: GoalMetric): boolean =>
+  metric.periodLabel?.startsWith(CONTRACT_KEY_PREFIX) ?? false;
+
+/**
+ * **계약이 자기 행만 보게 하는 껍데기** (이슈 #20).
+ *
+ * 계약은 「2건 넣었으니 `listTasks()`가 2건이다」처럼 전체 건수로 단언한다. memory 구현은
+ * 매번 새 저장소라 그것이 성립하지만, supabase 구현은 **실업무 데이터와 같은 원격 DB를
+ * 나눠 쓴다.** 남의 행이 한 줄만 있어도 그 단언이 영구히 깨지고, 저장소와 무관한 작업까지
+ * 게이트에서 막힌다. 그렇다고 `reset`이 남의 행을 지우게 만들 수는 없다.
+ *
+ * 그래서 **지울 때와 마찬가지로 셀 때도 접두사로 좁힌다.** 계약이 확인하려던 것("내가 넣은
+ * 것이 들어갔나")은 그대로 확인되고, 남의 행은 있든 없든 결과가 같다.
+ *
+ * 쓰기는 손대지 않는다 — 계약이 넣는 것은 어차피 전부 계약 행이다.
+ */
+export function scopeToContractRows(repo: TaskRepository): TaskRepository {
+  const scoped: TaskRepository = {
+    async listTasks(filter?: TaskFilter): Promise<Task[]> {
+      // `limit`만 떼어 여기서 자른다. 저장소에 그대로 넘기면 남의 행이 앞자리를 채워
+      // 계약 행이 잘려 나온다 — 「2건 중 2건」이 「2건 중 0건」이 된다.
+      const { limit, ...rest } = filter ?? {};
+      const tasks = (await repo.listTasks(filter === undefined ? undefined : rest)).filter(
+        isContractTask,
+      );
+      return limit === undefined ? tasks : tasks.slice(0, Math.max(limit, 0));
+    },
+
+    async getTask(id: string): Promise<Task | null> {
+      const task = await repo.getTask(id);
+      return task !== null && isContractTask(task) ? task : null;
+    },
+
+    async listGoalMetrics(filter?: Parameters<TaskRepository['listGoalMetrics']>[0]) {
+      return (await repo.listGoalMetrics(filter)).filter(isContractGoal);
+    },
+
+    async getLastSyncedAt(): Promise<string | null> {
+      // 전역 값이라 접두사로 좁힐 수 없다. 대신 계약이 `CONTRACT_EPOCH` 뒤의 시간대를
+      // 점유하므로, 그보다 이른 값은 남의 업로드가 만든 것이다 = 계약에게는 "없음"이다.
+      const at = await repo.getLastSyncedAt();
+      return at !== null && at >= CONTRACT_EPOCH ? at : null;
+    },
+
+    upsertTasks: (tasks, options) => repo.upsertTasks(tasks, options),
+    listStages: (taskIds) => repo.listStages(taskIds),
+    upsertGoalMetrics: (metrics, options) => repo.upsertGoalMetrics(metrics, options),
+    recordEvents: (events) => repo.recordEvents(events),
+  };
+
+  // 선택 메서드다. 없는 구현에 빈 껍데기를 씌우면 계약 20번이 엉뚱하게 돈다.
+  if (repo.runAtomically) {
+    scoped.runAtomically = (fn) => repo.runAtomically!(fn);
+  }
+  return scoped;
+}
 
 function taskInput(overrides: Partial<TaskUpsertInput> = {}): TaskUpsertInput {
   return {
@@ -608,9 +683,10 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
 export async function assertRepositoryContract(fixture: RepositoryFixture): Promise<void> {
   for (const contractCase of REPOSITORY_CONTRACT_CASES) {
     const repo = await fixture.create();
+    // `reset`은 **원본**이 받는다 — 구현별 정리 수단(memory의 `clear()`)이 껍데기에 없다.
     await fixture.reset(repo);
     try {
-      await contractCase.run(repo);
+      await contractCase.run(scopeToContractRows(repo));
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       throw new Error(`계약 위반 [${contractCase.name}]: ${reason}`);
@@ -625,7 +701,7 @@ export function describeRepositoryContract(label: string, fixture: RepositoryFix
       it(contractCase.name, async () => {
         const repo = await fixture.create();
         await fixture.reset(repo);
-        await contractCase.run(repo);
+        await contractCase.run(scopeToContractRows(repo));
       });
     }
   });
