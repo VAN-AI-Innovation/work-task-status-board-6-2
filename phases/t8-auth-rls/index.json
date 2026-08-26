@@ -105,10 +105,10 @@
       "step": 11,
       "name": "role-gating-ui",
       "commit": "feat: 로그인 세션에 따라 화면 범위와 상단 바를 가른다",
-      "status": "error",
-      "started_at": "2026-08-27T04:59:43+0900",
-      "error_message": "[3회 시도 후 실패] Step did not update status",
-      "failed_at": "2026-08-27T05:01:23+0900"
+      "status": "completed",
+      "started_at": "2026-08-27T05:11:23+0900",
+      "completed_at": "2026-08-27T05:32:13+0900",
+      "summary": "화면이 세션을 말하게 했다. 신설 6파일 — lib/view/role-label.ts(5) · lib/view/empty-reason.ts(5) · components/shell/session-badge.tsx · components/tasks/task-edit-form.tsx (괄호는 테스트 건수). lib에 붙인 것 둘: task-semantic의 STATUS_OPTIONS(표의 키를 순서 그대로 — 상태 문자열을 화면에 다시 적지 않는다, ADR-009)와 viewer-session의 toAccount(SessionOutcome → {email, role|null}). types/auth.ts에 SessionAccount를 더했다 — Viewer를 통째로 내려보내지 않는다(화면이 userId·teamId·memberId를 쓸 일이 없다, S6). **컴포넌트는 판정하지 않는다**: 페이지가 emptyReason·taskInScope·toAccount를 불러 props로 내리고, AC grep 4종이 그것을 기계적으로 지킨다(components에 역할 문자열 0줄 — role-switch의 ROLES 표까지 lib/view/role-label.ts로 옮겼다 / taskInScope·canEditTask 0줄, 주석 산문도 남기지 않았다 / task-panel.tsx에 STATUS_SEMANTIC_MAP 0줄 / 안티패턴 0줄). **완료 기준 1 실측(라이브, 개발 서버 + 실제 세션 쿠키 3종): 업무 표 행이 admin 10 · lead 6 · member 2로 셋 다 다르고, step 5 rls-check의 DB 계층 수치와 정확히 같다.** 상단 바는 세 계정 모두 이메일 + 역할 배지 + [로그아웃]이고 역할 전환 nav는 0건이다. **완료 기준 6의 화면 쪽**: member 세션에 ?as=admin·?as=lead를 붙여도 업무 표가 2행 그대로이고 배지가 「부원」이며, admin에 ?as=member를 붙여도 10행·「대표·실장」이다. UC-16 수정 폼: member가 자기 건에서 상태를 고르고 [저장] → 200이고 패널이 새 값으로 다시 그려진다(헤드리스 브라우저로 실제 클릭 · 콘솔 에러 0 · page errors 0). 남의 건은 PATCH 403 FORBIDDEN이고 패널은 애초에 열리지 않는다(「이 업무를 찾을 수 없습니다」). **바꾼 값은 시드 원값(status=null)으로 되돌렸고 SQL로 확인했다.** 상태 목록은 시트 10단계 그대로 내려간다. 데모(STORAGE_DRIVER=memory): 네 화면 전부 200(리다이렉트 없음) · 「샘플 데이터 모드」 배너 · 역할 전환 nav 있음 · ?as=가 여전히 첫 섹션을 바꾼다(admin=KPI / lead=알림 / member=업무) · 계정 배지와 수정 폼은 둘 다 없다(세션이 없어 canEdit이 false다). 1280·1024 둘 다 네 화면에서 가로 스크롤 0px. 빈 상태는 넷에서 다섯으로 갈렸다 — 「데이터 없음」이 로그인 뒤에 두 뜻을 갖기 때문이고(저장소가 빈 것 / member인데 memberId가 null인 것, 결정 D), 두 번째 갈래에는 진입점도 초기화 링크도 주지 않는다(시트를 올려도 필터를 지워도 결과가 같다). 사이드바는 손대지 않았고 role-layout의 섹션 순서도 그대로다 — 범위 축소는 이미 데이터에서 일어났으므로 화면이 또 지우면 규칙이 두 벌이 된다. 변이 확인 둘 다 성립(확인 후 되돌려 diff로 원본 동일 확인): (1) canEdit을 항상 true로 → 폼은 뜨지만 [저장]이 서버에 막히고 **화면에 서버가 준 문구가 그대로** 뜬다(데모에서 401 「로그인이 필요합니다.」 — 라이브 member의 403은 위 curl이 이미 증명했다). 「UI 숨김은 방어가 아니다」의 실증이다. (2) 로그인 상태에서 RoleSwitch를 되살려 「대표·실장」을 눌러 보면 URL만 ?as=admin이 되고 배지는 「부원」, 업무 표도 그대로다 — 눌러도 안 바뀌는 버튼이라 숨긴다(ADR-026). 문서: UI_GUIDE.md에 「로그인 상태 표시」·「빈 화면은 다섯 갈래다」·「수정 폼」 세 절, README.md 「화면」에 /login과 계정 셋(이름만). 게이트 lint·build·test 1568건 전부 통과(supabase 계약 라이브, SKIP_LIVE_DB 없이)."
     },
     {
       "step": 12,
