@@ -281,21 +281,37 @@ public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행�
 
 ### 정책 표
 
+**적용본은 `supabase/migrations/0003_auth_rls.sql`이다.** 아래는 그 파일에 실제로 들어간
+정책 **11개**이며, 대상 롤은 전부 `authenticated`다 — `anon` 정책은 하나도 없다.
+
 | 테이블 | select | update | insert·delete |
 |---|---|---|---|
-| `tasks` | admin 전체 / lead `team_id = my_team()` / member `owner_member_id = my_member_id()` | 같은 범위 | 없음 (`service_role`만) |
-| `task_stages` · `task_events` | 부모 `tasks`가 보이면 보인다 | — | 없음 |
+| `tasks` | admin 전체 / lead `team_id = my_team()` / member `owner_member_id = my_member_id()` | 같은 범위 (`using` = `with check`) | 없음 (`service_role`만) |
+| `task_stages` | 부모 `tasks`가 보이면 보인다 | — | 없음 |
 | `goal_metrics` · `team_period_goals` | admin 전체 / lead·member `team_id = my_team()` | — | 없음 |
 | `teams` · `departments` · `members` · `enum_options` · `sla_rules` | 로그인한 전원 (참조 데이터) | — | 없음 |
-| `uploads` · `doc_extractions` | admin·lead | — | 없음 |
 | `profiles` | 본인 행만 | 없음 | 없음 |
+| `uploads` · `task_events` · `doc_extractions` | **정책 없음 — 한 행도 안 보인다** | 없음 | 없음 |
 
+- **마지막 줄 셋은 정책을 만들지 않은 것이 결론이다.** 착수 시점 초안은 `uploads`·
+  `doc_extractions`를 admin·lead에게 열고 `task_events`를 부모 `tasks`에 딸리게 했는데,
+  적용하면서 셋 다 **서버(`service_role`) 전용**으로 닫았다. `uploads.parse_result`에는
+  시트·문서 본문이 통째로 들어 있고(`S6`) 화면에는 그것을 읽는 자리가 없다. 필요해지면
+  그때 정책을 붙인다 — 지금 열어 두면 쓰지도 않는 경로로 원본 행이 나간다.
+  (`task_events` 조회는 `T9`의 `listEvents`가 여는 자리이고, 그 경로도 서버 쪽이다.)
 - **`member`에게 `owner_member_id is null`인 행은 보이지 않는다** — 시트 담당자가
   `members`에 안 붙은 경우(`unknown_owner`)다. `null`을 「내 것」으로 치면 담당자 미상 업무가
   전원에게 보이고, 그것은 범위 구분이 아니다.
-- **컬럼 단위 제한은 RLS가 아니라 API가 진다.** `PATCH /api/tasks/[id]`가 받는 필드는
-  **`status`·`progress` 둘뿐**이고(`UC-16`), zod 스키마가 그 밖을 거부한다. RLS는 「어느 행을」
-  이고 zod는 「어느 칸을」이다.
+- **컬럼 단위 제한은 RLS가 아니라 GRANT와 API가 함께 진다.** RLS는 「어느 행을」이고
+  GRANT는 「어느 칸을」이다 — `authenticated`의 `tasks` update 권한은
+  **`status`·`progress`·`updated_at` 세 컬럼뿐**이고(`updated_at`은 저장소가 갱신 시각을
+  명시적으로 넣기 때문이다), 그 위에서 `PATCH /api/tasks/[id]`의 zod가 받는 필드는
+  **`status`·`progress` 둘뿐**이다(`UC-16`). 정책이 통과시킨 행에서 `title`·`due_at`·`raw`를
+  고칠 수 있으면 이 화면은 수정 기능이 아니라 시트 편집기가 된다.
+- **`authenticated`·`anon`의 테이블 권한은 `revoke all`로 바닥부터 다시 쌓았다.** Supabase가
+  기본으로 주는 `truncate`가 **RLS를 통째로 우회해 전 행을 지우기** 때문이다 — 정책을 아무리
+  좁혀도 그 한 줄이면 실업무 데이터가 사라진다. 지금 `anon`은 이 스키마의 테이블에 **아무
+  권한도 없고**, `authenticated`는 위 표의 10개 테이블에 `select`만 있다.
 - PATCH 권한은 **서버에서도 검증**한다. UI 숨김은 방어가 아니고, RLS 하나에만 기대면
   거부가 `403`이 아니라 「0행 갱신」으로 조용히 지나간다.
 

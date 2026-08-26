@@ -266,6 +266,7 @@ create index if not exists goal_metrics_team_idx    on goal_metrics (team_id, pe
 -- 반대로 RLS를 끈 채로 두면 프로젝트 URL과 anon 키만 알면 전 데이터가 읽히는 상태가 된다 —
 -- 시트에는 실명·출연자 연락처·문의자 계정이 있다 (S6).
 -- T8이 my_role()·my_team() 기반 정책을 여기에 얹는다 (ARCHITECTURE.md 「권한 (T8)」).
+-- → 0003_auth_rls.sql이 붙였다 (정책 11개 + security definer 함수 셋).
 
 alter table departments      enable row level security;
 alter table teams            enable row level security;
