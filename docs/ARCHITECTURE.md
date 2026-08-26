@@ -50,11 +50,13 @@ src/
 │   │            upload-mapper · upload-preview · upload-commit · seed-loader
 │   ├── api/     api-error · read-context · task-response · viewer-role
 │   │            assignment-schema
+│   ├── auth/    쿠키 세션 → `Viewer` 해석 (T8)
 │   ├── view/    화면이 쓰는 표시 규칙 (role-layout · status-badge · chart-series …)
 │   └── fixtures/  sample-workbook.xlsx · sample-workload.md · sample-workload.docx
 │                  seed-tasks.json
+├── proxy.ts                            # Next.js 16의 middleware. 세션 갱신·보호 라우트 (T8)
 ├── supabase/migrations/   *.sql        # 스키마 단일 소스 (T4부터)
-└── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts
+└── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts · auth.ts
 ```
 
 `src/services/`는 **두지 않는다.** 외부 연동(Supabase 클라이언트)은 `lib/store/`가 감싼다.
@@ -78,7 +80,11 @@ src/
 이것이 70컬럼 대응의 전부다.
 
 ```
-departments · teams · members(auth_user_id nullable)
+departments · teams · members(auth_user_id — T8에서 시트 담당자 이름과 계정을 잇는다)
+
+profiles      id uuid PK → auth.users(id)   -- T8에서 생긴다
+              role text  -- admin | lead | member
+              team_id text → teams(id)      -- admin은 null일 수 있다
 
 tasks         id, team_id, department_id
               source_key            -- 자연키. 업무ID 있으면 그것, 없으면 slug(업무명)+담당자
@@ -216,13 +222,82 @@ TaskRepository  (저장/조회만)                domain/  (판정/집계만)
 
 ## 권한 (T8)
 
-`profiles.role`: `admin`(대표·실장) / `lead`(팀장) / `member`(부원). RLS 정책 5개 남짓.
+`profiles.role`: `admin`(대표·실장) / `lead`(팀장) / `member`(부원). 결정 근거는
+`PLAN.md`「8. 권한」의 **T8 착수 시 확정** 절과 `ADR-024`~`ADR-026`.
 
-- ⚠ **RLS 재귀 함정**: 정책 안에서 `profiles`를 직접 select하면 무한루프다.
-  `security definer` 함수(`my_role()`·`my_team()`)로 감싸고 **`set search_path = ''`**를 고정한다.
-- `service_role` 키는 **서버의 업로드 커밋·시드에만.** 조회는 사용자 JWT를 실은 클라이언트로 해서
-  RLS가 실제로 걸리게 한다. 전부 service_role로 처리하면 RLS를 만들어도 의미가 없다.
-- PATCH 권한은 **서버에서 검증**한다. UI 숨김은 방어가 아니다.
+### 세션 → 열람자
+
+```
+브라우저 쿠키 (@supabase/ssr)
+   │
+   ├─ src/proxy.ts          ← Next.js 16에서 middleware.ts의 새 이름. export 이름도 `proxy`
+   │     · 토큰 갱신(리프레시 회전)
+   │     · 세션 없으면 /login 리다이렉트  — 단 데모·폴백에서는 하지 않는다 (ADR-026)
+   │
+   └─ src/lib/auth/          ← 쿠키 → Viewer(`types/auth.ts`) 해석
+         · profiles.role · profiles.team_id · members.auth_user_id → memberId
+```
+
+`?as=`는 **세션이 없을 때만** 산다.
+
+```
+세션이 있으면              → 세션의 role이 이긴다. ?as=는 무시된다 (개발 환경에서도)
+세션이 없고 프로덕션+실저장소 → member        (S4)
+세션이 없고 데모·폴백        → ?as= 해석      (ADR-013)
+```
+
+### 조회와 쓰기는 다른 클라이언트로 나간다 (`ADR-024`)
+
+```
+서버 컴포넌트 · 조회 라우트 · PATCH
+        │  anon 키 + 사용자 JWT (요청 스코프)
+        ▼
+  lib/store/viewer-storage.ts  → Supabase  ← RLS가 실제로 걸린다
+                                    ▲
+        │  service_role (프로세스 전역 싱글턴)
+  lib/store/store-factory.ts · getStorage()
+        ▲
+업로드 확정 · /api/uploads/seed        ← 올린 사람의 범위 밖 행도 쓴다
+```
+
+**`getStorage()`에 JWT를 밀어 넣지 않는다.** 캐시가 프로세스 전역이라 한 사용자의 토큰이
+다음 요청의 다른 사용자에게 샌다. `/extract` 두 라우트는 저장소를 아예 부르지 않는다 (`ADR-022`).
+
+### `security definer` 함수 — **셋이다** (`ADR-025`)
+
+```sql
+public.my_role()       → text   -- profiles.role.    없으면 null (프로필 없는 계정)
+public.my_team()       → text   -- profiles.team_id. admin은 null일 수 있다
+public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행의 id. 없으면 null
+```
+
+- ⚠ **RLS 재귀 함정**: 정책 안에서 `profiles`·`members`를 직접 select하면 그 테이블의 정책이
+  다시 걸린다. 셋 다 `security definer`로 감싼다.
+- ⚠ 셋 다 `language sql` · `stable` · **`set search_path = ''`** 이고 테이블 이름에 스키마를
+  명시한다(`public.profiles`). 고정하지 않으면 호출자가 같은 이름의 테이블을 자기 스키마에
+  만들어 함수를 속인다 — **권한 상승 경로다** (`S5`).
+- ⚠ **`null`은 셋 다 정상값이고 「모두 허용」이 아니다.** SQL의 `=`가 `null`에 참을 내지 않는
+  성질이 우리 편이다. 뒤집어 쓰면(`is not distinct from`) 전원에게 열린다.
+
+### 정책 표
+
+| 테이블 | select | update | insert·delete |
+|---|---|---|---|
+| `tasks` | admin 전체 / lead `team_id = my_team()` / member `owner_member_id = my_member_id()` | 같은 범위 | 없음 (`service_role`만) |
+| `task_stages` · `task_events` | 부모 `tasks`가 보이면 보인다 | — | 없음 |
+| `goal_metrics` · `team_period_goals` | admin 전체 / lead·member `team_id = my_team()` | — | 없음 |
+| `teams` · `departments` · `members` · `enum_options` · `sla_rules` | 로그인한 전원 (참조 데이터) | — | 없음 |
+| `uploads` · `doc_extractions` | admin·lead | — | 없음 |
+| `profiles` | 본인 행만 | 없음 | 없음 |
+
+- **`member`에게 `owner_member_id is null`인 행은 보이지 않는다** — 시트 담당자가
+  `members`에 안 붙은 경우(`unknown_owner`)다. `null`을 「내 것」으로 치면 담당자 미상 업무가
+  전원에게 보이고, 그것은 범위 구분이 아니다.
+- **컬럼 단위 제한은 RLS가 아니라 API가 진다.** `PATCH /api/tasks/[id]`가 받는 필드는
+  **`status`·`progress` 둘뿐**이고(`UC-16`), zod 스키마가 그 밖을 거부한다. RLS는 「어느 행을」
+  이고 zod는 「어느 칸을」이다.
+- PATCH 권한은 **서버에서도 검증**한다. UI 숨김은 방어가 아니고, RLS 하나에만 기대면
+  거부가 `403`이 아니라 「0행 갱신」으로 조용히 지나간다.
 
 ## 에러 처리
 
@@ -234,7 +309,7 @@ FILE_TOO_LARGE · FILE_TYPE_MISMATCH · ARCHIVE_LIMIT_EXCEEDED · PARSE_TIMEOUT
 WORKBOOK_CORRUPT · NO_KNOWN_TAB · SETTINGS_TAB_MISSING
 DOCUMENT_CORRUPT · NO_OUTLINE_TASK
 UPLOAD_NOT_FOUND · UPLOAD_ALREADY_COMMITTED · TASK_NOT_FOUND
-STORAGE_READONLY · STORAGE_UNAVAILABLE · FORBIDDEN · VALIDATION_FAILED
+STORAGE_READONLY · STORAGE_UNAVAILABLE · UNAUTHENTICATED · FORBIDDEN · VALIDATION_FAILED
 ```
 
 셋째 줄 둘은 독스 경로(`/extract`) 전용이며 기존 코드로 대신할 수 없다.
@@ -242,6 +317,10 @@ STORAGE_READONLY · STORAGE_UNAVAILABLE · FORBIDDEN · VALIDATION_FAILED
 무엇을 잘못했는지 알려주지 못한다.
 `NO_OUTLINE_TASK` — `NO_KNOWN_TAB`과 같은 강도의 중단이다. 과제 0건짜리 배정표를 내려보내면
 사람은 그게 빈 문서인지 파서 고장인지 알 수 없다.
+
+`UNAUTHENTICATED`(401)와 `FORBIDDEN`(403)을 **뭉개지 않는다** (T8) — 「로그인하세요」와
+「당신은 이걸 못 합니다」는 사용자가 할 일이 정반대다. 문구는 각각
+「로그인이 필요합니다.」·「이 작업을 수행할 권한이 없습니다.」다.
 
 실패 강도 3단계를 뭉개지 않는다.
 

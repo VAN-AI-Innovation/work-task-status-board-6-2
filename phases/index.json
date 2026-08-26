@@ -39,6 +39,10 @@
       "dir": "t7-doc-extract",
       "status": "completed",
       "completed_at": "2026-08-24T09:02:33+0900"
+    },
+    {
+      "dir": "t8-auth-rls",
+      "status": "pending"
     }
   ]
 }

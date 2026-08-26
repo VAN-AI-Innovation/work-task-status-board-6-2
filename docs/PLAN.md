@@ -693,6 +693,81 @@ KPI 스트립 (10 타일)      ← 시트 KPI 행
 
 **`service_role` 키는 서버의 업로드 커밋·시드에만** 쓰고, 조회는 사용자 JWT를 실은 클라이언트로 해서 RLS가 실제로 걸리게 한다. 전부 service_role로 처리하면 RLS를 만들어도 의미가 없다.
 
+#### T8 착수 시 확정 (2026-08-27)
+
+위 세 문단은 T2 시점의 설계다. T8에 착수하면서 **뒤 step 열둘이 갈라지지 않도록** 여섯 가지를
+못박는다. 기존 문단은 근거로 남기고 여기에 이어 붙인다. T8은 앞의 어느 티켓보다 되돌리기가
+비싸다 — 조회 경로 전환은 `getStorage()` 싱글턴을 건드리고, RLS 정책은 원격 DB에 적용된다.
+
+**결정 A — 세션은 `@supabase/ssr` 쿠키이고, 게이트는 `src/proxy.ts`다.**
+직접 쿠키를 굽는 대신 `@supabase/ssr`을 쓰는 이유는 **리프레시 토큰 회전** 하나다. access token은
+1시간이면 만료되고, 갱신을 우리가 짜면 「조용히 로그아웃되는 버그」가 이 프로젝트에서 가장
+재현하기 어려운 종류가 된다. 그리고 **Next.js 16에서 `middleware.ts`는 `proxy.ts`로 이름이
+바뀌었다** — 파일은 `src/proxy.ts`, export 이름은 `proxy`다. `middleware`라고 쓰면 아무 일도
+일어나지 않고, 그 실패는 조용하다.
+
+**결정 B — 조회는 사용자 JWT로 나가고, `service_role`은 업로드 확정·시드에만 쓴다.**
+위 문단이 이미 적은 원칙의 실행 표다. **전부 `service_role`로 처리하면 RLS를 만들어도 의미가 없다.**
+
+| 경로 | 클라이언트 | 이유 |
+|---|---|---|
+| 대시보드·팀 탭·조회 라우트 6종 | anon 키 + 사용자 JWT | RLS가 실제로 걸린다 |
+| `PATCH /api/tasks/[id]` | anon 키 + 사용자 JWT | 서버 판정이 뚫려도 DB가 한 번 더 막는다 |
+| 업로드 확정 · `/api/uploads/seed` | `service_role` | 시트 전체를 쓴다. 올린 사람의 범위 밖 행도 쓴다 |
+| `/extract` 두 라우트 | 저장소를 부르지 않는다 | `ADR-022` |
+
+`getStorage()`는 **프로세스 전역 싱글턴**이라 사용자 JWT를 담을 수 없다(요청마다 다르다).
+그래서 `getStorage()`는 `service_role` 경로 전용으로 남기고, 조회용 **요청 스코프** 핸들을
+`src/lib/store/viewer-storage.ts`가 따로 만든다. **싱글턴에 JWT를 밀어 넣지 않는다** — 한
+사용자의 토큰이 다음 요청의 다른 사용자에게 새는 자리다. 결정 이력은 `ADR-024`.
+
+**결정 C — `security definer` 함수는 둘이 아니라 셋이다.**
+위 문단과 `ARCHITECTURE.md`가 적은 것은 `my_role()`·`my_team()` 둘인데, **`member` 범위를 그
+둘로는 표현할 수 없다.** `member`가 보는 것은 「본인이 담당인 건」이고 그 판정은
+`tasks.owner_member_id = (내 members 행의 id)`다. 정책 안에서 `members`를 직접 select하면
+`members`의 정책이 다시 걸려 재귀·성능 함정으로 들어간다 — `profiles`를 감싼 이유와 같다.
+
+```
+my_role()       → text   -- profiles.role. 없으면 null (로그인했지만 프로필이 없는 계정)
+my_team()       → text   -- profiles.team_id. admin은 null일 수 있다
+my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행의 id. 없으면 null
+```
+
+셋 다 `language sql` · `stable` · `security definer` · **`set search_path = ''`** 이고 테이블
+이름에 스키마를 명시한다(`public.profiles`). `search_path`를 고정하지 않으면 호출자가 같은
+이름의 테이블을 자기 스키마에 만들어 함수를 속일 수 있다 — **권한 상승 경로다**(`S5`).
+결정 이력은 `ADR-025`.
+
+**결정 D — 매칭 실패는 `unknown_owner`이고, `member` 범위에서 빠진다.**
+시트의 담당자는 자유 입력 문자열이라 `members` 행에 붙지 않는 이름이 남는다. 그런 태스크는
+`owner_member_id`가 `null`이고 **`member`에게 보이지 않는다.** `null`을 「내 것」으로 치면
+담당자 미상 업무가 전원에게 보이고, 그것은 범위 구분이 아니다. `admin`·`lead`에게는 그대로
+보인다. 화면이 이것을 숨기지 않는다 — `member` 화면의 빈 상태 문구가 「담당자가 연결되지
+않았을 수 있습니다」를 한 줄 알린다. (`TICKETS.md` T8「리스크·미결」이 이미 정한 값이라
+ADR을 따로 만들지 않는다.)
+
+**결정 E — 데모 모드는 인증을 요구하지 않는다.**
+`.env` 없이 클론해 바로 도는 경로(`STORAGE_DRIVER=memory`)가 죽으면 심사자가 아무것도 못 본다
+(`PRD.md` 성공 기준 1번). **`proxy`는 Supabase 자격증명이 없거나 `STORAGE_DRIVER=memory`면
+리다이렉트하지 않는다.** 그 모드에서는 지금처럼 `?as=`가 역할을 정한다(`ADR-013` 그대로).
+그래서 `?as=` 차단 규칙이 **한 줄 늘어난다** — 표는 아래 `S4`에 함께 붙였다.
+「프로덕션에서만 무시」로 두면 개발 서버에서 로그인한 `member`가 `?as=admin`으로 남의 팀을
+읽는다. **세션이 있는데 URL이 이기는 경우는 없다.** 결정 이력은 `ADR-026`.
+
+**결정 F — 에러 코드 `UNAUTHENTICATED`(401) 하나를 더한다. PATCH 허용 필드는 둘이다.**
+`X1` 목록에 `UNAUTHENTICATED`를 넣는다. `FORBIDDEN`(403)은 이미 있고 **둘을 뭉개지 않는다** —
+「로그인하세요」와 「당신은 이걸 못 합니다」는 사용자가 할 일이 정반대다.
+
+| 코드 | 상태 | 문구 |
+|---|---|---|
+| `UNAUTHENTICATED` | 401 | 로그인이 필요합니다. |
+| `FORBIDDEN` (기존) | 403 | 이 작업을 수행할 권한이 없습니다. |
+
+`PATCH /api/tasks/[id]`가 받는 필드는 **`status`·`progress` 둘뿐이다**(`UC-16` 「내 업무
+상태·진행률 수정」). `note`·`dueAt`·`ownerNameRaw`를 열지 않는다 — 시트가 진실의 원천이라
+(`ADR-001`·`ADR-008`) 재업로드가 덮어쓸 필드를 화면에서 고치게 하면 사용자는 **자기 수정이
+사라지는 것**을 본다. 되돌릴 수 있는 구현 선택이라 ADR을 만들지 않고 이 표에 남긴다.
+
 ### 9. 시연 리스크 완화
 
 1. **`TaskRepository` 인터페이스 + 구현 2개**(memory/supabase)가 **같은 계약 테스트**를 통과. `src/lib/store/`라 TDD 가드가 강제한다.
@@ -962,6 +1037,18 @@ T6에서 넣기로 한 `?as=admin`은 **URL만 치면 관리자가 되는 기능
 if (process.env.NODE_ENV === 'production' && driver !== 'memory') → ?as= 무시
 ```
 즉 **메모리 드라이버에서만** 동작한다. Supabase에 붙는 순간 자동으로 죽는다. T8 완료 기준에 "프로덕션 빌드 + Supabase 연결 상태에서 `?as=admin`이 무시된다"를 명시한다.
+
+**T8에서 규칙이 한 줄 늘어난다** (「8. 권한」의 결정 E·`ADR-026`). 위 이중 차단은 그대로 남고,
+그 **앞에** 세션 갈래가 붙는다.
+
+```
+세션이 있으면              → 세션의 role이 이긴다. ?as=는 무시된다 (개발 환경에서도)
+세션이 없고 프로덕션+실저장소 → member                (위 규칙 그대로, S4)
+세션이 없고 데모·폴백        → ?as= 해석              (위 규칙 그대로, ADR-013)
+```
+
+「프로덕션에서만 무시」로 두면 개발 서버에서 로그인한 `member`가 `?as=admin`으로 남의 팀을
+읽는다. **세션이 있는데 URL이 이기는 경우는 없다.**
 
 #### 🟡 S5. 키 관리와 RLS 함정 두 가지
 

@@ -560,7 +560,17 @@ POST /api/uploads/sheet  (배정표 xlsx)
 초대·가입 플로우, 비밀번호 재설정, 소셜 로그인. 계정은 수동 생성으로 충분하다.
 
 **산출물**
-`supabase/migrations/` RLS 마이그레이션 + `src/lib/store/` 인증 클라이언트 + 로그인 화면
+
+| 자리 | 파일 |
+|---|---|
+| 스키마 | `supabase/migrations/` RLS 마이그레이션 1개 (`profiles` + 함수 3개 + 정책) |
+| 세션 | `src/lib/auth/` (쿠키 → `Viewer`) · `src/proxy.ts` (갱신·보호 라우트) |
+| 판정 | `src/lib/domain/viewer-scope.ts` (역할별 열람 범위·수정 권한) |
+| 이름 잇기 | `src/lib/upload/owner-link.ts` (시트 담당자 → `members` 행) |
+| 조회 경로 | `src/lib/store/viewer-storage.ts` (요청 스코프 · 사용자 JWT) |
+| 쓰기 | `PATCH /api/tasks/[id]` |
+| 화면 | `/login` + 역할별 게이팅 |
+| 타입 | `src/types/auth.ts` |
 
 **완료 기준**
 
