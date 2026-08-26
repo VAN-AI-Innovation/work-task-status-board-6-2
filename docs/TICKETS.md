@@ -588,6 +588,91 @@ POST /api/uploads/sheet  (배정표 xlsx)
 - 시트의 담당자는 **자유 입력 문자열**이라 `auth_user_id`와 1:1로 안 붙는 이름이 남는다. 매칭 실패는 `unknown_owner`로 두고 `member` 범위 판정에서 제외한다.
 - 이 티켓은 잘라야 할 때 T10 다음으로 밀리는 순서다. 다만 요구 6번이 여기 있으므로 **미루면 과제 요구가 하나 빈다.**
 
+**구현 결과** — step 12(감사)에서 완료 기준 7개를 하나씩 실행해 판정했다. **7개 전부 통과.**
+
+산출물은 아래와 같다. 계층 넷(정책 → 세션 → 범위 → 화면)이 한 방향으로만 흐르고, 아래
+계층은 위를 모른다. 괄호는 그 파일이 진 테스트 건수이며 **T8이 더한 테스트는 209건**이다.
+
+| 자리 | 파일 |
+|---|---|
+| 스키마 | `supabase/migrations/0003_auth_rls.sql` — `profiles` · 함수 3개 · 정책 11개 · GRANT 재구성 |
+| 세션 | `lib/auth/session-client.ts`(9) · `lib/auth/viewer-session.ts`(35) · `lib/auth/request-viewer.ts`(3) |
+| 문지기 | `src/proxy.ts`(13) · `lib/auth/route-guard.ts`(11) · `lib/auth/safe-redirect.ts`(11) |
+| 판정 | `lib/domain/viewer-scope.ts`(28) · `lib/api/viewer-role.ts`(세션 갈래 추가) |
+| 이름 잇기 | `lib/upload/owner-link.ts`(17) |
+| 조회 경로 | `lib/store/viewer-storage.ts`(7) · `lib/api/read-context.ts`(`ViewerContext`를 받게) |
+| 저장소 계약 | `TaskRepository.updateTask` · `listMembers` (계약 22건, 두 구현) |
+| 쓰기 | `app/api/tasks/[id]/route.ts` `PATCH`(23) · `lib/api/task-patch-schema.ts`(12) |
+| 로그인 | `app/api/auth/login/route.ts`(17) · `app/api/auth/logout/route.ts`(5) · `lib/api/credentials-schema.ts`(8) |
+| 화면 | `app/login/page.tsx` · `components/auth/login-form.tsx` · `components/shell/session-badge.tsx` · `components/tasks/task-edit-form.tsx` |
+| 표시 규칙 | `lib/view/role-label.ts`(5) · `lib/view/empty-reason.ts`(5) |
+| 타입 | `src/types/auth.ts` (`Viewer` · `TaskPatch` · `MemberRecord` · `SessionAccount`) |
+| 운영 | `scripts/db/seed-auth.ts`(`npm run seed:auth`, 멱등) · `scripts/smoke/rls-check.mjs`(10항목) |
+
+**완료 기준 7개의 증명** — 「통과했다」가 아니라 무엇을 실행해 무엇이 나왔는지 적는다.
+계정은 `npm run seed:auth`가 만든 셋이고, 기준 1~5·7은 `npm run dev`(라이브 Supabase),
+기준 6은 `npm run build && NODE_ENV=production npm run start`에서 쟀다.
+
+| # | 실행 | 결과 |
+|---|---|---|
+| 1 | 세 계정으로 `POST /api/auth/login`(전부 `303`) → `GET /api/tasks`와 `GET /` | **`admin` 10 · `lead` 6 · `member` 2**로 셋이 갈린다. `meta.role`도 각각 `admin`·`lead`·`member`이고 보이는 팀은 `{edit,shoot,marketing}` / `{edit}` / `{edit}`다. 대시보드 업무 표의 `<tbody>` 행수도 **10 · 6 · 2**로 API와 같다(RSC 페이로드를 걷어내고 셌다). `service_role`로 센 전체가 10이므로 **`admin`의 10 = 전체 10** |
+| 2 | `curl -X PATCH /api/tasks/<id>` 세 갈래 | 타인 건 → `{"error":{"code":"FORBIDDEN","message":"이 작업을 수행할 권한이 없습니다."}}` **[HTTP 403]** / 쿠키 없이 → `{"error":{"code":"UNAUTHENTICATED","message":"로그인이 필요합니다."}}` **[HTTP 401]** / 본인 건 → **[HTTP 200]**에 `progress=50`. **바꾼 값은 원값(`null`)으로 되돌렸고 SQL로 확인했다.** 403을 받은 남의 행은 `progress=40` 그대로다 — 상태 코드만 거부가 아니라 **쓰기가 실제로 나가지 않았다** |
+| 3 | `pg_policies` 전수 + 로그인 상태 `select * from profiles` | 정책 **11건** 전부 `roles={authenticated}`이고 **`qual`·`with_check` 어디에도 `profiles`를 직접 select하는 정책이 없다** — 범위 판정은 전부 `my_role()`·`my_team()`·`my_member_id()`를 거친다(`task_stages`만 부모 `tasks`를 select해 `tasks` 정책을 다시 태운다). 재귀가 없다는 것은 **기준 1이 응답을 받은 것**이 증명하고, `rls-check.mjs` 항목 10이 `admin`으로 `profiles`를 읽어 **1행**을 받는다 |
+| 4 | `select proname, prosecdef, provolatile, proconfig from pg_proc …` | **3행** — `my_member_id`·`my_role`·`my_team` 전부 `prosecdef=true` · `provolatile=s` · `proconfig=["search_path=\"\""]`. 본문도 `public.profiles`·`public.members`로 **스키마가 명시**돼 있다. `get_advisors(security)`에 **`function_search_path_mutable`이 없다** |
+| 5 | 정적 grep + 로그아웃/역할별 실측 | `SUPABASE_SERVICE_ROLE_KEY`를 읽는 자리는 `store-factory.ts`·`supabase-task-store.ts` **둘뿐**이고, `src/app`에서 `getStorage()`를 부르는 라우트는 **`uploads/sheet`·`uploads/[id]/commit`·`uploads/seed`·`health` 넷뿐**이다(조회 라우트 6종·서버 컴포넌트 4개는 전부 `currentViewerContext()`). 동적으로는 `rls-check.mjs`가 **DB 계층에서** 같은 수치를 낸다 — anon 0행 / admin 10 / lead 6 / member 2, 남의 행 update 갱신 0행, `title` update `42501`. 앱 계층 수치(10·6·2)와 DB 계층 수치가 **같다** |
+| 6 | `npm run build && NODE_ENV=production npm run start` (`.env.local` = 라이브) | 쿠키 없이 `/api/tasks?as=admin` → **401 `UNAUTHENTICATED`**. `member` 쿠키 + `?as=admin`·`?as=lead`·`?as=member` → 셋 다 **`tasks=2` · `meta.role=member`**. `member` 쿠키 + `GET /?as=admin` → 업무 표 **2행** · 첫 섹션 「업무」(member 배치) · 배지 「부원」으로 `/`와 **완전히 같다**. 대조로 `admin` 쿠키 + `?as=member` → `tasks=10` · `meta.role=admin` |
+| 7 | 로그아웃 상태로 보호·공개 경로 | `/` · `/teams/edit` · `/upload` · `/extract` 전부 **307 → `/login?next=…`**이고 쿼리까지 보존한다(`/teams/edit?overdue=1` → `next=%2Fteams%2Fedit%3Foverdue%3D1`). `/login` · `/api/health`는 **200**. API는 리다이렉트가 아니라 **401 JSON**이다 — `/api/tasks`·`/api/stats`·`/api/alerts` 셋 다 `UNAUTHENTICATED` |
+
+**데모 경로 회귀 검사** — `STORAGE_DRIVER=memory`. **`.env` 없이 클론하는 심사자의 경로가
+살아 있어야 T8이 완료다** (`PRD.md` 성공 기준 1번, `PLAN.md` 결정 E).
+
+| 확인 | 결과 |
+|---|---|
+| 리다이렉트 없음 | `/` · `/teams/edit` · `/upload` · `/extract` · `/login` 전부 **200**. `/api/health`가 `driver=memory`·`mode=demo` |
+| `?as=`가 산다 | 첫 섹션이 `?as=admin` → 「KPI」 / `?as=lead` → 「알림」 / `?as=member`·기본 → 「업무」. 배너는 「샘플 데이터 모드」 |
+| **범위는 갈리지 않는다** | 세 역할 모두 **9건**을 본다 (`ADR-026` — 데모에는 `profiles`·`members`가 없어 「우리 팀」이라 부를 대상이 없다) |
+| 민감 `extras` 마스킹은 산다 | 같은 9건에서 민감 키 4개의 값이 `admin`·`lead`에게는 그대로, `member`에게는 **전부 `null`** (`S6`) |
+| 업로드 고리 | `POST /api/uploads/sheet` → 미리보기 `{taskCount 9, unchanged 9, warningCount 3}` → `commit` **200** → 「마지막 반영」이 갱신된다 |
+| 독스 고리 | `POST /api/uploads/doc` → 행 2건 → `POST /api/export/assignment` → **7,506바이트 xlsx**. 내려받은 파일에 드롭다운 3종(난이도·우선순위·상태)이 붙고 **수식 셀 0개 · `'` 프리픽스 1개**(`S1`) |
+
+**범위 Out으로 남긴 것** — 초대·가입 플로우, 비밀번호 재설정, 소셜 로그인. 계정은
+`npm run seed:auth`가 만드는 수동 생성이다(티켓이 정한 범위 그대로).
+
+**감사에서 발견했으나 고치지 않은 것**
+
+- **`members`가 시트 이름으로만 서 있다.** `owner-link.ts`는 같은 팀 안에서 정규화된 이름이
+  정확히 하나일 때만 잇고, 같은 키가 둘이면 **그 키를 통째로 버린다**(먼저 온 사람이 이기지
+  않는다). 그래서 **동명이인은 양쪽 다 `unknown_owner`가 되고 `member` 화면에서 사라진다.**
+  개명도 같다 — 시트에서 이름을 고치면 그 사람의 업무가 다음 업로드부터 안 붙는다. 실측:
+  `members` 6행 중 계정이 붙은 것은 2행, `tasks` 10건 중 `owner_member_id`가 붙은 것은 9건이고
+  나머지 1건이 그 상태다. 고치려면 시트에 사번 같은 **안정된 키**가 있어야 하는데 그것은
+  입력 계층(Google Sheets)을 바꾸는 일이라 `ADR-001`의 전제를 건드린다.
+- **데모에서 `?as=`는 범위를 바꾸지 않는다.** 위 표대로 세 역할이 같은 9건을 본다. 바뀌는 것은
+  **섹션 배치와 민감 `extras` 마스킹** 둘뿐이다. 적어 두지 않으면 다음 사람이 데모에서 재 보고
+  「권한이 안 걸린다」고 결론 낸다 — **걸리지 않는 것이 맞고, 걸릴 데이터가 없는 것이다.**
+- **`uploads`·`task_events`·`doc_extractions`에는 정책이 없다 — 서버만 본다.** `get_advisors`가
+  `rls_enabled_no_policy` 3건으로 잡지만 **의도한 상태다**(`S6` — `parse_result`에 시트·문서
+  본문이 통째로 들어 있고 화면에는 그것을 읽는 자리가 없다). `task_events` 조회는 `T9`의
+  `listEvents`가 여는 자리이고 그 경로도 서버 쪽이다.
+- **`security definer` 함수 셋이 `/rest/v1/rpc/`로 호출 가능하다** (`get_advisors` WARN 6건).
+  셋 다 **호출자 자신의 행만** 돌려주고 `anon`에게는 `auth.uid()`가 `null`이라 전부 `null`이다.
+  `public`의 `execute`를 회수하면 **정책 평가 자체가 `permission denied`로 깨진다** — 정책이
+  그 함수를 부르기 때문이다. 회수하지 않는 것이 맞다.
+- **Supabase Auth의 「유출된 비밀번호 차단」이 꺼져 있다** (`get_advisors` WARN 1건).
+  코드가 아니라 **프로젝트 설정**이라 마이그레이션으로 켤 수 없고, 계정 셋이 전부 시드
+  계정인 현재 상태에서는 노출 면이 없다. 실계정을 만들 때 켠다.
+- **`upload-record-store` 계약 1건이 라이브 DB 병렬 접속에서 간헐 실패한다**(`PGRST303`).
+  step 4·7·9에서도 같은 자리에서 관측됐고 **단독 재실행은 늘 통과한다**(18건). 감사에서
+  전체 스위트를 **6회** 돌려 **2회** 이 1건이 실패했고 나머지 4회는 **1568건 전부 통과**였다.
+  실패한 회차도 단독 재실행하면 18건 통과한다. 원인은
+  테스트가 원격 DB를 여러 파일에서 동시에 두드리는 것이고, 없애려면 계약 스위트를 직렬화하거나
+  파일마다 다른 접두사를 주어야 한다 — `ADR-023`이 연 자리의 후속이라 T8에서 손대지 않았다.
+- **`PATCH`가 supabase에서만 「마지막 반영」을 앞당긴다.** `tasks.updated_at`이 `getLastSyncedAt`의
+  근거인데 `updateTask`가 그 값을 쓴다. 감사 중 실제로 `lastSyncedAt`이 `20:28:20` → `20:35:28`로
+  움직이는 것을 봤다. `PATCH`는 「반영」이 아니라는 것이 step 9의 결정이고(화면의 「마지막 반영」은
+  업로드가 돌아간 시각이다 · `ADR-001`), memory 구현은 앞당기지 않아 **두 구현이 이 한 칸에서
+  갈린다.** 계약이 재지 않는 자리라 양쪽 코드에 주석으로 남겨 두었다.
+
 ---
 
 ## T9 · 배포 + README + 주간 보고 전용 화면

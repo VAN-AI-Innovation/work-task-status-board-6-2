@@ -10,6 +10,21 @@ npm install
 npm run dev      # http://localhost:3000
 ```
 
+`.env` 없이 그대로 뜬다 — 기본값이 `STORAGE_DRIVER=memory`라 시드가 로드된 대시보드가
+바로 보이고 로그인도 필요 없다.
+
+## 환경변수
+
+`.env.example`을 `.env.local`로 복사해 채운다. **값은 저장소에 넣지 않는다.**
+
+| 키 | 언제 필요한가 |
+|---|---|
+| `STORAGE_DRIVER` | `memory`(기본·데모) 또는 `supabase`(실저장소) |
+| `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 실저장소·로그인. 브라우저에 나가도 되는 키다 |
+| `SUPABASE_SERVICE_ROLE_KEY` | **서버 전용.** 업로드 확정·시드만 쓴다. `NEXT_PUBLIC_`을 붙이면 `npm run guard:env`가 빌드를 실패시킨다 |
+| `T8_SEED_PASSWORD` | `npm run seed:auth`가 만드는 역할 계정의 비밀번호. 비워 두면 스크립트가 난수를 만들어 `.env.local`에 덧붙인다 |
+| `T8_SEED_EMAIL_DOMAIN` | 같은 계정들의 이메일 도메인 (기본 `example.com`) |
+
 ## 화면
 
 | 경로 | 하는 일 |

@@ -26,11 +26,13 @@ src/
 │   ├── teams/[teamSlug]/page.tsx     # 부서별 탭
 │   ├── upload/page.tsx               # 엑셀 업로드 + 미리보기
 │   ├── extract/page.tsx              # 독스 → 배정표
+│   ├── login/page.tsx                # 로그인 (T8). 앱 셸을 쓰지 않는다
 │   ├── error.tsx                     # 조회 실패 바운더리 (teams/ 에도 둔다)
 │   └── api/  uploads/sheet · uploads/[id]/commit · uploads/seed · uploads/doc
 │             export/assignment · tasks · tasks/[id] · stats · alerts
 │             goals · report/weekly · health
-├── components/   shell/ dashboard/ charts/ alerts/ tasks/ goals/ upload/ extract/
+│             auth/login · auth/logout                     # T8. 둘 다 폼을 받는다
+├── components/   shell/ dashboard/ charts/ alerts/ tasks/ goals/ upload/ extract/ auth/
 │                                              # props 받아 JSX만. 계산 금지
 ├── lib/
 │   ├── sheet/   workbook-reader · header-resolver · tab-detector
@@ -44,13 +46,17 @@ src/
 │   ├── xlsx/    assignment-writer
 │   ├── domain/  task-semantic · display-status · task-derive · kst-today
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
+│   │            extras-visibility · viewer-scope                 # 열람 범위 판정 (T8)
 │   ├── store/   task-repository · repository-contract · memory-task-store
 │   │            supabase-task-store · upload-record-store · store-factory
+│   │            viewer-storage                                   # 요청 스코프·사용자 JWT (T8)
 │   ├── upload/  upload-limits · zip-inspector · upload-guard · parse-runner
 │   │            upload-mapper · upload-preview · upload-commit · seed-loader
+│   │            owner-link                                       # 시트 담당자 → members (T8)
 │   ├── api/     api-error · read-context · task-response · viewer-role
-│   │            assignment-schema
-│   ├── auth/    쿠키 세션 → `Viewer` 해석 (T8)
+│   │            assignment-schema · task-patch-schema · credentials-schema
+│   ├── auth/    session-client · viewer-session                  # 쿠키 → `Viewer` (T8)
+│   │            request-viewer · route-guard · safe-redirect
 │   ├── view/    화면이 쓰는 표시 규칙 (role-layout · status-badge · chart-series …)
 │   └── fixtures/  sample-workbook.xlsx · sample-workload.md · sample-workload.docx
 │                  seed-tasks.json
@@ -232,7 +238,10 @@ TaskRepository  (저장/조회만)                domain/  (판정/집계만)
    │
    ├─ src/proxy.ts          ← Next.js 16에서 middleware.ts의 새 이름. export 이름도 `proxy`
    │     · 토큰 갱신(리프레시 회전)
-   │     · 세션 없으면 /login 리다이렉트  — 단 데모·폴백에서는 하지 않는다 (ADR-026)
+   │     · 세션이 없으면 — 단 데모·폴백에서는 하지 않는다 (ADR-026)
+   │         화면      → 307 /login?next=…      (원래 경로+쿼리를 보존한다)
+   │         /api/**   → 401 UNAUTHENTICATED    (JSON. fetch가 302를 따라가면 안 된다 · ADR-027)
+   │     · 판정은 lib/auth/route-guard.ts의 순수 함수가 진다. proxy는 DB를 조회하지 않는다
    │
    └─ src/lib/auth/          ← 쿠키 → Viewer(`types/auth.ts`) 해석
          · profiles.role · profiles.team_id · members.auth_user_id → memberId
@@ -270,11 +279,15 @@ TaskRepository  (저장/조회만)                domain/  (판정/집계만)
 **`getStorage()`에 JWT를 밀어 넣지 않는다.** 캐시가 프로세스 전역이라 한 사용자의 토큰이
 다음 요청의 다른 사용자에게 샌다. `/extract` 두 라우트는 저장소를 아예 부르지 않는다 (`ADR-022`).
 
-⚠ **라이브에서 로그인하지 않은 조회는 「0행」이 아니라 실패한다.** `0003_auth_rls.sql`이
-`anon`에게서 테이블 권한을 통째로 회수했으므로(`S5`), 세션 없는 요청은 RLS에 닿기 전에
-`42501 permission denied`로 막히고 라우트는 그것을 `STORAGE_UNAVAILABLE`(503)로 옮긴다.
-**정보는 새지 않지만 문구가 사실과 다르다** — 사용자는 「로그인하세요」를 봐야 한다.
-이 상태를 없애는 것은 `proxy`다(세션이 없으면 저장소에 닿기 전에 `/login`으로 보낸다).
+⚠ **라이브에서 로그인하지 않은 조회는 저장소에 닿지 않는다 — `proxy`가 먼저 막는다.**
+`0003_auth_rls.sql`이 `anon`에게서 테이블 권한을 통째로 회수했으므로(`S5`), 세션 없는 요청이
+저장소까지 가면 RLS에 닿기 전에 `42501 permission denied`가 나고 라우트는 그것을
+`STORAGE_UNAVAILABLE`(503)로 옮긴다 — 정보는 새지 않지만 **문구가 사실과 다르다**(사용자는
+「로그인하세요」를 봐야 한다). 그래서 `proxy`가 그 앞에 선다: 화면은 `/login`으로 보내고
+API는 `UNAUTHENTICATED`(401)로 답한다. **T8 감사 실측** — 라이브 서버에서 쿠키 없이
+`/api/tasks`·`/api/stats`·`/api/alerts` 셋 다 `401 UNAUTHENTICATED`이고 503은 한 번도
+나오지 않는다. 503 갈래는 여전히 코드에 있고 그것이 맞다 — `proxy`의 공개 목록이 늘어나면
+그 경로가 다시 열리므로, **문 하나에만 기대지 않는다.**
 
 ### `security definer` 함수 — **셋이다** (`ADR-025`)
 
