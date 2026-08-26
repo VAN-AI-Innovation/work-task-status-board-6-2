@@ -42,7 +42,8 @@
     },
     {
       "dir": "t8-auth-rls",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-08-27T05:50:23+0900"
     }
   ]
 }
