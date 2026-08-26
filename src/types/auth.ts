@@ -35,3 +35,18 @@ export interface TaskPatch {
   /** 0~100 정수 또는 null(값을 지운다) */
   progress?: number | null;
 }
+
+/**
+ * `members` 한 행. **시트의 담당자 이름과 로그인 계정을 잇는 표다.**
+ *
+ * `types/task.ts`가 아니라 여기 있는 이유: 업무가 아니라 **신원**이고,
+ * `Viewer.memberId`가 가리키는 대상이다 (과제 요구 7번의 접점 — `0001_init.sql` 주석).
+ */
+export interface MemberRecord {
+  id: string;
+  teamId: TeamKey;
+  /** 시트에 적힌 이름 원문. `(team_id, name)`이 유니크다 */
+  name: string;
+  /** T8에서 채워진다. 아직 계정이 없는 구성원은 null */
+  authUserId: string | null;
+}

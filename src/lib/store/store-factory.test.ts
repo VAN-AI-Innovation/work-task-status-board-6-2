@@ -158,6 +158,26 @@ describe('읽기 전용 폴백 — 쓰기는 막고 읽기는 살린다 (ADR-005
     ).rejects.toBeInstanceOf(StorageReadOnlyError);
   });
 
+  it('updateTask도 던진다 — 폴백 중 단건 수정이 메모리에 조용히 저장되면 안 된다', async () => {
+    const { repo } = await fallbackHandle();
+    const [first] = await repo.listTasks();
+
+    await expect(repo.updateTask(first.id, { progress: 99 }, UPLOAD_AT)).rejects.toBeInstanceOf(
+      StorageReadOnlyError
+    );
+    await expect(repo.updateTask(first.id, { progress: 99 }, UPLOAD_AT)).rejects.toMatchObject({
+      code: 'STORAGE_READONLY',
+    });
+    // 막혔으니 값도 그대로다.
+    expect((await repo.getTask(first.id))?.progress).toBe(first.progress);
+  });
+
+  it('listMembers는 막히지 않는다 — 읽기다', async () => {
+    const { repo } = await fallbackHandle();
+
+    await expect(repo.listMembers()).resolves.toEqual([]);
+  });
+
   it('쓰기가 막혀도 저장소 내용은 바뀌지 않는다 — 부분 반영이 남지 않는다', async () => {
     const { repo } = await fallbackHandle();
 

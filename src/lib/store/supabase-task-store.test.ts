@@ -25,7 +25,9 @@ import {
   toGoalMetric,
   toGoalMetricRow,
   toIsoTimestamp,
+  toMember,
   toTask,
+  toTaskPatchRow,
   toTaskRow,
   type GoalMetricRow,
   type TaskRow,
@@ -303,6 +305,53 @@ describe('createServiceRoleClient', () => {
   });
 });
 
+describe('toTaskPatchRow', () => {
+  it('준 키만 담는다 — 주지 않은 컬럼은 행에 없다 (null로 덮이지 않는다)', () => {
+    const row = toTaskPatchRow({ progress: 65 }, { updatedAt: '2026-07-27T09:00:00.000Z' });
+
+    expect(row).toEqual({ progress: 65, updated_at: '2026-07-27T09:00:00.000Z' });
+    expect('status' in row).toBe(false);
+    // `toTaskRow`가 만드는 전체 행과 달리 신원·감사 컬럼이 없다. 있으면 부분 갱신이 아니다.
+    expect('source_key' in row).toBe(false);
+    expect('title' in row).toBe(false);
+    expect('last_progress_at' in row).toBe(false);
+  });
+
+  it('progress: null은 담고(값을 지운다) 미지정은 담지 않는다', () => {
+    expect('progress' in toTaskPatchRow({ progress: null }, { updatedAt: 'T' })).toBe(true);
+    expect(toTaskPatchRow({ progress: null }, { updatedAt: 'T' }).progress).toBeNull();
+    expect('progress' in toTaskPatchRow({ status: '완료' }, { updatedAt: 'T' })).toBe(false);
+  });
+
+  it('빈 patch는 updated_at만 담는다', () => {
+    expect(toTaskPatchRow({}, { updatedAt: 'T' })).toEqual({ updated_at: 'T' });
+  });
+});
+
+describe('toMember', () => {
+  it('snake_case 컬럼을 camelCase 필드로 옮긴다', () => {
+    expect(
+      toMember({
+        id: '44444444-4444-4444-8444-444444444444',
+        team_id: 'edit',
+        name: '김편집',
+        auth_user_id: null,
+      }),
+    ).toEqual({
+      id: '44444444-4444-4444-8444-444444444444',
+      teamId: 'edit',
+      name: '김편집',
+      authUserId: null,
+    });
+  });
+
+  it('auth_user_id가 있으면 그대로 싣는다 (T8에서 채워진다)', () => {
+    expect(
+      toMember({ id: 'm1', team_id: 'shoot', name: '박촬영', auth_user_id: 'auth-1' }).authUserId,
+    ).toBe('auth-1');
+  });
+});
+
 /**
  * 여기부터는 실제 Supabase가 필요하다. 계약 항목은 memory와 **같은 목록**이며,
  * `--reporter=verbose`에서 두 이름으로 나란히 찍히는 것이 T4 완료 기준 8의 증거다.
@@ -429,6 +478,45 @@ if (canRun) {
    * `.limit()`이 실제로 걸리는지**는 여기서 따로 본다. `sourceKeys`로 좁혀 놓으면 실업무
    * 행이 몇 건이든 결과가 정해진다.
    */
+  /**
+   * 계약에 넣지 않은 이유: 계약이 이것을 재려면 **구성원을 만드는 쓰기 메서드**가 있어야
+   * 하는데, 그 메서드를 제품 코드 어디도 부르지 않는다 (구성원은 시드 스크립트가 만든다).
+   * 쓰지 않을 쓰기를 계약을 위해 만드는 것은 계약이 코드를 늘리는 것이다.
+   *
+   * **원격을 더럽히지 않는다** — `contract::` 이름의 행을 직접 넣고 `finally`에서 그 행만
+   * 지운다. 실업무 구성원 행이 몇이든 단언이 정해지도록 「그 행을 포함하는가」만 본다.
+   */
+  describe('listMembers', () => {
+    it('members 행을 MemberRecord로 옮겨 담는다', async () => {
+      const repo = createSupabaseTaskStore(client);
+      const name = `${CONTRACT_KEY_PREFIX}구성원-probe`;
+
+      const inserted = await client
+        .from('members')
+        .upsert({ team_id: 'edit', name, auth_user_id: null }, { onConflict: 'team_id,name' })
+        .select('id')
+        .maybeSingle();
+      if (inserted.error) {
+        throw new Error(`구성원 준비 실패 (code=${inserted.error.code ?? 'UNKNOWN'})`);
+      }
+
+      try {
+        const members = await repo.listMembers();
+        const found = members.find((member) => member.name === name);
+
+        expect(found).toBeDefined();
+        expect(found?.teamId).toBe('edit');
+        expect(found?.authUserId).toBeNull();
+        expect(found?.id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        );
+      } finally {
+        // 넣은 행 하나만 지운다. 실업무 구성원은 건드리지 않는다.
+        await client.from('members').delete().eq('team_id', 'edit').eq('name', name);
+      }
+    });
+  });
+
   describe('서버 측 limit', () => {
     it('listTasks({ limit })가 PostgREST 쪽에서 잘려 온다', async () => {
       const repo = createSupabaseTaskStore(client);

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
 import { describeRepositoryContract } from '@/lib/store/repository-contract';
 import type { TaskUpsertInput } from '@/lib/store/task-repository';
+import type { MemberRecord } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
 import type { Task, TaskStage } from '@/types/task';
 
@@ -127,6 +128,34 @@ describe('createMemoryTaskStore', () => {
     expect(await store.listStages(['seed-1'])).toEqual([]);
     expect(await store.listGoalMetrics()).toEqual([]);
     expect(await store.getLastSyncedAt()).toBeNull();
+  });
+
+  it('listMembers가 시드로 준 구성원을 그대로 돌려준다', async () => {
+    const members: MemberRecord[] = [
+      { id: 'member-1', teamId: 'edit', name: '김편집', authUserId: null },
+      { id: 'member-2', teamId: 'shoot', name: '박촬영', authUserId: 'auth-2' },
+    ];
+    const store = createMemoryTaskStore({ members });
+
+    expect(await store.listMembers()).toEqual(members);
+  });
+
+  it('시드 없이 만들면 구성원은 빈 배열이다', async () => {
+    expect(await createMemoryTaskStore().listMembers()).toEqual([]);
+  });
+
+  it('돌려준 구성원 배열을 호출자가 고쳐도 저장소가 오염되지 않는다', async () => {
+    const store = createMemoryTaskStore({
+      members: [{ id: 'member-1', teamId: 'edit', name: '김편집', authUserId: null }],
+    });
+
+    const first = await store.listMembers();
+    first[0].name = '망가뜨린 이름';
+    first.push({ id: 'member-x', teamId: 'edit', name: '없는 사람', authUserId: null });
+
+    const reread = await store.listMembers();
+    expect(reread).toHaveLength(1);
+    expect(reread[0].name).toBe('김편집');
   });
 
   it('id를 순번이 아니라 uuid로 만든다', async () => {
