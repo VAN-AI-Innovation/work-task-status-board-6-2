@@ -56,14 +56,32 @@ import { teamLabel } from '@/lib/view/team-slug';
  * 자식 칸 하나가 지는 연결선. 줄기(`::before`)는 칸 가운데에서 위로, 들보(`::after`)는
  * 좌우로 뻗다가 양 끝 칸에서 반씩 잘린다. `lg` 아래에서는 둘 다 끄고 세로로 쌓는다.
  *
- * 줄기 길이(`h-10`)와 위 칸이 띄워 둔 여백(`mt-10`)이 **같은 수여야 한다.** 다르면 선이
- * 위 카드 위로 올라타거나 허공에서 끊긴다.
+ * ## 들보가 칸 **밖으로** 나가야 한다
+ *
+ * 칸 사이는 `gap-10`(2.5rem)으로 벌어져 있고, 들보를 `left-0 right-0`으로 그리면 그 벌어진
+ * 자리에는 선이 없다 — 화면에서는 **끊긴 선**으로 보인다. 그래서 양쪽으로 간격의 절반씩
+ * (`-left-5`·`-right-5` = 1.25rem) 내밀어 이웃과 만나게 한다.
+ *
+ * ⚠ 이 두 수는 묶여 있다: `GAP`을 바꾸면 내미는 값도 절반으로 함께 바꿔야 한다.
+ * 어긋나면 선이 끊기거나 칸 밖으로 삐져나온다.
+ *
+ * 줄기 길이(`h-10`·`pt-10`)는 위 칸이 내려보내는 줄기(`TRUNK`)와 같은 수여야 한다.
  */
+const GAP = 'lg:gap-10';
+
 const CONNECTOR =
   'relative lg:pt-10 ' +
   "lg:before:absolute lg:before:top-0 lg:before:left-1/2 lg:before:h-10 lg:before:w-px lg:before:bg-[var(--color-line-strong)] lg:before:content-['']" +
   " lg:after:absolute lg:after:top-0 lg:after:h-px lg:after:bg-[var(--color-line-strong)] lg:after:content-['']" +
-  ' lg:after:left-0 lg:after:right-0 lg:first:after:left-1/2 lg:last:after:right-1/2';
+  ' lg:after:-left-5 lg:after:-right-5 lg:first:after:left-1/2 lg:last:after:right-1/2';
+
+/**
+ * 위 칸에서 들보로 내려가는 줄기. **없으면 들보가 허공에 떠 있다** — 대표·실장 박스와
+ * 팀 줄이 이어져 보이지 않고, 조직도가 「두 덩어리」로 읽힌다.
+ *
+ * 높이가 `CONNECTOR`의 `pt-10`과 같아야 줄기가 들보에 정확히 닿는다.
+ */
+const TRUNK = 'hidden lg:block lg:h-10 lg:w-px lg:bg-[var(--color-line-strong)]';
 
 /**
  * `selectedKey`는 지금 패널이 열려 있는 사람. 카드 하나가 **눌린 상태로** 보여야 조직도와
@@ -84,9 +102,11 @@ export function MemberTreeView({
       <li className="flex flex-col items-center">
         <TopBox unassigned={tree.unassigned} selectedKey={selectedKey} hrefFor={hrefFor} />
 
-        {/* 팀 칸들. 이 `<ul>`이 위 칸의 자식 목록이며, 연결선은 각 칸이 자기 몫만 그린다.
-            `mt-10`이 줄기가 설 자리를 미리 비운다 — 없으면 들보가 위 카드를 가로지른다 */}
-        <ul className="flex w-full flex-col gap-8 lg:mt-10 lg:flex-row lg:items-stretch lg:gap-10">
+        {/* 위 칸에서 들보까지 내려가는 줄기. 이것이 없으면 들보가 허공에 뜬다 */}
+        <div className={TRUNK} aria-hidden="true" />
+
+        {/* 팀 칸들. 이 `<ul>`이 위 칸의 자식 목록이며, 연결선은 각 칸이 자기 몫만 그린다 */}
+        <ul className={`flex w-full flex-col gap-8 lg:flex-row lg:items-stretch ${GAP}`}>
           {tree.teams.map((branch) => (
             <li key={branch.teamId} className={`${CONNECTOR} lg:min-w-0 lg:flex-1`}>
               <TeamColumn branch={branch} selectedKey={selectedKey} hrefFor={hrefFor} />
