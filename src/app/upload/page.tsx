@@ -6,9 +6,12 @@
  * (`ADR-007`).
  */
 
+import { redirect } from 'next/navigation';
+
 import { PageShell } from '@/components/shell/page-shell';
 import { SheetUploadPanel } from '@/components/upload/sheet-upload-panel';
 import { resolveViewerRole } from '@/lib/api/viewer-role';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
@@ -24,6 +27,11 @@ export const dynamic = 'force-dynamic';
 
 export default async function UploadPage() {
   const view = await currentViewerContext();
+
+  // 승인을 기다리는 계정은 여기서 `/pending`으로 간다 (T11 · `pending-gate.ts`)
+  const gate = gateForSession(view.session, '/upload');
+  if (gate.kind === 'redirect') redirect(gate.to);
+
   const { readOnly, mode, driver } = view.base;
 
   // 「마지막 반영」은 *모든* 페이지가 진다 (T6 완료 기준 8). 업로드 화면에서는 특히 —

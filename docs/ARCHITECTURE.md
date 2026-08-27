@@ -399,6 +399,7 @@ WORKBOOK_CORRUPT · NO_KNOWN_TAB · SETTINGS_TAB_MISSING
 DOCUMENT_CORRUPT · NO_OUTLINE_TASK
 UPLOAD_NOT_FOUND · UPLOAD_ALREADY_COMMITTED · TASK_NOT_FOUND
 STORAGE_READONLY · STORAGE_UNAVAILABLE · UNAUTHENTICATED · FORBIDDEN · VALIDATION_FAILED
+PENDING_APPROVAL
 ```
 
 셋째 줄 둘은 독스 경로(`/extract`) 전용이며 기존 코드로 대신할 수 없다.
@@ -410,6 +411,12 @@ STORAGE_READONLY · STORAGE_UNAVAILABLE · UNAUTHENTICATED · FORBIDDEN · VALID
 `UNAUTHENTICATED`(401)와 `FORBIDDEN`(403)을 **뭉개지 않는다** (T8) — 「로그인하세요」와
 「당신은 이걸 못 합니다」는 사용자가 할 일이 정반대다. 문구는 각각
 「로그인이 필요합니다.」·「이 작업을 수행할 권한이 없습니다.」다.
+
+`PENDING_APPROVAL`(403)은 **`UNAUTHENTICATED`로 대신할 수 없다** (T11). 승인을 기다리는
+사람은 **이미 로그인했다** — 401을 주면 화면이 로그인 폼을 다시 띄우고, 그 사람은 같은
+계정으로 다시 들어와 같은 화면을 본다. `FORBIDDEN`과 갈라 두는 것도 사용자가 할 일이
+다르기 때문이다: 「당신은 이걸 못 합니다」는 끝난 이야기이고 「승인을 기다린다」는 기다리면
+바뀐다. 판정은 `lib/auth/pending-gate.ts`가 지고, `deny`가 이 코드로 번역된다.
 
 **같은 자원, 다른 코드 — `GET /api/tasks/[id]`는 404, `PATCH`는 403이다.** 인증된 사용자에게
 `PATCH`는 `TASK_NOT_FOUND`를 내지 않는다: 「그 id는 있지만 당신 것이 아니다」와 「그런 id가

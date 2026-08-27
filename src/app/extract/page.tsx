@@ -7,9 +7,12 @@
  * `PageShell`에 넘긴다.
  */
 
+import { redirect } from 'next/navigation';
+
 import { DocExtractPanel } from '@/components/extract/doc-extract-panel';
 import { PageShell } from '@/components/shell/page-shell';
 import { resolveViewerRole } from '@/lib/api/viewer-role';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
@@ -25,6 +28,11 @@ export const dynamic = 'force-dynamic';
 
 export default async function ExtractPage() {
   const view = await currentViewerContext();
+
+  // 승인을 기다리는 계정은 여기서 `/pending`으로 간다 (T11 · `pending-gate.ts`)
+  const gate = gateForSession(view.session, '/extract');
+  if (gate.kind === 'redirect') redirect(gate.to);
+
   const { mode, driver } = view.base;
 
   const lastSyncedAt = await view.repo.getLastSyncedAt();

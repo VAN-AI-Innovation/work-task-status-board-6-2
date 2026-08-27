@@ -28,6 +28,7 @@ export const API_ERROR_CODES = [
   'STORAGE_UNAVAILABLE',
   'UNAUTHENTICATED',
   'FORBIDDEN',
+  'PENDING_APPROVAL',
   'VALIDATION_FAILED',
 ] as const;
 
@@ -54,6 +55,10 @@ export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
  *   `PLAN.md`「T8 착수 시 확정」 결정 F). 「로그인하세요」와 「당신은 이걸 못 합니다」는
  *   사용자가 할 일이 정반대다. 이 코드는 **라우트가 명시적으로 낸다** — `toApiErrorCode`가
  *   추측으로 세우면 저장소 오류가 로그인 화면으로 사람을 보낸다.
+ * - `PENDING_APPROVAL`이 403이고 401이 아닌 이유: **이 사람은 이미 로그인했다** (T11).
+ *   401은 「로그인하라」는 뜻이라, 그것을 주면 화면이 로그인 폼을 다시 띄우고 사용자는 같은
+ *   계정으로 다시 들어와 같은 화면을 본다. `FORBIDDEN`과 코드를 갈라 두는 것은 할 일이 다르기
+ *   때문이다 — 「당신은 이걸 못 합니다」는 끝난 이야기이고 「승인을 기다린다」는 기다리면 바뀐다.
  * - `SETTINGS_TAB_MISSING`이 200인 이유: **이것만 에러가 아니다.** 설정 탭이 없으면
  *   내장 폴백 레지스트리로 파싱을 계속하므로 경고로 실려 200으로 나간다. 표에 남겨 두는 것은
  *   `ARCHITECTURE.md`의 코드 목록과 개수를 맞추기 위해서고, **`errorResponse`에 넘기지 않는다**
@@ -63,6 +68,7 @@ export const API_ERROR_STATUS: Readonly<Record<ApiErrorCode, number>> = {
   VALIDATION_FAILED: 400,
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
+  PENDING_APPROVAL: 403,
   UPLOAD_NOT_FOUND: 404,
   TASK_NOT_FOUND: 404,
   UPLOAD_ALREADY_COMMITTED: 409,
@@ -104,6 +110,7 @@ export const API_ERROR_MESSAGES: Readonly<Record<ApiErrorCode, string>> = {
   STORAGE_UNAVAILABLE: '저장소에 반영하지 못했습니다. 잠시 후 다시 시도해 주세요.',
   UNAUTHENTICATED: '로그인이 필요합니다.',
   FORBIDDEN: '이 작업을 수행할 권한이 없습니다.',
+  PENDING_APPROVAL: '아직 승인되지 않은 계정입니다. 승인 후에 이용할 수 있습니다.',
   VALIDATION_FAILED: '요청 값이 올바르지 않습니다.',
 };
 

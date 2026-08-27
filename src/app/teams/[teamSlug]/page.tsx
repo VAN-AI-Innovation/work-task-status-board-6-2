@@ -28,7 +28,7 @@
  * `/`가 지기 때문이고, 순서 표를 팀 화면용으로 따로 만들면 두 화면의 역할 규칙이 갈라진다.
  */
 
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 import type { ReactNode } from 'react';
 
@@ -44,6 +44,7 @@ import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
 import { TaskTable } from '@/components/tasks/task-table';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
 import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { collectAlerts } from '@/lib/domain/alert-rules';
@@ -88,6 +89,11 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
 
   /* 이 화면의 링크가 돌아올 자리. `teamSlug` 원문이 아니라 정규화한 슬러그를 쓴다 */
   const pathname = `/teams/${toTeamSlug(teamKey)}`;
+
+  // 승인을 기다리는 계정은 여기서 `/pending`으로 간다 (T11 · `pending-gate.ts`)
+  const gate = gateForSession(view.session, pathname);
+  if (gate.kind === 'redirect') redirect(gate.to);
+
   // `team`을 비운다 — 경로가 이미 팀이므로 링크가 그것을 다시 실으면 두 소스가 된다
   const query = { ...parseDashboardQuery(sp), team: [] };
 

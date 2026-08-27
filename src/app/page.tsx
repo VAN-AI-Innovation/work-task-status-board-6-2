@@ -50,6 +50,7 @@
  */
 
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 import type { ReactNode } from 'react';
 
@@ -71,6 +72,7 @@ import { SeedButton } from '@/components/upload/seed-button';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
 import { loadPeriodEvents } from '@/lib/api/report-context';
 import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { collectAlerts } from '@/lib/domain/alert-rules';
@@ -117,6 +119,15 @@ const PATHNAME = '/';
 
 export default async function Home({ searchParams }: PageProps<'/'>) {
   const view = await currentViewerContext();
+
+  /*
+   * **승인을 기다리는 계정은 여기서 멈춘다** (T11). `proxy`는 「사용자가 있느냐」까지만 알고
+   * (DB를 조회하지 않는다), 대기 여부는 `profiles`를 읽는 `resolveSession`이 안다 — 그래서
+   * 그 판정이 도착하는 첫 자리가 여기다. 규칙 자체는 `pending-gate.ts` 한 곳에 있다.
+   */
+  const gate = gateForSession(view.session, PATHNAME);
+  if (gate.kind === 'redirect') redirect(gate.to);
+
   // Next 16에서 `searchParams`는 Promise다
   const sp = toURLSearchParams(await searchParams);
 

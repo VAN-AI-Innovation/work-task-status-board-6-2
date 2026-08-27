@@ -5,6 +5,7 @@ import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { buildReadContext } from '@/lib/api/read-context';
 import { taskPatchSchema } from '@/lib/api/task-patch-schema';
 import { toTaskResponse } from '@/lib/api/task-response';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { deriveTaskFlags } from '@/lib/domain/task-derive';
 import { taskInScope } from '@/lib/domain/viewer-scope';
@@ -28,6 +29,11 @@ export async function GET(
     // Next 16에서 동적 세그먼트는 Promise다
     const { id } = await params;
     const view = await currentViewerContext();
+
+    // 승인 대기 계정은 403이다 (T11 · `pending-gate.ts`). 401이 아닌 이유는 이미 로그인했다는 것
+    const gate = gateForSession(view.session, url.pathname);
+    if (gate.kind === 'deny') return errorResponse('PENDING_APPROVAL');
+
     const read = await buildReadContext(view, new Date(), {
       as: url.searchParams.get('as'),
       filter: {},
@@ -82,7 +88,14 @@ export async function PATCH(
     const { id } = await params;
     const view = await currentViewerContext();
 
-    // 1. 로그인부터. 「로그인하세요」와 「당신은 이걸 못 합니다」는 할 일이 정반대다
+    /*
+     * 1. 로그인부터. 「로그인하세요」와 「당신은 이걸 못 합니다」는 할 일이 정반대다.
+     *    **대기·거절·프로필 없음이 401보다 먼저 걸린다** (T11) — 그 셋은 `status !== 'ok'`라
+     *    아래 줄에 그대로 걸리는데, 그러면 이미 로그인한 사람에게 「로그인하세요」라고 답하게
+     *    되고 화면은 로그인 폼을 다시 띄운다. 순서가 곧 문구다.
+     */
+    const gate = gateForSession(view.session, url.pathname);
+    if (gate.kind === 'deny') return errorResponse('PENDING_APPROVAL');
     if (view.session.status !== 'ok') return errorResponse('UNAUTHENTICATED');
     const viewer = view.session.viewer;
 

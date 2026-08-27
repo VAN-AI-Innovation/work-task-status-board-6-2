@@ -32,6 +32,7 @@ const CODES_FROM_ARCHITECTURE = [
   'STORAGE_UNAVAILABLE',
   'UNAUTHENTICATED',
   'FORBIDDEN',
+  'PENDING_APPROVAL',
   'VALIDATION_FAILED',
 ] as const;
 
@@ -47,6 +48,8 @@ const CODES_FROM_ARCHITECTURE = [
 const AUTH_MESSAGES = {
   UNAUTHENTICATED: '로그인이 필요합니다.',
   FORBIDDEN: '이 작업을 수행할 권한이 없습니다.',
+  /** T11. 401이 아니라 403인 이유는 「이미 로그인했다」다 */
+  PENDING_APPROVAL: '아직 승인되지 않은 계정입니다. 승인 후에 이용할 수 있습니다.',
 } as const;
 
 const DOC_MESSAGES = {
@@ -60,6 +63,7 @@ const EXPECTED_STATUS: Record<(typeof CODES_FROM_ARCHITECTURE)[number], number> 
   VALIDATION_FAILED: 400,
   UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
+  PENDING_APPROVAL: 403,
   UPLOAD_NOT_FOUND: 404,
   UPLOAD_ALREADY_COMMITTED: 409,
   TASK_NOT_FOUND: 404,
@@ -77,7 +81,7 @@ const EXPECTED_STATUS: Record<(typeof CODES_FROM_ARCHITECTURE)[number], number> 
 };
 
 describe('API_ERROR_CODES', () => {
-  it('ARCHITECTURE.md의 코드 17개와 정확히 일치한다 (빠짐도 남음도 없다)', () => {
+  it('ARCHITECTURE.md의 코드 18개와 정확히 일치한다 (빠짐도 남음도 없다)', () => {
     expect([...API_ERROR_CODES].sort()).toEqual([...CODES_FROM_ARCHITECTURE].sort());
   });
 
@@ -131,6 +135,23 @@ describe('인증 코드 2개 (PLAN.md T8 결정 F)', () => {
     expect(API_ERROR_STATUS.UNAUTHENTICATED).toBe(401);
     expect(API_ERROR_STATUS.FORBIDDEN).toBe(403);
     expect(API_ERROR_MESSAGES.UNAUTHENTICATED).not.toBe(API_ERROR_MESSAGES.FORBIDDEN);
+  });
+});
+
+describe('PENDING_APPROVAL (T11)', () => {
+  it('문구가 표와 글자까지 같다', () => {
+    expect(API_ERROR_MESSAGES.PENDING_APPROVAL).toBe(AUTH_MESSAGES.PENDING_APPROVAL);
+  });
+
+  /** 401을 주면 이미 로그인한 사람에게 화면이 로그인 폼을 다시 띄운다 */
+  it('403이고 401이 아니다 — 이 사람은 이미 로그인했다', () => {
+    expect(API_ERROR_STATUS.PENDING_APPROVAL).toBe(403);
+    expect(API_ERROR_MESSAGES.PENDING_APPROVAL).not.toBe(API_ERROR_MESSAGES.UNAUTHENTICATED);
+  });
+
+  /** 「못 합니다」와 「기다리면 됩니다」를 한 문장으로 말하지 않는다 */
+  it('FORBIDDEN과 문구가 다르다 — 같은 403이어도 할 일이 다르다', () => {
+    expect(API_ERROR_MESSAGES.PENDING_APPROVAL).not.toBe(API_ERROR_MESSAGES.FORBIDDEN);
   });
 });
 

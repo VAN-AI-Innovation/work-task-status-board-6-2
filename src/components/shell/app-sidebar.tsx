@@ -145,14 +145,18 @@ const ITEMS: readonly { href: string; label: string; icon: ReactNode }[] = [
   { href: '/extract', label: '독스 → 배정표', icon: <ExtractIcon /> },
 ];
 
-/** 사이드바가 뜻을 갖지 않는 경로. 지금은 로그인 화면 하나다 */
-const HIDDEN_ON = ['/login'];
+/**
+ * 사이드바가 뜻을 갖지 않는 경로 — **아직 아무 화면도 열 수 없는 사람**이 서는 자리다.
+ * 로그인 전(`/login`)과 승인 전(`/pending`, T11)이 같은 처지다: 아래 목록의 링크를 누르면
+ * 전부 지금 있는 화면으로 되돌아온다 (`lib/auth/pending-gate.ts`).
+ */
+const HIDDEN_ON = ['/login', '/pending'];
 
 export function AppSidebar() {
   const pathname = usePathname();
 
   /*
-   * **로그인 화면에서는 접는다.** 이 목록의 링크는 전부 로그인해야 열리는 화면이라
+   * **로그인·승인 대기 화면에서는 접는다.** 이 목록의 링크는 전부 로그인해야 열리는 화면이라
    * (`src/proxy.ts`), 미인증 상태에서 보여 주면 누를 때마다 같은 로그인 화면으로 되돌아온다.
    * `layout.tsx`를 고치지 않고 여기서 접는 이유는 사이드바를 그리는 규칙이 두 곳으로
    * 갈리지 않게 하기 위해서다 — 「어디에 뜨는가」는 이 컴포넌트가 안다.

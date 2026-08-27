@@ -850,15 +850,46 @@ describe('/ — 로그인 상태 (T8 완료 기준 1·6)', () => {
     expect(topbar?.showRoleSwitch).toBe(false);
   });
 
-  it('프로필 없는 계정도 계정이다 — 역할은 null이고 로그아웃 자리는 남는다', async () => {
-    await seed();
-    session = { status: 'no_profile', userId: 'user-9', email: 'ghost@van.test' };
+  /**
+   * **T11에서 갈래가 바뀌었다.** 예전에는 이 계정이 「아무것도 없는 대시보드 + 로그아웃
+   * 버튼」을 봤는데, 그 화면은 원인을 한 글자도 말하지 않았다. 이제 `/pending`으로 보내고
+   * 거기서 사유를 말한다 (`pending-gate.ts`). 상단 바가 여전히 이 계정을 「계정」으로 그린다는
+   * 사실은 `toAccount`가 지고 `viewer-session.test.ts`가 잰다.
+   */
+  it.each([
+    ['no_profile', { status: 'no_profile', userId: 'user-9', email: 'ghost@van.test' }],
+    [
+      'pending',
+      {
+        status: 'pending',
+        userId: 'user-9',
+        email: 'ghost@van.test',
+        teamId: 'edit',
+        displayName: '새내기',
+      },
+    ],
+    [
+      'rejected',
+      {
+        status: 'rejected',
+        userId: 'user-9',
+        email: 'ghost@van.test',
+        teamId: 'edit',
+        displayName: '새내기',
+      },
+    ],
+  ] as [string, SessionOutcome][])(
+    '%s 계정은 대시보드가 아니라 `/pending`으로 간다',
+    async (_label, outcome) => {
+      await seed();
+      session = outcome;
 
-    expect(topbarProps(await Home(props()))?.account).toEqual({
-      email: 'ghost@van.test',
-      role: null,
-    });
-  });
+      // `redirect()`는 던져서 렌더를 끊는다. 목적지는 에러의 `digest`에 실린다
+      await expect(Home(props())).rejects.toMatchObject({
+        digest: expect.stringContaining('/pending'),
+      });
+    }
+  );
 
   it('`?as=`가 세션을 이기지 못한다 — URL은 사용자가 타이핑한 문자열이다', async () => {
     await seed();

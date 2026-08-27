@@ -20,12 +20,15 @@
  * 이력은 `loadPeriodEvents`, 세는 것은 `buildWeeklyReport`, 빈 화면의 사유는 `emptyReason`이다.
  */
 
+import { redirect } from 'next/navigation';
+
 import { ReportDocument } from '@/components/report/report-document';
 import { ReportPeriodNav } from '@/components/report/report-period-nav';
 import { PageShell } from '@/components/shell/page-shell';
 import { EmptyState } from '@/components/tasks/empty-state';
 import { buildReadContext } from '@/lib/api/read-context';
 import { loadPeriodEvents, parseReportQuery } from '@/lib/api/report-context';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { resolveReportPeriod } from '@/lib/domain/report-period';
@@ -43,6 +46,11 @@ export const dynamic = 'force-dynamic';
 
 export default async function ReportPage({ searchParams }: PageProps<'/report'>) {
   const view = await currentViewerContext();
+
+  // 승인을 기다리는 계정은 여기서 `/pending`으로 간다 (T11 · `pending-gate.ts`)
+  const gate = gateForSession(view.session, '/report');
+  if (gate.kind === 'redirect') redirect(gate.to);
+
   // Next 16에서 `searchParams`는 Promise다
   const sp = toURLSearchParams(await searchParams);
 

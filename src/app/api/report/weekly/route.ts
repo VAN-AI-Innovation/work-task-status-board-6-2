@@ -4,6 +4,7 @@ export const runtime = 'nodejs';
 import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { buildReadContext } from '@/lib/api/read-context';
 import { loadPeriodEvents, parseReportQuery } from '@/lib/api/report-context';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { resolveReportPeriod } from '@/lib/domain/report-period';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
@@ -28,6 +29,10 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const view = await currentViewerContext();
+    // 승인 대기 계정은 403이다 (T11 · `pending-gate.ts`). 401이 아닌 이유는 이미 로그인했다는 것
+    const gate = gateForSession(view.session, url.pathname);
+    if (gate.kind === 'deny') return errorResponse('PENDING_APPROVAL');
+
     const read = await buildReadContext(view, new Date(), {
       as: url.searchParams.get('as'),
       filter: {},

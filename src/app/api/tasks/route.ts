@@ -4,6 +4,7 @@ export const runtime = 'nodejs';
 import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
 import { toTaskListResponse } from '@/lib/api/task-response';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 
 /**
@@ -20,6 +21,14 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const view = await currentViewerContext();
+    /*
+     * **승인을 기다리는 계정은 403이다** (T11). 401이 아닌 이유는 이 사람이 **이미
+     * 로그인했다**는 것이고, 리다이렉트가 아닌 이유는 `fetch`가 302를 따라가면 HTML을
+     * JSON으로 파싱하려 들기 때문이다 (`ADR-027`). 판정은 `pending-gate.ts`가 진다.
+     */
+    const gate = gateForSession(view.session, url.pathname);
+    if (gate.kind === 'deny') return errorResponse('PENDING_APPROVAL');
+
     const query = parseTaskQuery(url.searchParams);
     const read = await buildReadContext(view, new Date(), {
       as: url.searchParams.get('as'),

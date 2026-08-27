@@ -232,6 +232,30 @@ async function errorCode(res: Response): Promise<string> {
 
 const TASK_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
 
+/**
+ * **조회도 같은 문을 지난다** (T11). `GET`이 404로 답하면 승인 대기 계정은 「그런 업무가
+ * 없다」고 읽고 링크를 의심한다 — 원인은 그 사람의 계정 상태다.
+ */
+describe('GET /api/tasks/[id] — 승인 대기', () => {
+  it('대기 계정에게는 404가 아니라 403 PENDING_APPROVAL이다', async () => {
+    stubContext({
+      session: {
+        status: 'pending',
+        userId: 'user-1',
+        email: 'x@example.com',
+        teamId: 'edit',
+        displayName: null,
+      },
+      found: makeTask(),
+    });
+
+    const res = await get(TASK_ID);
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('PENDING_APPROVAL');
+  });
+});
+
 describe('PATCH /api/tasks/[id] — 인증', () => {
   it('로그인하지 않았으면 401이고 저장소에 쓰지 않는다', async () => {
     const calls = stubContext({ session: { status: 'anonymous' }, found: makeTask() });
@@ -242,17 +266,45 @@ describe('PATCH /api/tasks/[id] — 인증', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('프로필이 없는 세션도 401이다 — 역할이 없으면 범위를 정할 수 없다', async () => {
-    const calls = stubContext({
-      session: { status: 'no_profile', userId: 'user-1', email: 'x@example.com' },
-      found: makeTask(),
-    });
-    const res = await patch(TASK_ID, { progress: 50 });
+  /**
+   * **셋 다 401이 아니라 403 `PENDING_APPROVAL`이다** (T11). 이 사람들은 **이미 로그인했다** —
+   * 401을 주면 화면이 로그인 폼을 다시 띄우고, 같은 계정으로 다시 들어와 같은 화면을 본다.
+   * 셋은 `status !== 'ok'`라 아래 401 판정에도 걸리므로, **순서가 곧 문구다**
+   * (`route.ts`의 1번 주석 · `pending-gate.ts`).
+   */
+  it.each([
+    ['no_profile', { status: 'no_profile', userId: 'user-1', email: 'x@example.com' }],
+    [
+      'pending',
+      {
+        status: 'pending',
+        userId: 'user-1',
+        email: 'x@example.com',
+        teamId: 'edit',
+        displayName: null,
+      },
+    ],
+    [
+      'rejected',
+      {
+        status: 'rejected',
+        userId: 'user-1',
+        email: 'x@example.com',
+        teamId: 'edit',
+        displayName: null,
+      },
+    ],
+  ] as [string, SessionOutcome][])(
+    '%s 세션은 403 PENDING_APPROVAL이고 저장소에 쓰지 않는다',
+    async (_label, session) => {
+      const calls = stubContext({ session, found: makeTask() });
+      const res = await patch(TASK_ID, { progress: 50 });
 
-    expect(res.status).toBe(401);
-    expect(await errorCode(res)).toBe('UNAUTHENTICATED');
-    expect(calls).toHaveLength(0);
-  });
+      expect(res.status).toBe(403);
+      expect(await errorCode(res)).toBe('PENDING_APPROVAL');
+      expect(calls).toHaveLength(0);
+    }
+  );
 });
 
 describe('PATCH /api/tasks/[id] — 저장소 상태', () => {
