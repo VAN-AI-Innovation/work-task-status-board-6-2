@@ -150,7 +150,7 @@ const ITEMS: readonly { href: string; label: string; icon: ReactNode }[] = [
  * 로그인 전(`/login`)과 승인 전(`/pending`, T11)이 같은 처지다: 아래 목록의 링크를 누르면
  * 전부 지금 있는 화면으로 되돌아온다 (`lib/auth/pending-gate.ts`).
  */
-const HIDDEN_ON = ['/login', '/pending'];
+const HIDDEN_ON = ['/login', '/signup', '/pending'];
 
 export function AppSidebar() {
   const pathname = usePathname();
