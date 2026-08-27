@@ -808,6 +808,131 @@ T4 완료 기준 9를 되돌리는 일이고, 심사자가 클론 직후 보는 
 
 **임시 클론은 검증 뒤 지웠다.** 저장소 안(`git status --short`)에는 흔적이 없다.
 
+**구현 결과** — step 9(감사)에서 완료 기준 6개를 하나씩 실행해 판정했다. **6개 전부 통과.**
+
+산출물은 아래와 같다. 괄호는 그 파일이 진 테스트 건수이며 **T9가 더한 테스트는 86건**이다
+(step 0 착수 시 1568 → 1654).
+
+| 자리 | 파일 |
+|---|---|
+| 저장소 계약 | `TaskRepository.listEvents(filter?)` + `TaskEventFilter` · 두 구현 · 계약 **23~27** (5건) |
+| 스키마 | `supabase/migrations/0004_events_policy.sql` — 정책 `task_events_select_via_task` + `grant select` |
+| 기간 | `lib/domain/report-period.ts`(23) — `resolveReportPeriod` |
+| 요약 | `lib/domain/weekly-report.ts` — `period` 필수화 · `events: … \| null`(5) |
+| 경계 | `lib/api/report-context.ts`(8) — `parseReportQuery` · `loadPeriodEvents` |
+| 라우트 | `app/api/report/weekly/route.ts` — `?week=` 해석 · 실제 이력 |
+| 화면 | `app/report/page.tsx`(9) · `components/report/report-period-nav.tsx` · `components/report/report-document.tsx` |
+| 표시 규칙 | `lib/view/report-nav.ts`(11) |
+| 문서 | `README.md`(「과제 요구 대조표」·「배포」·「스크린샷」) · `.env.example` |
+| 운영 | `scripts/smoke/rls-check.mjs` 10항목 → **14항목** |
+
+**완료 기준 6개의 증명** — 「통과했다」가 아니라 무엇을 실행해 무엇이 나왔는지 적는다.
+배포 URL은 **<https://worktaskstatusboard.vercel.app>**이고, 로컬은 데모(깨끗한 클론)와
+라이브(`.env.local`) 둘을 따로 띄워 쟀다.
+
+| # | 실행 | 결과 |
+|---|---|---|
+| 1 | 배포 URL에 `curl` | `/` · `/login` · `/report` · `/upload` · `/extract` · `/teams/edit` · `/api/health` **전부 200**. `health` = **`{driver:"memory", mode:"demo", readOnly:false}`** — **갈래 A(데모)로 떠 있다**(`STORAGE_DRIVER=memory` 하나만 넣었다). 그래서 **로그인 없이** 시드가 렌더된다: `/` HTML 87,950바이트에 `<tr>` **18개**, 상태 배지 낱말이 지연 25 · 완료 24 · 진행 19 · 검토 8 · 예정 2, 배너는 「샘플 데이터 모드」이고 「읽기 전용」 **0회**. `?as=`도 산다 — 첫 섹션이 `admin` 「KPI」 / `lead` 「알림」 / `member` 「업무」. **갈래 B(실저장소)라면 로그인 후에 뜬다** |
+| 2 | 저장소 **바깥**(`/tmp/wtsb-audit`)에 현재 브랜치를 클론해 `npm install`부터. 모든 명령을 `env -u STORAGE_DRIVER -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY -u SUPABASE_SERVICE_ROLE_KEY -u SKIP_LIVE_DB`로 감쌌다 | 클론에 `.env` 계열은 `.env.example` **하나뿐**. `npm install` **exit 0** · `lint` **0** · `build` **0**(`/report`가 ƒ) · `test` **1613건 통과 · 4 skip**(라이브 DB 계약은 키가 없으면 스스로 `it.skip`). `dev`가 키를 요구하지 않고 뜨고 `health` = **`mode=demo` · `readOnly=false`**, 배너 「샘플 데이터 모드」. `/` · `/upload` · `/extract` · `/report` · `/teams/{edit,shoot,marketing}` · `/login` **전부 200**(로그인으로 튕기지 않는다). **쓰기가 산다** — `POST /api/uploads/seed` **200**(`unchanged: 9`, 확정이 멱등). step 7이 `ADR-029`로 고친 자리가 **step 8 이후에도 그대로**임을 다시 확인한 것이다 |
+| 3 | README 대조표를 `PRD.md`와 줄 단위로 대조 + 실행법 재실행 | 요구 **7개의 문구가 PRD와 글자 그대로 같다**(1~7 전부). 없는 것은 없다고 적혀 있다 — 3번 「화면 알림까지다 — 디스코드·메일 발송은 없다(T10 미구현)」, 7번 「연계 기능 자체는 만들지 않았다 — 자리만 있다 / 화면 없음」. 배포 URL은 **자리표시자가 아니라 실제 값**이고 위 1번에서 200이다. 실행법(`npm install` → `npm run dev`)은 2번이 깨끗한 클론에서 그대로 밟았다 |
+| 4 | 라이브(`admin`·`lead`·`member` 로그인) + 데모 + 헤드리스 Chrome(CDP 직접) | **세 역할의 보고서가 다르다** — 「전체 활성 업무」가 **10 · 6 · 2**(`rls-check.mjs`의 DB 계층 수치와 같다). 미인증은 **307 → `/login?next=%2Freport`**, 세 역할 전부 **200**(역할로 막지 않는다 · 결정 N). 기간 이동: `?week=2026-08-17` → 그 주, 이번 주 화면에서는 「이번 주」·「다음 주 →」가 **`<a>`가 아니라 `<span aria-disabled>`**다. `?week=2026-13-45`·`abc`·`2026-07` **셋 다 500이 아니라 200** + 이번 주 + 되돌림 배너(결정 M). **복사·내려받기 실측** — 복사 버튼이 「복사됨」으로 바뀌고 **클립보드가 화면 `<pre>`와 바이트 단위로 같다**(872자), 내려받기는 `weekly-2026-08-24.md`가 떨어지고 내용도 `<pre>`와 같으며 `?week=2026-08-17`에서는 파일명이 `weekly-2026-08-17.md`로 따라간다. 1280·1024 두 폭에서 **페이지 가로 스크롤 0px**, 콘솔 에러 0 |
+| 5 | `npm run guard:env` + `process.env` 전수 조사 | `guard:env` **8/8 통과**. 코드가 읽는 이름 9개 중 `.env.example`에 **실사용 키 6개가 전부** 있다. 빠진 셋은 의도적 제외다 — `NODE_ENV`(Next·npm이 정하는 값), 그리고 **`service_role`에 `NEXT_PUBLIC_` 접두사를 붙인 이름 둘**(`src/lib/env-guard.test.ts` **한 파일에만 있는 탐지 픽스처**다. `.env.example`에 적으면 CLAUDE.md CRITICAL 위반이자 `guard:env`가 스스로 빌드를 실패시킨다 — **이름을 여기 그대로 적어도 같은 일이 일어난다**. 아래 참고). **값이 채워진 줄은 둘뿐**(`STORAGE_DRIVER=memory` · `T8_SEED_EMAIL_DOMAIN=example.com`)이고 시크릿이 아니다. 키 조각(`eyJ`·`sb_secret_`·`sb_publishable_`)이 `.env.example`·`README.md`·`docs/` 어디에도 **0건** |
+| 6 | **배포 URL**의 `POST /api/uploads/sheet`에 **더미 파일**(`/dev/zero`)을 크기별로 쏘아 경계를 쟀다. 실업무 파일은 올리지 않았다 | 아래 별도 표. **앱의 4MB 한도가 먼저 걸린다** |
+
+**완료 기준 6 — 배포 환경 업로드 한도 실측**
+
+| 보낸 크기 | HTTP | 응답 | 누가 막았나 |
+|---:|---|---|---|
+| 3,900,000 B (3.72 MB) | **415** | `FILE_TYPE_MISMATCH` (한국어 JSON) | **앱** — 본문이 통째로 도달했고 ZIP이 아니라 거부됐다 |
+| 4,300,000 B (4.10 MB) | **413** | `FILE_TOO_LARGE` 「파일이 너무 큽니다…」 | **앱** (`MAX_UPLOAD_BYTES` = 4 MiB) |
+| 4,400,000 B (4.20 MB) | **413** | `FILE_TOO_LARGE` | **앱** |
+| 4,500,000 B (4.29 MB) | **413** | `Request Entity Too Large` / `FUNCTION_PAYLOAD_TOO_LARGE` (영문 평문) | **Vercel** |
+| 4,600,000 B · 6,000,000 B | **413** | 〃 | **Vercel** |
+
+**`A7`이 걱정한 순서가 실제로 지켜졌다** — 앱 한도(4 MiB ≈ 4,194,304 B)가 플랫폼 한도
+(**4,400,000과 4,500,000 사이**, Vercel이 문서로 말하는 4.5 MB와 일치)보다 아래라, 사용자가
+「4MB를 넘겼다」는 경계에서 받는 것은 **우리 한국어 메시지**다. 3.72 MB 시도가 `415`로
+돌아온 것이 그 증거다 — 본문 전체가 라우트에 닿았다는 뜻이고, 플랫폼이 먼저 자르고 있었다면
+그 요청도 `413`이었을 것이다.
+
+**다만 완충 구간이 약 300 KB뿐이고, 그 위에서는 문구가 우리 것이 아니다.** 4.5 MB를 넘는
+파일을 올린 사람이 보는 것은 한국어 안내가 아니라 **영문 평문 `Request Entity Too Large` ·
+`FUNCTION_PAYLOAD_TOO_LARGE`**이고, 화면의 드롭존은 그것을 받아 「알 수 없는 오류」로
+읽는다. 실측 시트가 0.10 MB라(`T1`) 실제로 밟힐 일은 없지만 **아래 「남은 위험」에 남긴다.**
+고치는 자리가 아니라 재는 자리이므로 T9에서 손대지 않았다.
+
+**CRITICAL 규칙 전수 대조** — 전부 통과.
+
+| 규칙 | 실측 |
+|---|---|
+| `exceljs` import 2파일 | 제품 코드는 `sheet/workbook-reader.ts`(읽기) · `xlsx/assignment-writer.ts`(쓰기) **둘뿐**. 셋째 히트는 `assignment-writer.test.ts`이고 **파일 안 주석이 이유를 적고 있다** — 완료 기준 4의 `dataValidation`은 시트 파서가 격자에 싣지 않아 되읽기로만 잴 수 있다. 번들에 들어가지 않는다 |
+| `runtime = 'nodejs'` 누락 | **0건** (`src/app/api/**/route.ts` 전수) |
+| `lib/domain`의 시계 호출 | **0줄** (`new Date()`·`Date.now()`) |
+| `src/services/` | **없음** |
+| `src/lib` basename 중복 | **0건** |
+| `NEXT_PUBLIC_*SERVICE_ROLE` | 저장소 전체에서 **`src/lib/env-guard.test.ts` 한 파일**(탐지 픽스처). `npm run guard:env` **8/8** |
+| 실업무 데이터·`.env.local` 커밋 | `git status --short`에 **없음** |
+| 배포 환경에 실업무 데이터 | **올리지 않았다** — 기준 6은 `/dev/zero` 더미로만 쟀다 |
+
+**감사 중에 가드가 이 문서를 잡았다 — 그것이 정상이다.** 위 5번을 처음 쓸 때 금지된 이름
+둘을 **문장 안에 그대로** 적었더니 `npm run build`가 `prebuild`의 `guard:env`에서 멈췄다
+(`docs/TICKETS.md:839`). `env-guard`는 **추적되는 파일 전부**를 스캔하므로 `.ts`만이 아니라
+문서도 대상이다. 문구를 「`service_role`에 `NEXT_PUBLIC_` 접두사를 붙인 이름 둘」로 바꿔
+해소했고, **가드를 느슨하게 만들지 않았다** — 코드에서 막으려던 것을 문서에서 흘리면 같은
+사고다. 이 자리를 남겨 두는 이유는 다음 사람이 같은 실패를 보고 「가드가 오탐한다」고 읽지
+않게 하기 위해서다.
+
+**`get_advisors`(security)가 INFO 3건 → 2건으로 줄었다.** 남은 둘은 `uploads`·`doc_extractions`
+이고 `task_events`가 빠졌다 — step 2의 정책이 실제로 붙어 있다는 뜻이다. WARN 7건
+(`security definer` 함수 셋 × 2 + 유출 비밀번호 차단)은 **T8이 판정한 그대로**이며 손대지
+않았다: `execute`를 회수하면 정책 평가 자체가 `permission denied`로 깨지고, 유출 비밀번호
+차단은 무료 플랜에서 켤 수 없으며 앱에 자체 가입 경로가 없다.
+
+**빚 회수 확인** — `src/app/page.tsx`의 각주 상수(`BRIEFING_NOTE`)와 `BriefingCard`의 `note`
+prop, 라우트의 ⚠ 블록, `events: []`가 **전부 0건**이다. 실제 이력을 만들어 재면 화면과 API가
+같은 숫자를 낸다: 검증용 이벤트 4건을 넣고 **이번 주 `admin` 3 > `lead` 2 > `member` 1**(RLS가
+앱 계층까지 자른다), **직전 주(`?week=2026-08-17`)는 `admin` 1 · `lead` 0 · `member` 0**(기간
+필터가 자른다), 대시보드 브리핑 카드도 같은 값(`admin` 3 · `member` 1). 넣은 4건만 id로
+지웠고 **`task_events` 0 · `tasks` 10 · `uploads` 9 · `members` 6**으로 착수 전과 같다.
+`rls-check.mjs` **14항목 전부 PASS**.
+
+**착수 시 결정과 어긋난 것 하나 — 결정 `P`(step 8은 `blocked`)는 성립하지 않았다.**
+「배포는 브라우저 로그인이 필요하므로 하네스가 대신할 수 없다」가 전제였는데, 실제로는
+**Vercel CLI가 이미 로그인돼 있어 비대화형으로 배포됐다**(step 8). **결정의 정신은 그대로
+맞다** — 하네스가 배포 토큰을 세션에 들이지 않는다는 것이고, 실제로 새 토큰을 만들지도
+받지도 않았다. 틀린 것은 「반드시 멈춘다」는 예측이지 「토큰을 들이지 않는다」는 규율이
+아니다. `PLAN.md` 결정 `P`에 후속 문단으로 남겼다.
+
+**첫 배포는 실패했고 그것이 진짜 결함이었다** (step 8, 커밋 `74d8709`). `prebuild`의
+`guard:env`가 스캔 대상을 `git ls-files`로만 얻는데 **Vercel 빌드 환경에는 `.git`이 없어**
+빌드가 통째로 깨졌다. 파일시스템 walk 갈래를 더해 고쳤다 — **가드가 배포 환경에서 돌지
+않으면 그 가드는 가장 필요한 자리에서 없는 것**이라, 이것은 배포 설정이 아니라 코드의
+결함이었다.
+
+**범위 Out으로 남긴 것** — 자동 스케줄링(주간 배치 발송)은 T10이다. 이 화면은 **사람이 열어서
+복사**하는 데까지다.
+
+**감사에서 발견했으나 고치지 않은 것**
+
+- **스크린샷이 없다.** `README.md`「스크린샷」절이 경로 규약(`docs/screenshots/{dashboard,
+  upload,extract,report}.png`)과 「(사용자가 촬영해 추가)」만 두고 있고 `docs/screenshots/`
+  디렉토리 자체가 없다. **사용자만 찍을 수 있다** — 익명화 시드로 촬영해야 하고(`S6`),
+  세션이 찍으면 실명·연락처가 들어간 화면이 커밋될 위험이 있다.
+- **배포는 갈래 A(데모)다.** `STORAGE_DRIVER=memory` 하나만 넣었고 Supabase 키는 넣지
+  않았다 — `service_role` 키를 외부 대시보드에 올리는 결정은 사용자의 것이다(`S5`). 그래서
+  **배포 URL에서는 완료 기준 1(시드 렌더)만 서고, 로그인·RLS·업로드 확정의 지속은 볼 수
+  없다**(메모리라 재시작하면 사라진다). 그쪽을 보이려면 README「배포」3절의 갈래 B로 키
+  넷을 넣고 재배포한다.
+- **`upload-record-store` 계약의 `PGRST303` 간헐 실패는 여전히 열려 있다.** T8 감사가 기록한
+  자리이고 원인은 라이브 DB를 여러 파일에서 동시에 두드리는 것이다. **이번 감사 회차에서는
+  나지 않았다**(`npm run test` **1654건 전부 통과**). 근본 수정은 계약 스위트를 직렬화하거나
+  파일마다 다른 접두사를 주는 것이고, `ADR-023`이 연 자리의 후속이라 T9에서 손대지 않았다.
+- **「빈 상태 → `[샘플 데이터 불러오기]`」의 중간 한 칸은 데모에서 여전히 보이지 않는다.**
+  step 7이 적은 그대로다 — 메모리 저장소가 생성 시점에 시드 9건을 넣어(`T4` 완료 기준 9)
+  「데이터 0건」을 거치지 않는다. 바꾸면 심사자가 클론 직후 백지를 본다.
+- **Supabase 무료 티어는 7일 미접속 시 일시중지된다.** 발표 직전 반드시 깨운다. 배포가 갈래
+  A라 **배포 URL은 이 영향을 받지 않지만**, 로컬 라이브와 갈래 B 배포는 받는다.
+
 ---
 
 ## T10 · 알림 발송 (디스코드 웹훅) — 여유 있을 때만

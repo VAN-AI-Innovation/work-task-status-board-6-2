@@ -27,14 +27,15 @@ src/
 │   ├── upload/page.tsx               # 엑셀 업로드 + 미리보기
 │   ├── extract/page.tsx              # 독스 → 배정표
 │   ├── login/page.tsx                # 로그인 (T8). 앱 셸을 쓰지 않는다
-│   ├── report/page.tsx               # 주간 보고 전용 (T9. 아직 없다)
+│   ├── report/page.tsx               # 주간 보고 전용 (T9)
 │   ├── error.tsx                     # 조회 실패 바운더리 (teams/ 에도 둔다)
 │   └── api/  uploads/sheet · uploads/[id]/commit · uploads/seed · uploads/doc
 │             export/assignment · tasks · tasks/[id] · stats · alerts
 │             goals · report/weekly · health
 │             auth/login · auth/logout                     # T8. 둘 다 폼을 받는다
 ├── components/   shell/ dashboard/ charts/ alerts/ tasks/ goals/ upload/ extract/ auth/
-│                  report/                     # 주간 보고 화면 (T9. 아직 없다)
+│                  report/                     # 주간 보고 화면 (T9)
+│                                              #   report-period-nav · report-document
 │                                              # props 받아 JSX만. 계산 금지
 ├── lib/
 │   ├── sheet/   workbook-reader · header-resolver · tab-detector
@@ -48,6 +49,7 @@ src/
 │   ├── xlsx/    assignment-writer
 │   ├── domain/  task-semantic · display-status · task-derive · kst-today
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
+│   │            report-period                                   # 주 기간 정규화 (T9)
 │   │            extras-visibility · viewer-scope                 # 열람 범위 판정 (T8)
 │   ├── store/   task-repository · repository-contract · memory-task-store
 │   │            supabase-task-store · upload-record-store · store-factory
@@ -58,6 +60,7 @@ src/
 │   │            owner-link                                       # 시트 담당자 → members (T8)
 │   ├── api/     api-error · read-context · task-response · viewer-role
 │   │            assignment-schema · task-patch-schema · credentials-schema
+│   │            report-context                                  # ?week= 해석·이력 적재 (T9)
 │   ├── auth/    session-client · viewer-session                  # 쿠키 → `Viewer` (T8)
 │   │            request-viewer · route-guard · safe-redirect
 │   ├── view/    화면이 쓰는 표시 규칙 (role-layout · status-badge · chart-series …)
@@ -65,7 +68,7 @@ src/
 │                  seed-tasks.json
 ├── proxy.ts                            # Next.js 16의 middleware. 세션 갱신·보호 라우트 (T8)
 ├── supabase/migrations/   *.sql        # 스키마 단일 소스 (T4부터)
-│                          0004_*.sql   # task_events 열람 정책 (T9. 아직 없다)
+│                          0004_events_policy.sql   # task_events 열람 정책 (T9)
 └── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts · auth.ts
 ```
 
@@ -222,9 +225,12 @@ tasks · stages · goal_metrics ────────────────
   `member`가 열면 자기 업무만 담긴 보고서가 나온다. **다만 로그인은 필요하다** —
   `route-guard.ts`가 **공개 목록(allowlist)** 방식이라 `/report`는 파일이 생기는 순간 이미
   보호되고, **보호 목록에 더할 것이 없다.** 데모 모드는 `demo-open`으로 그대로 면제다.
-- ⚠ **「변경 건수 0」은 두 사실이 겹친 숫자다** — 읽을 길이 없어서(T9 이전)와 이력이 실제로
-  0행이어서. 확정이 멱등이라 같은 시트를 다시 올리면 전건 `unchanged`이고 이벤트가 0건이다
-  (`UC-03`·`X4`). 이 경로를 확인하려면 **값을 바꾼 시트를 올려 이력을 먼저 만든다.**
+- ⚠ **「변경 건수 0」은 이제 한 가지 사실이다.** T9 이전에는 둘이 겹쳐 있었다 — 읽을 길이
+  없어서와 이력이 실제로 0행이어서. `listEvents`가 앞의 것을 없앴으므로 **0은 0건이라는
+  뜻이고**, 「집계되지 않음」은 저장소가 이력을 **읽지 못한 경우에만** 나온다. 여전히 0으로
+  보이는 이유는 확정이 멱등이라 같은 시트를 다시 올리면 전건 `unchanged`이고 이벤트가 0건이기
+  때문이다(`UC-03`·`X4`). 이 경로를 확인하려면 **값을 바꾼 시트를 올려 이력을 먼저 만든다** —
+  T9 감사가 그렇게 재서 `admin` 3 · `lead` 2 · `member` 1을 확인했다(RLS가 앱 계층까지 자른다).
 
 
 ## 집계·판정 — `src/lib/domain/` 순수 함수
