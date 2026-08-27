@@ -67,7 +67,10 @@
       "step": 7,
       "name": "member-tree",
       "commit": "feat: 멤버 트리 도메인 함수 구현",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-27T22:09:36+0900",
+      "summary": "만든 파일 둘 — src/lib/domain/member-tree.ts + member-tree.test.ts(15건). 시그니처: buildMemberTree(rows: readonly DirectoryRow[]): MemberTree. DirectoryRow는 member_directory()의 한 행을 카멜케이스로 옮긴 것 {userId|null, memberId|null, displayName|null, memberName|null, email|null, role: ViewerRole|null, status: MemberStatus|null, teamId: TeamKey|null} — full outer join이라 userId·memberId 중 하나만 있는 행이 둘 다 정상 입력이고, 둘 다 null인 행은 나오지 않는다. 새 타입 alias MemberStatus = 'pending'|'active'|'rejected' (api.ts의 JoinRequestStatus와 다른 집합이라 따로 뒀다). MemberNode extends DirectoryRow에 name: string|null 한 칸만 더한다 — name = displayName ?? memberName이고 둘 다 없으면 null이다(「(이름 없음)」을 여기서 지어내지 않는다. 화면이 매번 고르면 목록마다 다른 이름이 서고 정렬 기준까지 갈린다). 반환은 MemberTree {teams: TeamBranch[], unassigned: MemberNode[]}이고 TeamBranch = {teamId: TeamKey, leads: MemberNode[], members: MemberNode[]}. teams는 **언제나 TEAM_KEYS 전부**(edit·shoot·marketing 순서 고정, 행이 오는 순서를 보지 않는다) — 사람이 0명인 팀도 빈 가지로 남는다. 분류: role==='admin' 또는 teamId===null → unassigned(admin은 teamId가 있어도 간다. 그 값은 노드에 그대로 남긴다) / role==='lead' → 그 팀의 leads / 그 밖(role==='member'와 **role===null인 계정 없는 명부 행**) → members. 모르는 팀 키는 Map.get이 miss라 자연히 unassigned로 떨어진다(별도 가드 없음). status는 걸러 내지 않고 그대로 싣는다 — pending·rejected를 여기서 지우면 어드민이 「대기자가 있다」를 이 화면에서 못 본다. 정렬은 세 단계로 결정적이다: 이름 있는 사람 먼저(null은 목록 끝) → localeCompare(name, 'ko') → stableKey = `${userId ?? ''}:${memberId ?? ''}`. 같은 행을 순서만 섞어 넣어도 toEqual로 같은 트리가 나오고, 입력 배열은 고치지 않는다(가지 배열은 새로 만들어 그 사본만 sort). 시계·저장소·환경변수를 보지 않는 순수 함수이고 「최근 가입순」이 필요해지면 now를 인자로 받는다. 게이트: lint·build 통과, npm test 1866건 전부 통과(109파일, +15). ⚠ 첫 회차에 repository-contract 1건이 실패했으나 T8·T9 감사가 기록한 라이브 DB 병렬 접속 간헐 실패(PGRST303 자리)이고 재실행은 1866건 전부 통과했다. AC grep 셋 다 통과(시계 호출 0건 · basename 각각 1).",
+      "completed_at": "2026-08-27T22:15:47+0900"
     },
     {
       "step": 8,
