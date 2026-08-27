@@ -38,13 +38,19 @@ export const MIN_PASSWORD_LENGTH = 10;
  */
 const TEAM_IDS = ['edit', 'shoot', 'marketing'] as const satisfies readonly TeamKey[];
 
+/**
+ * 가입과 **재요청**(`POST /api/auth/rejoin`)이 같은 목록을 본다. 스키마를 복사해 두면
+ * 팀이 하나 늘어난 날 한쪽만 고쳐지고, 그때 가입은 되는데 재요청은 400이 된다.
+ */
+export const teamIdSchema = z.enum(TEAM_IDS);
+
 /** zod v4다 — `z.string().email()`이 아니라 `z.email()` (`PLAN.md` `A5`) */
 export const signupSchema = z.object({
   /** `profiles.display_name`의 제약과 같은 40자다 (`0005` 1절) */
   displayName: z.string().trim().min(1).max(40),
   email: z.email(),
   password: z.string().min(MIN_PASSWORD_LENGTH),
-  teamId: z.enum(TEAM_IDS),
+  teamId: teamIdSchema,
 });
 
 export type Signup = z.infer<typeof signupSchema>;
