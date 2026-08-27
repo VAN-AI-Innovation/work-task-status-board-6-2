@@ -52,7 +52,8 @@
     },
     {
       "dir": "t11-signup-approval",
-      "status": "pending"
+      "status": "completed",
+      "completed_at": "2026-08-27T23:03:51+0900"
     }
   ]
 }
