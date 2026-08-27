@@ -129,28 +129,123 @@ Google Docs 워크로드 문서를 `.docx`로 내보내 올리면, 사람이 이
 
 ## 배포
 
-**배포 URL: _(step 8에서 배포 후 기록)_** — 아직 배포되지 않았다.
+**배포 URL: <https://worktaskstatusboard.vercel.app>**
 
-배포처는 Vercel이다. 로컬이 죽어도 URL, URL이 죽어도 로컬이 남게 하는 이중화가 목적이다.
+`STORAGE_DRIVER=memory` 한 갈래(아래 **A**)로 떠 있다 — **로그인 없이** 익명화 시드 9건이 보인다.
+실저장소(갈래 **B**)로 바꾸려면 아래 3절의 키 넷을 넣고 재배포한다.
 
-배포 환경변수는 `.env.example`의 키 중 **넷만** 넣는다.
+배포처는 **Vercel**이다. 로컬이 죽어도 URL, URL이 죽어도 로컬이 남게 하는 이중화가 목적이다.
 
-| 키 | 값 |
+> **왜 이 절이 절차서인가** — 배포는 브라우저 로그인이 필요해 하네스(비대화형 세션)가
+> 대신 할 수 없다. 그래서 이 절은 사람이 그대로 따라 하도록 쓰여 있다.
+> 화면 문구가 조금 다르면 같은 뜻의 자리를 찾으면 된다 (Vercel은 UI 문구를 자주 바꾼다).
+
+### 1. 프로젝트 만들기
+
+1. [vercel.com](https://vercel.com)에 GitHub 계정으로 로그인한다.
+2. 오른쪽 위 **Add New…** → **Project** (Vercel 문서가 **New Project**라고 부르는 흐름이다).
+3. **Import Git Repository** 목록에서 `work-task-status-board-6-2`를 찾아 **Import**.
+   - 목록에 없으면 조직 저장소 접근이 막힌 것이다. **Adjust GitHub App Permissions**
+     (또는 **Configure GitHub App**)에서 `VAN-AI-Innovation` 조직과 이 저장소를 허용한다.
+     저장소가 Private이라 이 단계가 필요할 수 있다.
+
+### 2. Configure Project — 건드리지 않는 것과 채우는 것
+
+| 항목 | 값 |
 |---|---|
-| `STORAGE_DRIVER` | `supabase` |
-| `NEXT_PUBLIC_SUPABASE_URL` | 프로젝트 URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | anon 키 |
-| `SUPABASE_SERVICE_ROLE_KEY` | service_role 키 |
+| **Framework Preset** | **Next.js** (자동으로 잡힌다. 다른 값이면 손으로 고른다) |
+| **Root Directory** | `./` — 저장소 루트 그대로. 모노레포가 아니다 |
+| **Build and Output Settings** | **손대지 않는다.** Build Command·Output Directory·Install Command 전부 기본값 |
+| **Node.js Version** | 기본값 (로컬은 24.x다. 그보다 낮은 버전이 잡혀 있으면 20 이상으로 올린다) |
 
-`T8_SEED_PASSWORD` · `T8_SEED_EMAIL_DOMAIN`은 **넣지 않는다.** `npm run seed:auth`가 쓰는
-로컬 시드 전용이고 배포된 앱은 읽지 않는다.
+`vercel.json`은 이 저장소에 **없고, 만들 필요도 없다.** Next.js 기본 설정으로 붙는다 —
+틀린 설정 파일이 배포를 깨는 쪽이 훨씬 흔하다.
 
-⚠ **`SUPABASE_SERVICE_ROLE_KEY`에 `NEXT_PUBLIC_` 접두사를 붙이지 마라.** 붙이면 브라우저
-번들에 그대로 실려 RLS를 우회하는 키가 공개된다. `npm run guard:env`는 **저장소 안의 파일만**
-검사하므로 배포 대시보드에 손으로 넣은 이름은 잡지 못한다 — 여기서만 사람이 막을 수 있다.
+### 3. Environment Variables — 넣는 키와 넣지 않는 키
 
-⚠ **Supabase 무료 티어는 7일 미접속 시 프로젝트를 일시중지한다.** 멈추면 앱이 읽기 전용
-폴백으로 내려앉는다. **발표·심사 전에 대시보드를 한 번 열어 깨워 둘 것.**
+**Configure Project 화면의 Environment Variables**에서 `Key` / `Value`를 한 줄씩 넣는다
+(배포 후에는 **Settings → Environment Variables**에서 같은 일을 한다).
+**실제 키 값은 이 문서에 적지 않는다 — `.env.local`의 같은 이름 값을 복사한다.**
+
+먼저 `STORAGE_DRIVER`를 **두 갈래 중 하나로** 고른다. 이 선택이 나머지를 정한다.
+
+| 갈래 | 넣을 키 | 배포된 화면 |
+|---|---|---|
+| **A. 데모** — 심사자가 키 없이 본다 | `STORAGE_DRIVER=memory` **하나뿐** | 익명화 시드 9건. 로그인 없이 열리고 `?as=`로 세 역할을 본다. 업로드·추출도 돈다 |
+| **B. 실저장소** — 실제 데이터가 뜬다 | 아래 넷 전부 | 로그인해야 열린다. RLS가 실제로 걸려 `admin`·`lead`·`member`가 다른 범위를 본다 |
+
+**갈래 B에 넣는 키 넷:**
+
+| Key | Value | Environment |
+|---|---|---|
+| `STORAGE_DRIVER` | `supabase` | Production · Preview · Development |
+| `NEXT_PUBLIC_SUPABASE_URL` | `.env.local`의 같은 값 (프로젝트 URL) | 〃 |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `.env.local`의 같은 값 (anon 키) | 〃 |
+| `SUPABASE_SERVICE_ROLE_KEY` | `.env.local`의 같은 값 (service_role 키) | 〃 |
+
+**넣지 않는 키:**
+
+- `T8_SEED_PASSWORD` · `T8_SEED_EMAIL_DOMAIN` — `npm run seed:auth`가 쓰는 **로컬 시드 전용**이다.
+  배포된 앱은 이 둘을 읽지 않는다.
+- `NODE_ENV` — Vercel이 정한다. 손으로 넣으면 빌드가 이상해진다.
+- `SKIP_LIVE_DB` — 테스트용 셸 스위치다. 앱은 읽지 않는다.
+
+> ⚠ **`SUPABASE_SERVICE_ROLE_KEY`에 `NEXT_PUBLIC_` 접두사를 붙이지 마라.**
+> 붙이면 그 값이 **브라우저 번들에 그대로 실려** RLS를 통째로 우회하는 키가 공개된다.
+> `npm run guard:env`(빌드 전에 자동 실행)는 **저장소 안의 파일만** 검사하므로
+> **배포 대시보드에 손으로 넣은 이름은 잡지 못한다.** 여기서는 사람만 막을 수 있다.
+> 값을 붙여 넣기 전에 Key 칸의 철자를 한 번 더 읽을 것.
+
+> ⚠ 갈래 A에서 Supabase 키를 **일부만** 넣으면 안 된다. 앱이 실저장소에 붙어 보다 실패해
+> **읽기 전용 폴백**(`mode=fallback`)으로 내려앉고, 배너가 「읽기 전용 — 저장소 연결 실패」로
+> 바뀌며 업로드 확정·수정이 전부 `503`이 된다 (`docs/ADR.md` ADR-005 · ADR-029).
+> 데모로 갈 것이면 `STORAGE_DRIVER=memory` **하나만** 둔다.
+
+### 4. Deploy
+
+**Deploy**를 누르고 **빌드 로그**에서 아래 셋을 확인한다.
+
+1. `Running "npm run build"` 위에 **`prebuild` → `guard:env`**가 먼저 돌고 통과한다
+   (`service_role` 키 노출 가드다. 여기서 실패하면 키 이름을 잘못 넣은 것이다)
+2. `Compiled successfully` 이후 라우트 목록에 **`/report` · `/upload` · `/extract` · `/login`**이 있다
+3. 마지막이 **`Build Completed`** · **`Deployment completed`**
+
+실패하면 로그의 마지막 에러부터 읽는다. 로컬에서 `npm run build`가 통과하는데 Vercel에서만
+깨진다면 대개 **환경변수 오타**이거나 **Node.js 버전**이다.
+
+### 5. 배포 직후 확인할 URL 넷
+
+`https://<배포-URL>` 뒤에 붙여 하나씩 연다.
+
+| 경로 | 갈래 A(데모)에서 기대값 | 갈래 B(실저장소)에서 기대값 |
+|---|---|---|
+| `/api/health` | `driver=memory` · `mode=demo` · `readOnly=false` | `driver=supabase` · `mode=live` |
+| `/` | 대시보드 + 「샘플 데이터 모드」 배너 + 업무 표 9행 | `/login`으로 리다이렉트 |
+| `/login` | 열린다 (데모에서는 굳이 쓸 일이 없다) | 로그인 폼 |
+| `/report` | 주간 보고 마크다운 + `[.md 내려받기]` | 로그인 후 열린다 |
+
+`/api/health`가 **`mode=fallback`**이면 배포가 아니라 **설정 사고**다 — 위 3절의 두 번째
+⚠ 항목을 다시 본다.
+
+확인이 끝나면 **이 절 맨 위의 「배포 URL」 자리에 실제 URL을 적는다.**
+
+### 6. 업로드 한도 — 배포 환경에서 다시 재야 하는 값
+
+앱은 업로드 본문을 **4MB**에서 막는다 (`src/lib/upload/upload-limits.ts`의
+`MAX_UPLOAD_BYTES`). 실제 시트가 0.10MB라 로컬에서는 여유가 40배다.
+
+⚠ 그런데 **Vercel 서버리스 함수의 요청 본문 한도(4.5MB로 알려져 있다)가 앱 한도보다 먼저
+걸릴 수 있다.** 먼저 걸리면 파일이 라우트에 닿기도 전에 잘리고, 사용자는 우리 에러 코드
+(`FILE_TOO_LARGE`)가 아니라 플랫폼 에러를 본다 — **다른 화면, 다른 문구다.**
+그래서 이 값은 **배포된 URL에서 실측해야** 확정된다 (`docs/PLAN.md` `A7`,
+`docs/TICKETS.md` T9 완료 기준 6). 실측은 배포 후에 한다.
+
+### 7. Supabase가 잠들면 깨운다 (갈래 B)
+
+⚠ **Supabase 무료 티어는 7일 미접속 시 프로젝트를 일시중지한다.** 멈추면 배포된 앱이
+읽기 전용 폴백으로 내려앉고 로그인도 실패한다.
+**발표·심사 직전에 Supabase 대시보드를 한 번 열어 깨워 둘 것.** 깨어났는지는
+배포 URL의 `/api/health`가 `mode=live`인지로 확인한다.
 
 ## 스크린샷
 
