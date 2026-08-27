@@ -249,14 +249,35 @@ Google Docs 워크로드 문서를 `.docx`로 내보내 올리면, 사람이 이
 
 ## 스크린샷
 
-_(사용자가 촬영해 추가)_ — 파일은 `docs/screenshots/`에 아래 이름으로 둔다.
+전부 **배포 URL을 1280px 폭으로 촬영**한 것이다. `STORAGE_DRIVER=memory`라 담긴 값은
+익명화 시드(`[샘플] …` · `담당자1` · `마케터1`)뿐이다.
 
-| 파일 | 화면 |
-|---|---|
-| `docs/screenshots/dashboard.png` | `/` 통합 대시보드 (1280px, `admin`) |
-| `docs/screenshots/upload.png` | `/upload` 미리보기 단계 |
-| `docs/screenshots/extract.png` | `/extract` 배정표 미리보기 |
-| `docs/screenshots/report.png` | `/report` 주간 보고 |
+### `/` 통합 대시보드 (`admin`)
+
+KPI 10종 · 팀별 현황 · 알림 5묶음 · 상태 분포 · 업무 표.
+
+![통합 대시보드](docs/screenshots/dashboard.png)
+
+### `/report` 주간 보고
+
+기간 이동(이전 주 / 이번 주 / 다음 주)과 마크다운 원문, 「복사」·「.md 내려받기」.
+**마크다운은 렌더하지 않고 원문 그대로 보여 준다** (`S7` — 셀 값이 DOM이 되면 안 된다).
+
+![주간 보고](docs/screenshots/report.png)
+
+### `/upload` 미리보기 단계
+
+`sample-workbook.xlsx`를 올린 직후. 신규·변경·유지 건수와 탭별 내역, 경고를 **확정 전에** 보여 준다.
+경고는 확정을 막지 않고 값도 보존한다.
+
+![시트 업로드 미리보기](docs/screenshots/upload.png)
+
+### `/extract` 배정표 미리보기
+
+`sample-workload.docx`를 올린 직후. 과제·난이도·마감을 읽어 배정표로 만들고,
+확인이 필요한 항목은 배너로 알린다. 값은 그대로 담긴다.
+
+![독스 → 배정표](docs/screenshots/extract.png)
 
 ⚠ **실업무 데이터가 찍힌 스크린샷은 커밋 금지다.** 실제 시트에는 실명·연락처·문의자
 SNS 계정이 들어 있다. 반드시 `STORAGE_DRIVER=memory`(익명화 시드)로 띄워 촬영한다.
