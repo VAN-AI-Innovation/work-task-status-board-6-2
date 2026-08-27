@@ -760,6 +760,54 @@ POST /api/uploads/sheet  (배정표 xlsx)
 않기 위한 것이다. step 8이 하는 일은 배포 **직전까지** — `.env.example` 점검, 환경변수 목록,
 `NEXT_PUBLIC_` 접두사 금지(`S5`), 배포 절차 문서화. URL은 사용자가 확보한 뒤 step 9가 반영한다.
 
+**키 없는 클론 실측** (2026-08-27, step 7) — **완료 기준 2는 문서가 아니라 실행으로 증명해야
+하는 것**이고, `.env.local`을 가진 개발 기계에서는 아무리 돌려도 증명되지 않는다. 그래서
+저장소 **바깥**(`/tmp/wtsb-clean`)에 현재 브랜치를 클론해 `npm install`부터 실제로 돌렸다.
+클론에 `.env.local`이 따라가지 않은 것(`ls -a` → `.env.example` 하나)과 셸에
+`STORAGE_DRIVER`·`SUPABASE_*`가 남아 있지 않은 것을 먼저 확인했고, 모든 명령을
+`env -u STORAGE_DRIVER -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY
+-u SUPABASE_SERVICE_ROLE_KEY -u SKIP_LIVE_DB`로 감쌌다.
+
+**어긋난 것이 하나 있었고 고쳤다.** README를 따라 하면 앱은 뜨지만 **데모가 아니라 읽기 전용
+폴백**으로 떴다.
+
+| | 고치기 전 | 고친 뒤 |
+|---|---|---|
+| `GET /api/health` | `mode=fallback` · `readOnly=true` | **`mode=demo` · `readOnly=false`** |
+| 배너 | **읽기 전용 — 저장소 연결 실패** (사고 문구) | **샘플 데이터 모드** |
+| `POST /api/uploads/seed` | `503 STORAGE_READONLY` | **`200`** (`unchanged: 9` — 확정이 멱등이다) |
+| 시트 업로드 확정 · 상태 수정 | 전부 `503` | 된다 |
+
+원인은 `STORAGE_DRIVER`에 기본값이 없어서가 아니라 **없을 때의 판정**이었다 — 앱이 Supabase에
+먼저 붙어 보고 자격증명이 없으니 「연결 실패」로 읽었다. **설정하지 않은 것은 연결 실패가
+아니다**: 고친 자리는 `store-factory.ts`의 데모 갈래 한 줄이고(`isDemoEnv`), 근거는 `ADR-029`다.
+`STORAGE_DRIVER=supabase`를 적어 두고 키가 없거나 키가 **일부만** 있는 경우는 **그대로
+폴백**이며, 그 갈래를 실제로 다시 재서 확인했다(`STORAGE_DRIVER=supabase`로 띄우면
+`mode=fallback` · 배너 「읽기 전용 — 저장소 연결 실패」 · seed `503` · 조회는 `200`).
+
+**완료 기준 2·3의 실행 결과** (전부 깨끗한 클론에서 잰 값이다)
+
+| 단계 | 결과 |
+|---|---|
+| `npm install` | **exit 0.** `exceljs`의 오래된 트리에서 오는 deprecation 경고 6줄과 「2 moderate severity vulnerabilities」가 뜬다 — 에러가 아니고 `ADR-003`이 이미 안고 가기로 한 값이다 |
+| `npm run lint` | **exit 0** |
+| `npm run build` | **exit 0.** `prebuild`의 `guard:env`도 함께 통과하고 `/report`가 ƒ로 잡힌다 |
+| `npm run test` | **1613건 통과 · 4 skip.** skip 넷은 라이브 DB 계약(`supabase-task-store` 1 · `upload-record-store` 1 · `store-factory` 2)이고 **키가 없으면 스스로 `it.skip`한다** — 키 없는 클론에서 계약이 빨개지지 않는다 |
+| `npm run dev` | 키를 요구하지 않고 뜬다 |
+| 화면 | `/` · `/upload` · `/extract` · **`/report`** · `/teams/{edit,shoot,marketing}` 전부 **200**. 로그인으로 튕기지 않는다(데모는 인증 면제 · `ADR-026`) |
+| `?as=` | 첫 섹션이 `admin` 「KPI」 / `lead` 「알림」 / `member` 「업무」로 갈린다 |
+| 두 파이프라인 | 시트 업로드 미리보기(`taskCount 9`) → 확정 **200**, 독스 → 행 2건 → 배정표 **7,507바이트 xlsx**. **고치기 전에는 확정이 `503`이라 키 없는 클론에서 두 산출물의 쓰기 절반이 죽어 있었다** |
+
+**「빈 상태 → `[샘플 데이터 불러오기]`」의 중간 한 칸은 여전히 데모에서 보이지 않는다.**
+메모리 저장소는 만들어질 때 시드 9건을 넣으므로(`T4` 완료 기준 9 — 「`STORAGE_DRIVER=memory`로
+키 없이 시드 데이터가 로드된다」) 「데이터 0건」을 거치지 않고 **바로 대시보드가 뜬다**. 버튼과
+빈 상태 문구는 **저장소가 실제로 빈 경우**의 화면이다. 시드를 걷어내면 이 칸이 살아나지만 그것은
+T4 완료 기준 9를 되돌리는 일이고, 심사자가 클론 직후 보는 화면이 백지가 된다 — **바꾸지
+않았다.** 대신 그 경로가 죽어 있지 않다는 것은 두 가지로 증명한다: `POST /api/uploads/seed`가
+**200**이고(위 표), 0건 분기는 `page.test.ts`의 「0건이면 빈 상태와 두 진입점이 뜬다」가 덮는다.
+
+**임시 클론은 검증 뒤 지웠다.** 저장소 안(`git status --short`)에는 흔적이 없다.
+
 ---
 
 ## T10 · 알림 발송 (디스코드 웹훅) — 여유 있을 때만

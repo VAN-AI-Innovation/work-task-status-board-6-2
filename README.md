@@ -8,8 +8,8 @@ Google Docs 워크로드 문서를 **업무 배정표 xlsx로 뽑는다.** 이 �
 
 ## 시작하기
 
-**`.env` 없이 그대로 뜬다.** 키를 요구하지 않는다 — 저장소가 붙지 않으면 메모리 드라이버로
-내려앉고 거기에는 익명화 시드 9건이 이미 들어 있다.
+**`.env` 없이 그대로 뜬다.** 키를 요구하지 않는다 — 설정이 아예 없으면 **데모 모드**로 서고
+메모리 드라이버에 익명화 시드 9건이 이미 들어 있다 (`docs/ADR.md` ADR-029).
 
 ```bash
 git clone <저장소>
@@ -27,24 +27,21 @@ npm run dev            # http://localhost:3000
 | 왼쪽 | 대시보드 · 주간 보고 · 팀 탭 셋 · 시트 업로드 · 독스 → 배정표 |
 | 로그인 | 필요 없다. 오른쪽 위 역할 전환(`?as=admin` · `lead` · `member`)이 산다 |
 
-⚠ **시작 방법에 따라 배너 문구가 갈린다. 이 구분은 의도된 것이다** (`docs/ADR.md` ADR-005 —
-하나는 사고이고 하나는 의도라 문구를 섞지 않는다).
+`cp .env.example .env.local`은 **하지 않아도 된다** — 아무 설정이 없으면 앱이 데모로 선다.
+실저장소(Supabase)에 붙일 때만 `.env.local`을 만든다.
+
+⚠ **배너 문구는 두 갈래이고 섞이지 않는다. 하나는 의도이고 하나는 사고다**
+(`docs/ADR.md` ADR-005 · ADR-029).
 
 | 시작 방법 | `GET /api/health` | 배너 | 쓰기 |
 |---|---|---|---|
-| `npm run dev` (아무 설정 없음) | `mode=fallback` · `readOnly=true` | **읽기 전용 — 저장소 연결 실패** | 전부 `503` |
+| `npm run dev` (아무 설정 없음) | `mode=demo` · `readOnly=false` | **샘플 데이터 모드** | 된다 |
 | `STORAGE_DRIVER=memory npm run dev` | `mode=demo` · `readOnly=false` | **샘플 데이터 모드** | 된다 |
+| 키를 **일부만** 줬거나 `STORAGE_DRIVER=supabase`인데 붙지 않는다 | `mode=fallback` · `readOnly=true` | **읽기 전용 — 저장소 연결 실패** | 전부 `503` |
 
-**심사·데모로 볼 때는 아래를 쓴다.** 의도한 데모 모드이고 업로드 확정까지 실제로 돈다.
-
-```bash
-cp .env.example .env.local     # STORAGE_DRIVER=memory 가 들어 있다
-npm run dev
-```
-
-`STORAGE_DRIVER`를 정하지 않으면 앱은 Supabase에 먼저 붙어 보고, 자격증명이 없으니
-「연결 실패」로 판정해 **읽기 전용**으로 내려앉는다. 조회는 전부 되지만 업로드 확정 ·
-`[샘플 데이터 불러오기]` · 상태 수정이 `503`으로 거부된다.
+마지막 줄은 **사고**다. 조회는 전부 되지만 업로드 확정 · `[샘플 데이터 불러오기]` · 상태 수정이
+`503`으로 거부된다 — 폴백 중 쓰기를 메모리에 받으면 재시작 때 조용히 사라지기 때문이다.
+설정을 아예 하지 않은 것은 사고가 아니므로 이 줄에 걸리지 않는다.
 
 **빈 상태 화면은 메모리 드라이버에서 볼 수 없다.** 메모리 저장소는 만들어질 때 시드 9건을
 넣으므로 「데이터 0건」을 거치지 않고 바로 대시보드가 뜬다. `[샘플 데이터 불러오기]` 버튼과
@@ -73,7 +70,7 @@ npm run dev
 
 | 키 | 언제 필요한가 |
 |---|---|
-| `STORAGE_DRIVER` | `memory`(데모) 또는 `supabase`(실저장소). **정하지 않으면 읽기 전용 폴백이다** |
+| `STORAGE_DRIVER` | `memory`(데모) 또는 `supabase`(실저장소). **정하지 않고 키도 없으면 데모다** — 키를 일부만 주면 폴백(읽기 전용)으로 내려앉는다 |
 | `NEXT_PUBLIC_SUPABASE_URL` · `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 실저장소·로그인. 브라우저에 나가도 되는 키다 |
 | `SUPABASE_SERVICE_ROLE_KEY` | **서버 전용.** 업로드 확정·시드만 쓴다. `NEXT_PUBLIC_`을 붙이면 `npm run guard:env`가 빌드를 실패시킨다 |
 | `T8_SEED_PASSWORD` | `npm run seed:auth`가 만드는 역할 계정의 비밀번호. 비워 두면 스크립트가 난수를 만들어 `.env.local`에 덧붙인다 |

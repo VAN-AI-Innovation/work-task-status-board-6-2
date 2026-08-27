@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
+import { classifyRequest } from '@/lib/auth/route-guard';
+
 import {
   createStorage,
   getStorage,
@@ -62,6 +64,12 @@ const NO_KEYS = {
 } as unknown as NodeJS.ProcessEnv;
 
 const MEMORY = { STORAGE_DRIVER: 'memory' } as unknown as NodeJS.ProcessEnv;
+
+/**
+ * **`.env` 없이 클론한 상태.** 드라이버 지정도 키도 없다 — 심사자가 처음 여는 환경이고
+ * `PRD.md` 성공 기준 1번·`TICKETS.md` T9 완료 기준 2가 재는 자리다.
+ */
+const CLEAN_CLONE = {} as unknown as NodeJS.ProcessEnv;
 
 async function fallbackHandle(): Promise<StorageHandle> {
   return createStorage(NO_KEYS);
@@ -125,6 +133,59 @@ describe('createStorage — 드라이버 선택', () => {
 
     expect(handle.mode).toBe('fallback');
     expect(handle.readOnly).toBe(true);
+  });
+});
+
+describe('createStorage — 키 없는 클론 (T9 완료 기준 2)', () => {
+  it('드라이버도 키도 없으면 데모다 — 설정하지 않은 것은 연결 실패가 아니다', async () => {
+    const handle = await createStorage(CLEAN_CLONE);
+
+    expect(handle.driver).toBe('memory');
+    expect(handle.mode).toBe('demo');
+    expect(handle.readOnly).toBe(false);
+  });
+
+  it('그래서 쓰기가 산다 — `[샘플 데이터 불러오기]`가 503으로 거부되지 않는다', async () => {
+    const { repo } = await createStorage(CLEAN_CLONE);
+
+    const result = await repo.upsertTasks([TASK], { occurredAt: UPLOAD_AT });
+
+    expect(result.created).toBe(1);
+  });
+
+  it('STORAGE_DRIVER=supabase를 적어 두고 키가 없으면 그대로 사고다 (폴백)', async () => {
+    // 사람이 실저장소를 쓰겠다고 적어 놓고 키를 안 준 것이다. 「설정하지 않음」과 다르다.
+    expect((await createStorage(NO_KEYS)).mode).toBe('fallback');
+  });
+
+  it('키가 일부만 있으면 사고다 — 설정하다 만 것은 데모가 아니다', async () => {
+    const handle = await createStorage({
+      // service_role이 없다. 붙을 수 없으므로 조용히 데모로 넘어가면 안 된다.
+      NEXT_PUBLIC_SUPABASE_URL: 'http://127.0.0.1:1',
+    } as unknown as NodeJS.ProcessEnv);
+
+    expect(handle.mode).toBe('fallback');
+    expect(handle.readOnly).toBe(true);
+  });
+
+  it('저장소가 데모라고 본 환경은 proxy도 반드시 로그인 없이 통과시킨다', async () => {
+    // **한 방향만 잰다.** 저장소가 데모인데 proxy가 로그인을 요구하면 키 없는 클론은 계정도
+    // 없는 로그인 화면에 갇힌다. 반대 방향(proxy는 열고 저장소는 읽기 전용)은 어긋남이
+    // 아니라 `ADR-005` 그대로다 — 붙을 Auth 서버가 없으니 문은 열되 쓰기는 막는다.
+    const envs = [CLEAN_CLONE, MEMORY, NO_KEYS];
+
+    for (const env of envs) {
+      const handle = await createStorage(env);
+      if (handle.mode !== 'demo') continue;
+
+      expect(
+        classifyRequest('/', {
+          storageDriver: env.STORAGE_DRIVER,
+          supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+          supabaseAnonKey: env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+        })
+      ).toBe('demo-open');
+    }
   });
 });
 
