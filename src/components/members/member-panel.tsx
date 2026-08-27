@@ -175,15 +175,15 @@ export function MemberPanel({
         </header>
 
         <div className="divide-line flex flex-col divide-y px-5">
-          <div className="py-6">
+          <div className="py-8">
             <WorkloadSection summary={summary} node={node} />
           </div>
-          <div className="py-6">
+          <div className="py-8">
             <OpenTaskList tasks={openTasks} />
           </div>
 
           {changeable && (
-            <section className="py-6">
+            <section className="py-8">
               <h3 className="text-ink text-sm font-semibold">직책·소속</h3>
 
               {/* 고르는 칸과 누르는 버튼을 **짝으로** 둔다. 고르기만 하면 아무 일도 일어나지
@@ -220,7 +220,7 @@ export function MemberPanel({
           )}
 
           {changeable && node.status !== 'rejected' && (
-            <section className="py-6">
+            <section className="py-8">
               <h3 className="text-ink text-sm font-semibold">내보내기</h3>
               <p className="text-ink-muted mt-1 text-xs">
                 계정 접근을 끊습니다. <strong className="font-semibold">지우지 않습니다</strong> —
@@ -240,7 +240,7 @@ export function MemberPanel({
           )}
 
           {message !== null && (
-            <p role="alert" className="border-late-line bg-late-bg text-late my-6 rounded border px-3 py-2 text-sm">
+            <p role="alert" className="border-late-line bg-late-bg text-late my-8 rounded border px-3 py-2 text-sm">
               {message}
             </p>
           )}
@@ -293,7 +293,7 @@ function ChangeRow({
   onSubmit: () => void;
 }) {
   return (
-    <div className="mt-3">
+    <div className="mt-4">
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="text-ink-muted text-xs">{label}</span>

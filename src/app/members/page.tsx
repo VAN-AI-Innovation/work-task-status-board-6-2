@@ -157,6 +157,22 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
           : '조직 전체의 구성입니다. 자세히 볼 수 있는 사람은 우리 팀뿐입니다.'}
       </p>
 
+      {/*
+        **한 건도 없는 것과 못 읽은 것을 구분한다.** 조직도는 팀 가지를 늘 그리므로
+        (`member-tree.ts`), 명부가 비어도 화면은 「팀 셋 + 전부 비어 있음」으로 똑같이 보인다 —
+        그 상태에서 사용자가 알 수 있는 것이 하나도 없다.
+
+        실제로 이 자리에 서는 원인은 둘이다: 시트를 아직 올리지 않았거나, 권한 함수가
+        이 역할에 행을 내주지 않거나(`member_directory()`). 어느 쪽인지 화면은 모르므로
+        **둘 다 적는다** — 지어내지 않는다 (`X3`).
+      */}
+      {members.length === 0 && (
+        <p className="border-warn-line bg-warn-bg text-warn mt-6 rounded border px-3 py-2 text-sm">
+          명부를 한 건도 읽지 못했습니다. 시트를 아직 올리지 않았거나, 이 계정에 명부 조회
+          권한이 아직 반영되지 않았을 수 있습니다.
+        </p>
+      )}
+
       <div className="mt-6">
         <MemberTreeView
           tree={tree}
