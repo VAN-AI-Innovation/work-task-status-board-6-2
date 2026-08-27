@@ -84,6 +84,29 @@ function ExtractIcon() {
   );
 }
 
+/** 주간 보고. 문서 한 장에 줄 몇 개 — 「가져가는 글」이라는 뜻이다 */
+function ReportIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <path d="M3.5 2h6l3 3v9h-9z" />
+      <path d="M9.5 2v3h3" />
+      <path d="M5.5 8.5h5" />
+      <path d="M5.5 11h3" />
+    </svg>
+  );
+}
+
 /** 부서별 탭. 셋이 같은 아이콘을 쓴다 — 구분은 아이콘이 아니라 한글 이름이 진다 */
 function TeamIcon() {
   return (
@@ -108,6 +131,9 @@ function TeamIcon() {
 
 const ITEMS: readonly { href: string; label: string; icon: ReactNode }[] = [
   { href: '/', label: '대시보드', icon: <DashboardIcon /> },
+  // 대시보드 바로 아래다. 둘 다 **읽고 가져가는** 화면이고, 브리핑 카드를 눌러 넘어오는
+  // 곳이기도 하다 (`UC-08`). 데이터를 넣는 두 화면(업로드·추출)은 팀 탭 아래에 모여 있다
+  { href: '/report', label: '주간 보고', icon: <ReportIcon /> },
   ...TEAM_KEYS.map((teamKey) => ({
     href: `/teams/${toTeamSlug(teamKey)}`,
     label: teamLabel(teamKey),
