@@ -23,7 +23,7 @@ const LABELS: Readonly<Record<CopyState, string>> = {
   failed: '복사 실패',
 };
 
-export function BriefingCard({ markdown, note }: { markdown: string; note: string }) {
+export function BriefingCard({ markdown }: { markdown: string }) {
   const [state, setState] = useState<CopyState>('idle');
   // 언마운트 뒤에 타이머가 살아 있으면 없는 컴포넌트에 setState한다
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,8 +87,6 @@ export function BriefingCard({ markdown, note }: { markdown: string; note: strin
       <pre className="border-line bg-canvas text-ink-body mt-3 max-h-[320px] overflow-auto rounded border p-3 text-xs whitespace-pre">
         {markdown}
       </pre>
-
-      <p className="text-ink-muted mt-3 text-xs">{note}</p>
     </section>
   );
 }

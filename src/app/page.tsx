@@ -69,6 +69,7 @@ import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
 import { TaskTable } from '@/components/tasks/task-table';
 import { SeedButton } from '@/components/upload/seed-button';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
+import { loadPeriodEvents } from '@/lib/api/report-context';
 import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
@@ -113,15 +114,6 @@ export const dynamic = 'force-dynamic';
 
 /** 이 화면의 링크가 돌아올 자리. 필터를 얹는 모든 링크가 여기서 시작한다 */
 const PATHNAME = '/';
-
-/**
- * 브리핑의 「이번 주 변경 건수」가 0인 이유를 카드에 그대로 적는다.
- * `TaskRepository`에 이벤트 **조회** 메서드가 없어 `events: []`를 넘기기 때문이고
- * (`/api/report/weekly`의 주석이 같은 말을 한다), 0을 그냥 두면 회의에서
- * 「이번 주 아무 일도 없었다」로 읽힌다. 없는 숫자를 지어내지 않는 대신 사실을 밝힌다.
- */
-const BRIEFING_NOTE =
-  '변경 건수는 이력 조회 경로가 없어 집계되지 않습니다 (T9에서 `listEvents`를 더한다).';
 
 export default async function Home({ searchParams }: PageProps<'/'>) {
   const view = await currentViewerContext();
@@ -201,14 +193,18 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   /*
    * 브리핑은 `buildWeeklyReport`가 만든 마크다운 문자열 그대로다 (`UC-08`). 화면이 보고 있는
    * 것과 **같은 목록**(`read.tasks`)을 넘기므로, 필터를 걸어 둔 채 복사해도 회의록의 숫자가
-   * 화면과 어긋나지 않는다. `events`가 빈 배열인 이유는 `BRIEFING_NOTE`에 적었다.
+   * 화면과 어긋나지 않는다.
+   *
+   * **변경 이력은 이 주의 것을 실제로 읽는다** (T9 step 4). 읽지 못하면 `loadPeriodEvents`가
+   * `null`을 주고 보고서가 「집계되지 않음」이라 적는다 — 0건과 구분한다.
    */
+  const period = resolveReportPeriod(read.ctx.today, null);
   const briefing = buildWeeklyReport({
     tasks: read.tasks,
     stages: read.stages,
     goals,
-    period: resolveReportPeriod(read.ctx.today, null),
-    events: [],
+    period,
+    events: await loadPeriodEvents(view.repo, period),
     ctx: read.ctx,
   });
 
@@ -312,7 +308,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
         );
 
       case 'briefing':
-        return <BriefingCard markdown={briefing} note={BRIEFING_NOTE} />;
+        return <BriefingCard markdown={briefing} />;
 
       case 'alerts':
         return <AlertPanel groups={alertGroups} titleOf={titleOf} hrefOf={taskHrefOf} />;

@@ -721,6 +721,13 @@ POST /api/uploads/sheet  (배정표 xlsx)
   않고 넘겼으므로**(T6 step 10 감사에서 확인) 남은 자리는 여기뿐이다. T6의 브리핑 카드는 그
   사실을 각주로 화면에 밝히고 있다 — 「변경 건수는 이력 조회 경로가 없어 집계되지 않습니다
   (T9에서 `listEvents`를 더한다)」. **`listEvents`를 더하면 그 각주도 함께 지운다.**
+  ✅ **2026-08-27 해소 (step 1~4).** 자리는 넷이다 — `TaskRepository.listEvents(filter)`와
+  두 구현·계약 5건(step 1) / `0004_events_policy.sql`의 `task_events` select 정책 + GRANT
+  (step 2, `ADR-028`) / `resolveReportPeriod`와 `WeeklyReportInput.events`의 `null` 갈래
+  (step 3) / **`lib/api/report-context.ts`가 라우트와 브리핑 카드 양쪽에 이력을 물린 것**
+  (step 4). 각주 상수(`page.tsx`의 `BRIEFING_NOTE`)와 `BriefingCard`의 `note` prop을
+  **함께 지웠고**, 라우트의 ⚠ 블록도 회수했다. 「집계되지 않음」은 이제 **저장소가 이력을
+  읽지 못한 경우에만** 나온다 — 0건은 0건이라고 말한다.
 
 **착수 시 실측** (2026-08-27, step 0) — 아래는 **명령을 돌려 얻은 값**이다. 결정의 근거이므로
 숫자가 달라지면 결정을 다시 본다. 확정 전문은 `PLAN.md`「T9 착수 시 확정」(결정 `K`~`P`).
