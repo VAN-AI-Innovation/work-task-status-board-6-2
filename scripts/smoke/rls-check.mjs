@@ -227,6 +227,97 @@ check(9, 'member가 uploads를 못 읽는다', memberUploads <= 0, `보인 행 $
 const adminProfiles = await countRows(adminClient, 'profiles');
 check(10, 'admin도 프로필은 자기 것만 본다', adminProfiles === 1, `보인 행 ${adminProfiles}`);
 
+// --- 11~14. 이력 열람 (task_events · 0004_events_policy.sql) ----------------
+//
+// `task_events_select_via_task`는 범위 조건을 스스로 적지 않고 부모 tasks 정책을 다시 탄다
+// (결정 K · ADR-028). 그러므로 여기서 재는 것은 「이력이 업무와 **같은 범위**로 보이는가」다.
+//
+// ⚠ 원격 task_events는 0행일 수 있다 — 확정이 멱등이라 같은 시트를 다시 올리면 전건
+//   unchanged이고 이벤트가 0건이기 때문이다 (UC-03·X4). 0행이면 세 숫자가 전부 0이라
+//   **정책이 듣는지 알 수 없고 그것은 PASS가 아니다.** 그래서 잴 수 있는 상태를 직접
+//   만든다 — service_role로 이벤트 둘을 넣고(내 업무 하나 · 남의 업무 하나) 재고, **넣은
+//   것만** 지운다. 기존 행은 건드리지 않는다.
+//
+// changed_fields에는 **필드 이름만** 담는다. 값을 담으면 이력 테이블이 개인정보 사본이
+// 된다 (S6 · 0001_init.sql의 같은 주석).
+let probeEventIds = [];
+
+if (ownTask === null || otherTaskId === null) {
+  const reason = ownTask === null ? '담당 태스크가 없다' : '비교할 남의 태스크가 없다';
+  for (const [no, label] of [
+    [11, '로그아웃 상태에서 task_events 조회'],
+    [12, 'admin이 이력 전체를 본다'],
+    [13, 'member가 자기 업무의 이력만 본다'],
+    [14, '남의 업무 이력을 task_id로 직접 지정해도 막힌다'],
+  ]) {
+    check(no, label, false, `검증 불가 — ${reason}`);
+  }
+} else {
+  const occurredAt = new Date().toISOString();
+  const { data: inserted, error: insertError } = await admin
+    .from('task_events')
+    .insert([
+      { task_id: ownTask.id, changed_fields: ['status'], occurred_at: occurredAt },
+      { task_id: otherTaskId, changed_fields: ['progress'], occurred_at: occurredAt },
+    ])
+    .select('id');
+  if (insertError) {
+    console.error(`검증용 이력 생성 실패: ${insertError.code ?? insertError.message}`);
+    process.exit(1);
+  }
+  probeEventIds = (inserted ?? []).map((row) => row.id);
+
+  // 기대값은 여기서도 하드코딩하지 않는다 — service_role로 그때그때 센다.
+  const { count: totalEvents } = await admin
+    .from('task_events')
+    .select('id', { count: 'exact', head: true });
+  const ownTaskIds = (ownTasks ?? []).map((row) => row.id);
+  const { count: ownEvents } = await admin
+    .from('task_events')
+    .select('id', { count: 'exact', head: true })
+    .in('task_id', ownTaskIds);
+
+  const guestEvents = await countRows(anonClient(), 'task_events');
+  check(
+    11,
+    '로그아웃 상태에서 task_events 조회',
+    guestEvents <= 0,
+    `보인 행 ${Math.max(guestEvents, 0)}`,
+  );
+
+  const adminEvents = await countRows(adminClient, 'task_events');
+  const memberEvents = await countRows(memberClient, 'task_events');
+  check(12, 'admin이 이력 전체를 본다', adminEvents === totalEvents, `${adminEvents} / 전체 ${totalEvents}`);
+  check(
+    13,
+    'member가 자기 업무의 이력만 본다',
+    memberEvents === ownEvents && memberEvents >= 1 && memberEvents < adminEvents,
+    `${memberEvents} / 담당 ${ownEvents} / admin ${adminEvents}`,
+  );
+
+  // task_id를 직접 짚어도 부모 tasks 정책이 그 행을 막으므로 exists가 거짓이다.
+  const { data: peeked, error: peekError } = await memberClient
+    .from('task_events')
+    .select('id')
+    .eq('task_id', otherTaskId);
+  const peekedRows = peekError ? -1 : (peeked ?? []).length;
+  check(
+    14,
+    '남의 업무 이력을 task_id로 직접 지정해도 막힌다',
+    peekedRows <= 0,
+    peekError ? `거부 ${peekError.code ?? 'error'}` : `보인 행 ${peekedRows}`,
+  );
+}
+
+// 넣은 것만 지운다. 이 스크립트는 데이터를 남기지 않는다.
+if (probeEventIds.length > 0) {
+  const { error: cleanupError } = await admin.from('task_events').delete().in('id', probeEventIds);
+  if (cleanupError) {
+    console.error(`검증용 이력 정리 실패: ${cleanupError.code ?? cleanupError.message}`);
+    process.exit(1);
+  }
+}
+
 // --- 결과 ------------------------------------------------------------------
 console.log('| # | 항목 | 판정 | 실측 |');
 console.log('|---|---|---|---|');
@@ -242,4 +333,4 @@ if (failed > 0) {
   console.error(`\n${failed}개 항목 실패.`);
   process.exit(1);
 }
-console.log(`\n10개 항목 전부 통과.`);
+console.log(`\n${results.length}개 항목 전부 통과.`);

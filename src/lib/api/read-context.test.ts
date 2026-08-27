@@ -175,7 +175,12 @@ describe('buildReadContext', () => {
   });
 
   it('meta.driver·mode·readOnly가 storage의 값과 같다', async () => {
-    const fallback = await createStorage({} as NodeJS.ProcessEnv);
+    // 빈 환경은 이제 **데모**다 (`ADR-029`). 폴백을 재현하려면 「실저장소를 쓰겠다고
+    // 적어 두고 키가 없는」 상태를 만들어야 한다 — 이 테스트가 재는 것은 그 갈래가 아니라
+    // meta가 storage의 값을 그대로 옮기는가다.
+    const fallback = await createStorage({
+      STORAGE_DRIVER: 'supabase',
+    } as unknown as NodeJS.ProcessEnv);
 
     const context = await buildReadContext(viewOf(fallback), NOW, { as: null, filter: {} });
 

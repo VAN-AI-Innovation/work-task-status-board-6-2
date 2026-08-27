@@ -103,14 +103,46 @@ const EXCLUDED_DIRS = ['node_modules/', '.next/', 'phases/'];
  */
 const EXCLUDED_FILES = ['src/lib/env-guard.ts', 'src/lib/env-guard.test.ts'];
 
+/** git이 없어 직접 걸을 때만 쓴다. 걸어 들어가 봐야 소용없는 디렉토리들 */
+const SKIPPED_WALK_DIRS = ['node_modules', '.next', 'phases', '.git', '.vercel'];
+
+/**
+ * 배포 빌드에는 `.git`이 없다 (Vercel은 소스만 업로드한다). `git ls-files`가 거기서
+ * 던지면 `prebuild`가 통째로 실패해 **가드가 지키려던 빌드 자체가 막힌다.**
+ * 그래서 git이 없으면 파일 시스템을 직접 걷는다 — 목록을 얻는 수단만 다르고
+ * 스캔 범위는 같다. **조용히 건너뛰지 않는다**: 여기서 빈 목록을 돌려주면
+ * 아래 `toBeGreaterThan(0)`이 잡는다.
+ */
+function walkFiles(dir: string, prefix = ''): string[] {
+  const found: string[] = [];
+
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (SKIPPED_WALK_DIRS.includes(entry.name)) continue;
+
+    if (entry.isDirectory()) found.push(...walkFiles(path.join(dir, entry.name), relative));
+    else if (entry.isFile()) found.push(relative);
+  }
+
+  return found;
+}
+
+function listTrackedFiles(): string[] {
+  try {
+    return execFileSync('git', ['ls-files', '-z'], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+    })
+      .split('\0')
+      .filter(Boolean);
+  } catch {
+    return walkFiles(REPO_ROOT);
+  }
+}
+
 function listScanTargets(): string[] {
-  const tracked = execFileSync('git', ['ls-files', '-z'], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-    maxBuffer: 32 * 1024 * 1024,
-  })
-    .split('\0')
-    .filter(Boolean);
+  const tracked = listTrackedFiles();
 
   // .gitignore가 .env*를 무시하지만 실제 유출 경로는 바로 거기다.
   const envFiles = readdirSync(REPO_ROOT, { withFileTypes: true })

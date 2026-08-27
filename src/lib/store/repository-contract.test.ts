@@ -77,6 +77,13 @@ describe('assertRepositoryContract', () => {
     await expect(assertRepositoryContract(fixture)).rejects.toThrow();
   });
 
+  it('listEvents가 필터·정렬을 무시하는 구현을 잡는다 (주간 보고의 기간이 무의미해진다)', async () => {
+    const fixture = brokenFixture((base) => ({
+      listEvents: async () => base.listEvents(),
+    }));
+    await expect(assertRepositoryContract(fixture)).rejects.toThrow();
+  });
+
   it('단계를 통째로 교체하지 않고 쌓기만 하는 구현을 잡는다', async () => {
     const fixture = brokenFixture((base) => {
       const seen: Awaited<ReturnType<TaskRepository['listStages']>> = [];
@@ -207,6 +214,23 @@ describe('계약 행 격리 (이슈 #20)', () => {
 
     expect(await store.getTask(foreignId)).not.toBeNull();
     expect(await scopeToContractRows(store).getTask(foreignId)).toBeNull();
+  });
+
+  it('남의 행에 달린 이벤트는 계약에게 보이지 않는다 (이벤트에는 붙일 접두사가 없다)', async () => {
+    const store = createMemoryTaskStore();
+    await sharedFixture.reset(store);
+    const foreignId = (await store.listTasks())[0].id;
+    await store.recordEvents([
+      {
+        taskId: foreignId,
+        uploadId: null,
+        changedFields: ['progress'],
+        occurredAt: FOREIGN_UPLOAD_AT,
+      },
+    ]);
+
+    expect(await store.listEvents()).toHaveLength(1);
+    expect(await scopeToContractRows(store).listEvents()).toHaveLength(0);
   });
 
   it('남의 업로드가 만든 반영 시각은 계약에게 null이다 (계약 17번의 「빈 저장소」)', async () => {

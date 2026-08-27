@@ -5,9 +5,9 @@
  * sanitize가 필요해지고(`S7`) 셀 값에서 온 문자열이 그대로 DOM이 된다. 그래서 태그가 아니라
  * `#`로 시작하는 원문인지를 본다.
  *
- * `events`가 빈 배열인 것도 여기서 고정한다 — `TaskRepository`에 이벤트 **조회** 메서드가
- * 없어서다. 「이번 주 변경 0건」이 지금은 사실이 아니라 **읽을 길이 없다는 표시**이고,
- * 인터페이스를 넓히는 것은 T6·T9의 일이다 (`TICKETS.md` T9 리스크·미결).
+ * 기간(`?week=`)의 계약도 여기서 고정한다 — **틀린 값에 400을 내지 않는다**(결정 M).
+ * 되돌렸다는 사실은 `period.fellBack`으로만 말한다. 조용히 이번 주를 보여 주면 사용자는
+ * 자기가 요청한 주를 보고 있다고 믿는다.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -20,6 +20,7 @@ const ORIGINAL_DRIVER = process.env.STORAGE_DRIVER;
 
 interface ReportBody {
   markdown: string;
+  period: { weekStart: string; weekEnd: string; fellBack: boolean };
   meta: { today: string; role: string };
 }
 
@@ -61,14 +62,48 @@ describe('GET /api/report/weekly', () => {
     expect(parsed.markdown).not.toContain('<script');
   });
 
-  it('본문 필드는 markdown과 meta 둘뿐이다', async () => {
-    expect(Object.keys(await body()).sort()).toEqual(['markdown', 'meta']);
+  it('본문 필드는 markdown·period·meta 셋뿐이다', async () => {
+    expect(Object.keys(await body()).sort()).toEqual(['markdown', 'meta', 'period']);
   });
 
-  it('이벤트 조회 경로가 없어 「이번 주 변경」이 0건으로 나간다 — 지어내지 않았다는 표시다', async () => {
+  /**
+   * 시드는 전건 `created`라 이벤트가 남지 않는다. **0건이라고 말하는 것이 맞다** — 읽을 길이
+   * 없어서 0인 것이 아니라 실제로 0건이고, 그래서 「집계되지 않음」이 아니다.
+   */
+  it('이력을 읽어 「이번 주 변경」을 센다 — 읽지 못한 것과 0건을 구분한다', async () => {
     const parsed = await body();
 
     expect(parsed.markdown).toContain('- 이번 주 변경: 0건');
+    expect(parsed.markdown).not.toContain('집계되지 않음');
+  });
+
+  it('`?week=`로 과거 주를 열고, 되돌리지 않았다고 말한다', async () => {
+    const parsed = await body('?week=2026-08-17');
+
+    expect(parsed.period).toEqual({
+      weekStart: '2026-08-17',
+      weekEnd: '2026-08-23',
+      fellBack: false,
+    });
+    expect(parsed.markdown).toContain('2026-08-17');
+  });
+
+  it('주 중간 날짜는 그 주의 월요일로 맞춘다', async () => {
+    expect((await body('?week=2026-08-20')).period.weekStart).toBe('2026-08-17');
+  });
+
+  /** 오타 하나로 보고서가 통째로 안 뜨면 사용자는 URL이 아니라 도구를 의심한다 (결정 M) */
+  it('틀린 `?week=`는 400이 아니라 이번 주이고, 되돌렸다고 말한다', async () => {
+    for (const bad of ['?week=어제', '?week=2026-13-45', '?week=2026-07', '?week=']) {
+      const parsed = await body(bad);
+
+      expect(parsed.period.weekStart <= parsed.meta.today).toBe(true);
+      expect(parsed.period.fellBack).toBe(bad !== '?week=');
+    }
+  });
+
+  it('`?week=`가 없으면 이번 주이고 되돌린 것이 아니다', async () => {
+    expect((await body()).period.fellBack).toBe(false);
   });
 
   it('?as=admin으로도 200이고 meta가 역할을 반영한다', async () => {

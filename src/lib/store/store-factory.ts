@@ -3,8 +3,8 @@
  *
  * 이 파일이 지는 판단은 둘뿐이다.
  *
- * 1. **어느 구현을 쓸 것인가** — `STORAGE_DRIVER=memory`면 의도된 데모, 아니면 Supabase를
- *    먼저 시도하고 붙지 않으면 memory로 내려앉는다.
+ * 1. **어느 구현을 쓸 것인가** — `STORAGE_DRIVER=memory`이거나 **설정이 아예 없으면** 의도된
+ *    데모, 아니면 Supabase를 먼저 시도하고 붙지 않으면 memory로 내려앉는다.
  * 2. **쓰기를 받아도 되는가** — 내려앉은 경우(`fallback`)에는 받지 않는다. 폴백 중 쓰기를
  *    메모리에 담으면 사용자는 저장됐다고 믿고 재시작 때 조용히 사라진다 (`A2`).
  *    **조용한 데이터 유실이 조회 불가보다 나쁘다.**
@@ -92,6 +92,8 @@ function toReadOnly(repo: TaskRepository): TaskRepository {
     getTask: (id) => repo.getTask(id),
     listStages: (taskIds) => repo.listStages(taskIds),
     listGoalMetrics: (filter) => repo.listGoalMetrics(filter),
+    /** **읽기다.** 이력 조회는 막을 이유가 없다 — `recordEvents`(쓰기)만 아래에서 막힌다 */
+    listEvents: (filter) => repo.listEvents(filter),
     getLastSyncedAt: () => repo.getLastSyncedAt(),
     /** **읽기다.** 구성원 목록은 막을 이유가 없다 — 폴백은 조회 불가가 아니라 읽기 전용이다 */
     listMembers: () => repo.listMembers(),
@@ -146,8 +148,39 @@ async function isReachable(client: SupabaseClient): Promise<boolean> {
   }
 }
 
+/**
+ * **설정하지 않은 것은 연결 실패가 아니다** (`ADR-029`).
+ *
+ * `STORAGE_DRIVER`를 정하지 않았고 Supabase 키가 **하나도** 없으면 붙어 볼 저장소 자체가
+ * 없는 것이므로 의도된 데모로 본다. 「먼저 붙어 보고 실패하면 폴백」을 여기에 적용하면
+ * `.env` 없이 클론한 심사자가 **사고 배너(「읽기 전용 — 저장소 연결 실패」)를 보고**
+ * `[샘플 데이터 불러오기]`·업로드 확정이 전부 `503`이 된다 — `PRD.md` 성공 기준 1번과
+ * `TICKETS.md` T9 완료 기준 2가 성립하지 않는다.
+ *
+ * 갈리는 자리는 둘이고 **둘 다 사고로 남긴다.**
+ *
+ * - `STORAGE_DRIVER=supabase`라고 **적어 두고** 키가 없다 → 사람이 실저장소를 쓰겠다고 한 것이다
+ * - 키가 **일부만** 있다 → 설정하다 만 것이다. 조용히 데모로 넘어가면 그 사실이 묻힌다
+ *
+ * `route-guard.ts`의 `isDemo`와 **정확히 같은 조건은 아니다.** 그쪽은 자격증명이 없으면
+ * `STORAGE_DRIVER`와 무관하게 문을 연다 — 붙을 Auth 서버가 없는데 로그인을 요구하면 아무도
+ * 들어올 수 없기 때문이다. 지켜야 하는 것은 한 방향뿐이고, 그 방향을 테스트가 잰다:
+ * **여기서 `demo`인 환경은 그쪽에서도 반드시 `demo-open`이다.**
+ */
+function isDemoEnv(env: NodeJS.ProcessEnv): boolean {
+  if (env.STORAGE_DRIVER === 'memory') return true;
+  // 빈 문자열은 「정하지 않음」으로 본다. `.env`에 키만 적고 값을 비워 둔 경우다.
+  if (env.STORAGE_DRIVER) return false;
+
+  return (
+    !env.NEXT_PUBLIC_SUPABASE_URL &&
+    !env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
+    !env.SUPABASE_SERVICE_ROLE_KEY
+  );
+}
+
 export async function createStorage(env: NodeJS.ProcessEnv): Promise<StorageHandle> {
-  if (env.STORAGE_DRIVER === 'memory') {
+  if (isDemoEnv(env)) {
     // 의도된 데모다. 심사자가 `.env` 없이 클론해 바로 쓰는 경로이므로 쓰기를 막지 않는다.
     return {
       repo: createSeededMemoryStore(),

@@ -62,10 +62,14 @@ function isPublic(pathname: string): boolean {
 }
 
 /**
- * `store-factory.ts`가 `demo`를 고르는 조건과 **같아야 한다** — 다르면 proxy가 막는 화면과
- * 저장소가 여는 화면이 어긋난다. 자격증명이 없는 경우까지 데모로 보는 것은 그쪽의
- * `createClientFrom`이 `null`을 내고 `fallback`으로 내려앉는 것과 짝이다: 붙을 Auth 서버가
- * 없는데 로그인을 요구하면 아무도 들어올 수 없다.
+ * **`store-factory.ts`가 `demo`를 고르는 환경은 여기서도 반드시 `demo-open`이어야 한다.**
+ * 어긋나면 저장소는 열려 있는데 proxy가 로그인을 요구하고, 계정이 없는 심사자는 빈 로그인
+ * 화면에 갇힌다 (`store-factory.test.ts`가 이 한 방향을 잰다).
+ *
+ * **반대 방향은 일부러 넓다.** 여기서는 자격증명이 없으면 `STORAGE_DRIVER`와 무관하게 문을
+ * 여는데, 그쪽은 `STORAGE_DRIVER=supabase`라고 적힌 경우를 `fallback`(읽기 전용)으로 남긴다
+ * (`ADR-029`). 붙을 Auth 서버가 없는데 로그인을 요구하면 아무도 들어올 수 없으므로 문은
+ * 열되, 쓰기는 저장소 쪽이 막는다 — `ADR-005` 그대로다.
  */
 function isDemo(env: GuardEnv): boolean {
   return env.storageDriver === 'memory' || !env.supabaseUrl || !env.supabaseAnonKey;

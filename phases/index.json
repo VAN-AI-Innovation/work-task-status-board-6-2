@@ -44,6 +44,11 @@
       "dir": "t8-auth-rls",
       "status": "completed",
       "completed_at": "2026-08-27T05:50:23+0900"
+    },
+    {
+      "dir": "t9-deploy-report",
+      "status": "completed",
+      "completed_at": "2026-08-27T16:56:35+0900"
     }
   ]
 }

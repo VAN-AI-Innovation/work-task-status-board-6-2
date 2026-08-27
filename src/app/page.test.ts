@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionOutcome } from '@/lib/auth/viewer-session';
 import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
 import { buildKpiStrip, type KpiTile, type TeamSummary } from '@/lib/domain/progress-stats';
+import { resolveReportPeriod } from '@/lib/domain/report-period';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 import { kstToday } from '@/lib/domain/kst-today';
 import { buildSemanticIndex, STATUS_OPTIONS } from '@/lib/domain/task-semantic';
@@ -783,6 +784,7 @@ describe('/ — 주간 브리핑 카드 (`UC-08` · 완료 기준 9)', () => {
     await seedGoals();
 
     const tasks = await handle.repo.listTasks();
+    const period = resolveReportPeriod(kstToday(new Date()), null);
     const markdown = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard')?.props
       ?.markdown as string;
 
@@ -791,7 +793,8 @@ describe('/ — 주간 브리핑 카드 (`UC-08` · 완료 기준 9)', () => {
         tasks,
         stages: await handle.repo.listStages(tasks.map((task) => task.id)),
         goals: await handle.repo.listGoalMetrics(),
-        events: [],
+        period,
+        events: await handle.repo.listEvents({ since: period.since, until: period.until }),
         ctx: { today: kstToday(new Date()), semanticIndex: buildSemanticIndex(null) },
       })
     );
@@ -808,14 +811,18 @@ describe('/ — 주간 브리핑 카드 (`UC-08` · 완료 기준 9)', () => {
     expect(markdown).not.toContain('계정');
   });
 
-  /** 0을 그냥 두면 회의에서 「이번 주 아무 일도 없었다」로 읽힌다 */
-  it('변경 건수 0의 근거를 카드가 밝힌다', async () => {
+  /**
+   * T9 step 4에서 이력 조회 경로(`listEvents`)가 생겨 **각주가 회수됐다.** 「집계되지 않음」은
+   * 이제 저장소가 이력을 읽지 못한 경우에만 나오고, 0건은 0건이라고 말한다.
+   */
+  it('변경 건수를 실제로 세고, 「집계되지 않음」 각주를 달지 않는다', async () => {
     await seed();
 
-    const note = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard')?.props
-      ?.note as string;
+    const card = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard');
 
-    expect(note).toContain('이력 조회');
+    expect(card?.props?.note).toBeUndefined();
+    expect(card?.props?.markdown as string).toContain('- 이번 주 변경: 0건');
+    expect(card?.props?.markdown as string).not.toContain('집계되지 않음');
   });
 });
 

@@ -63,6 +63,18 @@ describe('proxy — 미인증 (T8 완료 기준 7)', () => {
   });
 
   /**
+   * **`/report`는 보호 목록에 이름이 없어도 보호된다** (T9 결정 N). `route-guard.ts`가
+   * 공개 목록 방식이라 새 화면은 생기는 순간 막히고, **역할로는 막지 않는다** — 범위는
+   * `viewer-scope.ts`와 RLS가 이미 자른다.
+   */
+  it('주간 보고 화면도 `/login?next=…`으로 보낸다', async () => {
+    const response = await proxy(requestFor('/report?week=2026-08-17'));
+
+    expect(response?.status).toBe(307);
+    expect(locationOf(response as Response)).toBe('/login?next=%2Freport%3Fweek%3D2026-08-17');
+  });
+
+  /**
    * API에 302를 주면 클라이언트가 따라가서 **로그인 화면 HTML을 JSON으로 파싱하려 든다**.
    * 문구는 `api-error.ts`의 표와 글자까지 같아야 한다.
    */
@@ -119,6 +131,14 @@ describe('proxy — 데모 모드 (결정 E)', () => {
     const response = await proxy(requestFor('/'));
 
     expect(response?.headers.get('location')).toBeNull();
+    expect(response?.status).toBe(200);
+    expect(getUserCalls).toBe(0);
+  });
+
+  it('데모에서는 주간 보고 화면도 그냥 열린다 — 심사자에게는 계정이 없다', async () => {
+    process.env.STORAGE_DRIVER = 'memory';
+    const response = await proxy(requestFor('/report'));
+
     expect(response?.status).toBe(200);
     expect(getUserCalls).toBe(0);
   });

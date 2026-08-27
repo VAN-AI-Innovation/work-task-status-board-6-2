@@ -1,0 +1,8 @@
+# 배포 업로드에서 제외한다.
+# .env.local이 올라가면 Next가 빌드 때 그것을 읽어 Vercel 대시보드에 넣은
+# 환경변수를 덮어쓴다 — 로컬 Supabase 키가 배포에 그대로 실린다.
+.env
+.env.*
+!.env.example
+
+.vercel

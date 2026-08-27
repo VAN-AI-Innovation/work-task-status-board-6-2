@@ -32,6 +32,23 @@ export interface TaskFilter {
 }
 
 /**
+ * 이벤트 조회 축. **`TaskFilter`를 재사용하지 않는다** — 이벤트에는 팀·담당자·상태 축이
+ * 없고 `taskId` 하나뿐이라, 겸하게 만들면 동작하지 않는 필터 필드가 인터페이스에 남는다
+ * (`PLAN.md`「T9 착수 시 확정」 결정 L).
+ *
+ * `limit`도 두지 않는다. 이 조회의 쓰임은 「기간 안에서 몇 건이 바뀌었나」라 **자르면 건수가
+ * 틀린다.**
+ */
+export interface TaskEventFilter {
+  /** **포함**(`>=`). ISO 8601 */
+  since?: string;
+  /** **제외**(`<`). ISO 8601 — 이어 붙인 두 기간이 경계의 이벤트를 두 번 세지 않게 한다 */
+  until?: string;
+  /** 빈 배열은 "해당 없음"이다 (전체가 아니다 — `listStages([])`와 같은 규칙) */
+  taskIds?: readonly string[];
+}
+
+/**
  * `upsertTasks`가 받는 입력. `id`·`lastProgressAt`은 저장소가 정한다.
  *
  * 단계를 태스크에 딸린 필드로 두는 이유: 단계는 태스크와 **같은 트랜잭션에서 통째로 교체**돼야
@@ -80,6 +97,19 @@ export interface TaskRepository {
     options: UpsertOptions,
   ): Promise<GoalMetricUpsertResult>;
   recordEvents(events: readonly Omit<TaskEvent, 'id'>[]): Promise<void>;
+
+  /**
+   * 변경 이력 조회 (T9). `recordEvents`만 있고 읽는 길이 없어서 주간 보고의
+   * 「이번 주 변경 건수」가 항상 0으로 나갔다.
+   *
+   * **`occurredAt` 내림차순**(최신이 먼저)이다. 같은 시각의 순서는 정하지 않는다 —
+   * 정할 근거가 없고, 이 조회의 쓰임(기간 안의 건수·목록)이 그 순서에 기대지 않는다.
+   *
+   * **건수를 세지 않는다.** 「이번 주 몇 건」은 도메인 함수가 목록을 받아 센다 (`ADR-006`) —
+   * SQL `count`로 세면 memory 구현과 결과가 갈라진다.
+   */
+  listEvents(filter?: TaskEventFilter): Promise<TaskEvent[]>;
+
   getLastSyncedAt(): Promise<string | null>;
 
   /**
@@ -290,4 +320,29 @@ export function matchesTaskFilter(task: Task, filter?: TaskFilter): boolean {
   }
 
   return true;
+}
+
+/**
+ * 이벤트 필터의 기준 구현. `matchesTaskFilter`와 같은 자리에 두는 이유도 같다 —
+ * 계약 테스트가 이것으로 기대값을 만들어 두 구현이 같은 의미를 갖게 한다.
+ *
+ * 문자열 비교가 아니라 **시각 비교**다. 저장소마다 표기가 다를 수 있는데
+ * (`2099-08-03T09:00:00.000Z` 대 `2099-08-03T18:00:00+09:00`) 같은 순간이면 같게 봐야 하고,
+ * supabase 쪽은 `timestamptz` 비교라 이미 그렇게 동작한다.
+ */
+export function matchesTaskEventFilter(event: TaskEvent, filter?: TaskEventFilter): boolean {
+  if (!filter) return true;
+
+  if (filter.taskIds && !filter.taskIds.includes(event.taskId)) return false;
+
+  const at = Date.parse(event.occurredAt);
+  if (filter.since !== undefined && at < Date.parse(filter.since)) return false;
+  if (filter.until !== undefined && at >= Date.parse(filter.until)) return false;
+
+  return true;
+}
+
+/** 최신이 먼저. `listEvents`의 정렬을 두 구현이 같은 규칙으로 쓰게 한다 */
+export function compareTaskEventsDesc(left: TaskEvent, right: TaskEvent): number {
+  return Date.parse(right.occurredAt) - Date.parse(left.occurredAt);
 }

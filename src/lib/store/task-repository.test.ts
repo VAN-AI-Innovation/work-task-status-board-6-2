@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   TASK_DIFF_FIELDS,
+  compareTaskEventsDesc,
   diffTaskFields,
+  matchesTaskEventFilter,
   matchesTaskFilter,
   type TaskUpsertInput,
 } from '@/lib/store/task-repository';
-import type { Task } from '@/types/task';
+import type { Task, TaskEvent } from '@/types/task';
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -241,5 +243,60 @@ describe('matchesTaskFilter', () => {
 
   it('limit은 행 판정에 관여하지 않는다 (목록 자르기는 listTasks의 일)', () => {
     expect(matchesTaskFilter(edit, { limit: 0 })).toBe(true);
+  });
+});
+
+describe('matchesTaskEventFilter', () => {
+  const event = (occurredAt: string, taskId = 'task-1'): TaskEvent => ({
+    id: `event-${occurredAt}-${taskId}`,
+    taskId,
+    uploadId: null,
+    changedFields: ['progress'],
+    occurredAt,
+  });
+
+  const monday = event('2026-08-24T00:00:00.000Z');
+
+  it('필터가 없으면 전부 통과한다', () => {
+    expect(matchesTaskEventFilter(monday)).toBe(true);
+    expect(matchesTaskEventFilter(monday, {})).toBe(true);
+  });
+
+  it('since는 경계를 포함하고 until은 제외한다', () => {
+    expect(matchesTaskEventFilter(monday, { since: '2026-08-24T00:00:00.000Z' })).toBe(true);
+    expect(matchesTaskEventFilter(monday, { since: '2026-08-24T00:00:00.001Z' })).toBe(false);
+    expect(matchesTaskEventFilter(monday, { until: '2026-08-24T00:00:00.000Z' })).toBe(false);
+    expect(matchesTaskEventFilter(monday, { until: '2026-08-24T00:00:00.001Z' })).toBe(true);
+  });
+
+  it('표기가 달라도 같은 순간이면 같게 본다 (문자열 비교가 아니다)', () => {
+    // `2026-08-24T09:00:00+09:00` = `2026-08-24T00:00:00Z`. 문자열로 비교하면 어긋난다.
+    expect(matchesTaskEventFilter(monday, { since: '2026-08-24T09:00:00+09:00' })).toBe(true);
+    expect(matchesTaskEventFilter(monday, { until: '2026-08-24T09:00:00+09:00' })).toBe(false);
+  });
+
+  it('taskIds는 지정한 것만 통과시키고 빈 배열은 아무것도 통과시키지 않는다', () => {
+    expect(matchesTaskEventFilter(monday, { taskIds: ['task-1'] })).toBe(true);
+    expect(matchesTaskEventFilter(monday, { taskIds: ['task-2'] })).toBe(false);
+    expect(matchesTaskEventFilter(monday, { taskIds: [] })).toBe(false);
+  });
+
+  it('조건이 여러 개면 전부 만족해야 한다', () => {
+    const filter = { since: '2026-08-24T00:00:00.000Z', until: '2026-08-31T00:00:00.000Z' };
+    expect(matchesTaskEventFilter(monday, { ...filter, taskIds: ['task-1'] })).toBe(true);
+    expect(matchesTaskEventFilter(monday, { ...filter, taskIds: ['task-2'] })).toBe(false);
+  });
+
+  it('compareTaskEventsDesc는 최신을 앞에 둔다', () => {
+    const sorted = [
+      event('2026-08-24T00:00:00.000Z'),
+      event('2026-08-31T00:00:00.000Z'),
+      event('2026-08-17T00:00:00.000Z'),
+    ].sort(compareTaskEventsDesc);
+    expect(sorted.map((entry) => entry.occurredAt)).toEqual([
+      '2026-08-31T00:00:00.000Z',
+      '2026-08-24T00:00:00.000Z',
+      '2026-08-17T00:00:00.000Z',
+    ]);
   });
 });
