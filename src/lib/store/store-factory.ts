@@ -93,6 +93,8 @@ function toReadOnly(repo: TaskRepository): TaskRepository {
     listStages: (taskIds) => repo.listStages(taskIds),
     listGoalMetrics: (filter) => repo.listGoalMetrics(filter),
     getLastSyncedAt: () => repo.getLastSyncedAt(),
+    /** **읽기다.** 구성원 목록은 막을 이유가 없다 — 폴백은 조회 불가가 아니라 읽기 전용이다 */
+    listMembers: () => repo.listMembers(),
 
     async upsertTasks() {
       throw new StorageReadOnlyError();
@@ -101,6 +103,14 @@ function toReadOnly(repo: TaskRepository): TaskRepository {
       throw new StorageReadOnlyError();
     },
     async recordEvents() {
+      throw new StorageReadOnlyError();
+    },
+    /**
+     * 빠뜨리면 폴백 중 단건 수정이 **메모리에 조용히 저장된다** — `ADR-005`가 막으려던
+     * 바로 그 사고다(사용자는 저장됐다고 믿고 재시작 때 사라진다). `PATCH /api/tasks/[id]`가
+     * 이 경로를 탄다 (step 9).
+     */
+    async updateTask() {
       throw new StorageReadOnlyError();
     },
   };

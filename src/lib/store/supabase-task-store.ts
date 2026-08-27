@@ -9,8 +9,8 @@
  * 컴포넌트에서 import하면 키가 번들에 실린다 (`S5`, `CLAUDE.md` CRITICAL). 키 이름에
  * `NEXT_PUBLIC_` 접두사를 붙이지 않는 것과 같은 이유이며, `npm run guard:env`가 감시한다.
  *
- * 컬럼 이름은 `toTask`/`toTaskRow`(그리고 목표 지표 쌍) **네 함수 안에만** 둔다.
- * 쿼리마다 흩뿌리면 step 8의 스키마와 어긋났을 때 고칠 곳이 흩어진다.
+ * 컬럼 이름은 **매퍼 함수 안에만** 둔다 — `toTask`/`toTaskRow`/`toTaskPatchRow`,
+ * 목표 지표 쌍, `toMember`. 쿼리마다 흩뿌리면 스키마와 어긋났을 때 고칠 곳이 흩어진다.
  */
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
@@ -28,6 +28,7 @@ import {
   type UpsertOptions,
   type UpsertResult,
 } from '@/lib/store/task-repository';
+import type { MemberRecord, TaskPatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
 import type { ExtraValue, Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
 
@@ -123,6 +124,13 @@ interface EventRow {
   occurred_at: string;
 }
 
+interface MemberRow {
+  id: string;
+  team_id: string;
+  name: string;
+  auth_user_id: string | null;
+}
+
 const TASK_COLUMNS =
   'id,team_id,department_id,source_key,title,owner_member_id,owner_name_raw,co_owner_names,' +
   'status,approval_status,priority,risk_status,progress,assigned_at,due_at,next_action,' +
@@ -136,6 +144,8 @@ const GOAL_COLUMNS =
 
 const STAGE_COLUMNS =
   'id,task_id,seq,stage_key,stage_label,planned_date,actual_date,content,confirm_status,sla_days';
+
+const MEMBER_COLUMNS = 'id,team_id,name,auth_user_id';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -228,6 +238,35 @@ export function toTaskRow(
     source_sheet_tab: input.sourceSheetTab,
     source_row_index: input.sourceRowIndex,
     updated_at: options.updatedAt,
+  };
+}
+
+/**
+ * **부분 갱신용 행.** `toTaskRow`를 쓰지 않는 이유가 여기 전부다 — 그 함수는 *전체* 행을
+ * 만들므로 `update()`에 넘기면 주지 않은 컬럼이 통째로 `null`로 덮인다. 준 키만 담는다.
+ *
+ * `patch.progress`의 `null`(값을 지운다)과 미지정(안 건드린다)이 갈리므로 `!== undefined`로
+ * 본다. falsy 검사를 쓰면 `progress: 0`이 사라진다.
+ *
+ * `last_progress_at`은 담지 않는다 — 사람의 수정은 업로드가 아니다 (`TaskRepository` 주석).
+ */
+export function toTaskPatchRow(
+  patch: TaskPatch,
+  options: { updatedAt: string },
+): Partial<TaskWriteRow> & { updated_at: string } {
+  const row: Partial<TaskWriteRow> & { updated_at: string } = { updated_at: options.updatedAt };
+  if (patch.status !== undefined) row.status = patch.status;
+  if (patch.progress !== undefined) row.progress = patch.progress;
+  return row;
+}
+
+export function toMember(row: MemberRow): MemberRecord {
+  return {
+    id: row.id,
+    // `teams.id`가 곧 `TeamKey`다 (`0001_init.sql` 주석) — 매핑표를 따로 두지 않는다.
+    teamId: row.team_id as TeamKey,
+    name: row.name,
+    authUserId: row.auth_user_id,
   };
 }
 
@@ -624,6 +663,33 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
         })),
       );
       if (error) fail('task_events', 'insert', error);
+    },
+
+    async updateTask(id: string, patch: TaskPatch, updatedAt: string): Promise<Task | null> {
+      // `getTask`와 같은 이유로 모양부터 거른다 — uuid가 아닌 값을 그대로 보내면 Postgres가
+      // 타입 오류를 내고, 없는 id는 오류가 아니라 `null`이다. step 9의 `PATCH /api/tasks/[id]`는
+      // URL 경로에서 임의 문자열을 받는다.
+      if (!UUID_PATTERN.test(id)) return null;
+
+      const { data, error } = await client
+        .from('tasks')
+        .update(toTaskPatchRow(patch, { updatedAt }))
+        .eq('id', id)
+        .select(TASK_COLUMNS)
+        .maybeSingle();
+      // 0행은 「없는 id」이지 오류가 아니다. RLS가 걸린 클라이언트에서는 「권한 밖」도 여기다.
+      if (error) fail('tasks', 'update', error);
+      return data ? toTask(data as unknown as TaskRow) : null;
+    },
+
+    async listMembers(): Promise<MemberRecord[]> {
+      const { data, error } = await client
+        .from('members')
+        .select(MEMBER_COLUMNS)
+        .order('team_id')
+        .order('name');
+      if (error) fail('members', 'select', error);
+      return (data as unknown as MemberRow[]).map(toMember);
     },
 
     async getLastSyncedAt(): Promise<string | null> {

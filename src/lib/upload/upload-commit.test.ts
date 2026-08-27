@@ -264,6 +264,53 @@ describe('commitUpload', () => {
     expect(keys).toEqual(['card-a', 'vlog-a']);
   });
 
+  it('구성원이 있으면 upsertTasks가 id가 붙은 태스크를 받는다', async () => {
+    const { repo, uploads, uploadId } = await setup(
+      payloadOf({ tasks: [taskInput()], goalMetrics: [], teamKeys: ['edit'] }),
+    );
+    let received: readonly TaskUpsertInput[] = [];
+    // 「결과가 그렇더라」가 아니라 **「그 인자로 불렀다」**를 잰다 — 저장소가 조용히 무시해도 잡힌다
+    const spy: TaskRepository = {
+      ...repo,
+      async listMembers() {
+        return [{ id: 'm-1', teamId: 'edit' as const, name: '김편집', authUserId: null }];
+      },
+      async upsertTasks(tasks, options) {
+        received = tasks;
+        return repo.upsertTasks(tasks, options);
+      },
+    };
+
+    expectOk(await commitUpload({ repo: spy, uploads, readOnly: false }, uploadId, OCCURRED_AT));
+
+    expect(received.map((task) => task.ownerMemberId)).toEqual(['m-1']);
+    // 원문은 남는다 — 이름은 지우지도 바꾸지도 않는다
+    expect(received.map((task) => task.ownerNameRaw)).toEqual(['김편집']);
+  });
+
+  it('listMembers가 던지면 STORAGE_UNAVAILABLE이고 failed로 남는다', async () => {
+    const { repo, uploads, uploadId } = await setup();
+    const broken: TaskRepository = {
+      ...repo,
+      async listMembers() {
+        throw new Error('연결이 끊겼다');
+      },
+    };
+
+    const outcome = await commitUpload(
+      { repo: broken, uploads, readOnly: false },
+      uploadId,
+      OCCURRED_AT,
+    );
+
+    expect(outcome.ok === false && outcome.code).toBe('STORAGE_UNAVAILABLE');
+    const record = await uploads.get(uploadId);
+    expect(record?.status).toBe('failed');
+    expect(record?.parseResult).not.toBeNull();
+    // 담당자 연결만 조용히 건너뛰고 반영해 버리면 그 업무는 영영 `unknown_owner`다
+    expect(await repo.listTasks()).toEqual([]);
+  });
+
   it('summary에 업무명·담당자가 담기지 않는다', async () => {
     const { repo, uploads, uploadId } = await setup();
 

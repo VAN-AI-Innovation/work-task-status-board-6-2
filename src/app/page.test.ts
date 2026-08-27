@@ -9,11 +9,12 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { SessionOutcome } from '@/lib/auth/viewer-session';
 import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
 import { buildKpiStrip, type KpiTile, type TeamSummary } from '@/lib/domain/progress-stats';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 import { kstToday } from '@/lib/domain/kst-today';
-import { buildSemanticIndex } from '@/lib/domain/task-semantic';
+import { buildSemanticIndex, STATUS_OPTIONS } from '@/lib/domain/task-semantic';
 import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
 import { createMemoryUploadStore } from '@/lib/store/upload-record-store';
 import type { StorageHandle } from '@/lib/store/store-factory';
@@ -33,12 +34,24 @@ import {
 import { sortTasks } from '@/lib/view/task-sort';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { TaskResponse } from '@/types/api';
+import type { Viewer } from '@/types/auth';
 import type { TaskStage } from '@/types/task';
 
 let handle: StorageHandle;
+/**
+ * **세션은 테스트가 쥔다.** 진짜 `currentViewerContext()`는 `cookies()`와 환경변수를 만지는데
+ * (`lib/auth/request-viewer.ts`), 이 파일이 재려는 것은 「세션이 이러이러할 때 화면이 무엇을
+ * 말하는가」이지 쿠키 파싱이 아니다. 기본값은 지금까지와 같은 「로그인하지 않음」이라
+ * 기존 단언은 그대로 성립한다.
+ */
+let session: SessionOutcome;
 
 vi.mock('@/lib/store/store-factory', () => ({
   getStorage: async () => handle,
+}));
+
+vi.mock('@/lib/auth/request-viewer', () => ({
+  currentViewerContext: async () => ({ repo: handle.repo, session, base: handle }),
 }));
 
 const Home = (await import('./page')).default;
@@ -191,8 +204,30 @@ async function seedGoals(): Promise<void> {
   });
 }
 
+/** 로그인한 사람 하나. 갈래마다 필요한 칸만 덮어쓴다 */
+function viewer(overrides: Partial<Viewer> = {}): Viewer {
+  return {
+    userId: 'user-1',
+    email: 'admin@example.com',
+    role: 'admin',
+    teamId: null,
+    memberId: null,
+    ...overrides,
+  };
+}
+
+/** `PageShell`을 실제 props로 한 번 불러 상단 바가 무엇을 받는지 본다 (순수 함수다) */
+function topbarProps(tree: unknown): Record<string, unknown> | null {
+  const shell = findComponent(tree, 'PageShell');
+  if (shell === null) return null;
+
+  const rendered = (shell.type as (props: unknown) => unknown)(shell.props);
+  return (findComponent(rendered, 'AppTopbar')?.props ?? null) as Record<string, unknown> | null;
+}
+
 beforeEach(() => {
   handle = emptyHandle();
+  session = { status: 'anonymous' };
 });
 
 describe('/ — 빈 상태와 최소 화면 (X3)', () => {
@@ -781,5 +816,97 @@ describe('/ — 주간 브리핑 카드 (`UC-08` · 완료 기준 9)', () => {
       ?.note as string;
 
     expect(note).toContain('이력 조회');
+  });
+});
+
+
+/**
+ * T8이 더한 갈래들. 서버는 이미 막고 있고(`viewer-scope.ts`·RLS·`PATCH`), 여기서 재는 것은
+ * **화면이 그 사실을 옳게 말하는가**다.
+ */
+describe('/ — 로그인 상태 (T8 완료 기준 1·6)', () => {
+  it('세션이 없으면 역할 전환이 남는다 — 데모에서 `?as=`가 여전히 역할을 정한다', async () => {
+    await seed();
+
+    const topbar = topbarProps(await Home(props({ as: 'admin' })));
+    expect(topbar?.account).toBeNull();
+    expect(topbar?.showRoleSwitch).toBe(true);
+  });
+
+  it('로그인하면 계정이 상단 바에 실리고 역할 전환이 사라진다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer({ email: 'admin@van.test' }) };
+
+    const topbar = topbarProps(await Home(props()));
+    expect(topbar?.account).toEqual({ email: 'admin@van.test', role: 'admin' });
+    // 눌러도 역할이 바뀌지 않는 버튼은 사용자에게 고장이다 (`ADR-026`)
+    expect(topbar?.showRoleSwitch).toBe(false);
+  });
+
+  it('프로필 없는 계정도 계정이다 — 역할은 null이고 로그아웃 자리는 남는다', async () => {
+    await seed();
+    session = { status: 'no_profile', userId: 'user-9', email: 'ghost@van.test' };
+
+    expect(topbarProps(await Home(props()))?.account).toEqual({
+      email: 'ghost@van.test',
+      role: null,
+    });
+  });
+
+  it('`?as=`가 세션을 이기지 못한다 — URL은 사용자가 타이핑한 문자열이다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer({ role: 'member', memberId: 'm-1' }) };
+
+    const tree = await Home(props({ as: 'admin' }));
+    expect(findComponent(tree, 'PageShell')?.props?.role).toBe('member');
+  });
+});
+
+describe('/ — 담당자 미연결 (`PLAN.md` 결정 D)', () => {
+  it('계정이 담당자에 안 붙은 부원에게는 원인을 말하고 업로드로 보내지 않는다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer({ role: 'member', memberId: null }) };
+
+    const tree = await Home(props());
+    expect(findComponent(tree, 'EmptyState')?.props?.kind).toBe('unlinked-member');
+    // 시트를 올려도 그 사람의 업무는 여전히 보이지 않는다 — 필요한 것은 계정 연결이다
+    expect(findComponent(tree, 'SeedButton')).toBeNull();
+  });
+
+  it('로그인하지 않았으면 지금까지와 같은 빈 상태다 — 진입점 둘이 그대로 있다', async () => {
+    const tree = await Home(props());
+
+    expect(findComponent(tree, 'SeedButton')).not.toBeNull();
+    expect(textOf(tree)).toContain('아직 데이터가 없습니다');
+    // 이 갈래에는 `EmptyState`가 서지 않는다 — 진입점 둘이 붙은 블록을 페이지가 직접 쥔다
+    expect(findComponent(tree, 'EmptyState')).toBeNull();
+  });
+});
+
+describe('/ — 수정 폼 (`UC-16`)', () => {
+  it('로그인하지 않았으면 패널에 수정 폼이 없다', async () => {
+    await seed();
+    const id = await idOf('edit');
+
+    const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
+    expect(panel?.props?.canEdit).toBe(false);
+  });
+
+  it('범위 안의 업무에는 수정 폼이 뜬다 — 판정은 화면이 아니라 `taskInScope`가 한다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer() };
+    const id = await idOf('edit');
+
+    const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
+    expect(panel?.props?.canEdit).toBe(true);
+  });
+
+  it('상태 목록을 화면이 다시 적지 않는다 — `STATUS_SEMANTIC_MAP`에서 온다 (`ADR-009`)', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer() };
+    const id = await idOf('edit');
+
+    const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
+    expect(panel?.props?.statusOptions).toBe(STATUS_OPTIONS);
   });
 });

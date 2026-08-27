@@ -27,6 +27,7 @@
 
 import type { TaskRepository, UpsertOptions } from '@/lib/store/task-repository';
 import type { UploadRecordStore, UploadSummary } from '@/lib/store/upload-record-store';
+import { linkOwners } from '@/lib/upload/owner-link';
 import type { CommitPayload } from '@/lib/upload/upload-preview';
 
 export type CommitFailureCode =
@@ -88,7 +89,13 @@ async function applyPayload(
   payload: CommitPayload,
   options: UpsertOptions,
 ): Promise<UploadSummary> {
-  const taskResult = await repo.upsertTasks(payload.tasks, options);
+  // 담당자 이름 → 구성원 id. **`listMembers`가 던지면 삼키지 않는다** — 바깥 `try`가 그것을
+  // `STORAGE_UNAVAILABLE`로 접는다. 저장소가 죽었는데 연결만 조용히 건너뛰면 그 업로드는
+  // 영구히 `unknown_owner`인 채로 남고, 그 태스크들은 `member`에게 영영 보이지 않는다.
+  const members = await repo.listMembers();
+  const linked = linkOwners(payload.tasks, members);
+
+  const taskResult = await repo.upsertTasks(linked.tasks, options);
   const goalResult = await repo.upsertGoalMetrics(payload.goalMetrics, options);
 
   return {

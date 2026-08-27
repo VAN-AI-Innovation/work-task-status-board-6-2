@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  STATUS_OPTIONS,
   STATUS_SEMANTIC_MAP,
   buildSemanticIndex,
   collectUnregisteredEnumWarnings,
@@ -287,5 +288,16 @@ describe('STATUS_SEMANTIC_MAP', () => {
   it('값 10개가 semantic 9종을 덮는다', () => {
     expect(Object.keys(STATUS_SEMANTIC_MAP)).toHaveLength(10);
     expect(new Set(Object.values(STATUS_SEMANTIC_MAP)).size).toBe(9);
+  });
+
+  /*
+   * 드롭다운 목록이 표에서 **자라 나온 것**임을 못박는다. 손으로 적은 배열이면 시트 원문과
+   * 한 글자만 어긋나도 사용자가 고른 값이 조용히 미매핑되고, 그것을 잡는 테스트가 없다.
+   */
+  it('STATUS_OPTIONS가 표의 키를 순서 그대로 담는다', () => {
+    expect(STATUS_OPTIONS).toEqual(Object.keys(STATUS_SEMANTIC_MAP));
+    // 화면이 실제로 쓰는 폴백 표(`buildSemanticIndex(null)`)가 열 값을 전부 안다
+    const fallback = buildSemanticIndex(null);
+    expect(STATUS_OPTIONS.every((value) => toSemantic(value, fallback) !== null)).toBe(true);
   });
 });

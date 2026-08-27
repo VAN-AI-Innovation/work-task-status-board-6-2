@@ -10,6 +10,7 @@
 | `docx-headings.mjs` | `H8` — mammoth가 `.docx`의 heading을 `h1~h3`으로 인식하는가 (T1) |
 | `sheet-metrics.mjs` | `A7`·`S2` — 시트 `.xlsx`의 크기·시트 수·셀 수 (T1) |
 | `assignment-xlsx.mjs` | T7 완료 기준 4·5 — **내려받은** 배정표에 드롭다운이 붙었는가, 수식 셀이 0개인가 |
+| `rls-check.mjs` | T8 완료 기준 5 — 세 계정으로 **실제 로그인해** anon 키로 조회했을 때 역할마다 보이는 건수가 다른가 |
 
 `assignment-xlsx.mjs`는 앞의 둘과 성격이 다르다 — 실업무 원본이 아니라 **라우트가 방금
 내려보낸 파일**을 받는다. 단위 테스트는 `buildAssignmentWorkbook`의 출력 버퍼를 보지만
@@ -21,6 +22,16 @@
 curl -s -X POST localhost:3000/api/export/assignment \
   -H 'Content-Type: application/json' --data-binary @rows.json -o /tmp/a.xlsx
 node scripts/smoke/assignment-xlsx.mjs /tmp/a.xlsx
+```
+
+`rls-check.mjs`도 실업무 원본을 받지 않는다 — **원격 저장소의 상태**를 본다. `anon` 키로
+세 계정에 로그인해 보이는 건수를 재고, `service_role`은 기대값을 세는 용도로만 쓴다.
+두 키가 같으면 스크립트가 스스로 죽는다 — `service_role`로 재면 RLS가 우회돼 아무것도
+재지 않으면서 전부 통과하기 때문이다. 계정은 `npm run seed:auth`가 먼저 만들어야 한다.
+
+```bash
+npm run seed:auth                                          # 계정·구성원·시드 (멱등)
+node --env-file=.env.local scripts/smoke/rls-check.mjs     # 10개 항목
 ```
 
 ## 입력 파일 배치 규약

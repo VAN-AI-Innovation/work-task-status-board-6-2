@@ -37,6 +37,16 @@ export const STATUS_SEMANTIC_MAP: Readonly<Record<string, TaskSemantic>> = {
   취소: 'cancelled',
 };
 
+/**
+ * 위 표의 **키를 순서 그대로** 뽑은 것. 상태 드롭다운(배정표 xlsx · 사이드 패널의 수정 폼)이
+ * 고르게 하는 값이 이 목록이다.
+ *
+ * 목록을 화면에 다시 적지 않기 위해 있다 (`ADR-009`). 한 글자만 달라도 — `게시·이관 대기`의
+ * 가운뎃점이 흔하다 — 사용자가 고른 값이 조용히 미매핑되고, 그 화면은 상태를 고치는 기능이
+ * 아니라 상태를 망가뜨리는 기능이 된다.
+ */
+export const STATUS_OPTIONS: readonly string[] = Object.keys(STATUS_SEMANTIC_MAP);
+
 /** 진행형이 아닌 semantic. 완료율 모수·장기 미갱신 판정이 이 셋을 갈라 쓴다 */
 const INACTIVE_SEMANTICS: readonly TaskSemantic[] = ['done', 'hold', 'cancelled'];
 

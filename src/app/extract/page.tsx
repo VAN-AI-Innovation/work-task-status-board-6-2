@@ -2,7 +2,7 @@
  * 독스 → 배정표 화면. `PLAN.md`「독스 추출 루프」에서 **고리가 시작되는** 자리다 —
  * 여기서 나온 xlsx를 사람이 채워 `/upload`에 올리면 현황판에 반영된다 (`UC-05`→`UC-06`).
  *
- * 서버 컴포넌트가 하는 일은 `/upload`와 같다. `getStorage()`를 **직접** 부르고
+ * 서버 컴포넌트가 하는 일은 `/upload`와 같다. `currentViewerContext()`를 **직접** 부르고
  * (자기 API를 `fetch`하면 불필요한 HTTP 왕복이다 — `ADR-007`) 배너·「마지막 반영」·역할을
  * `PageShell`에 넘긴다.
  */
@@ -10,28 +10,42 @@
 import { DocExtractPanel } from '@/components/extract/doc-extract-panel';
 import { PageShell } from '@/components/shell/page-shell';
 import { resolveViewerRole } from '@/lib/api/viewer-role';
+import { currentViewerContext } from '@/lib/auth/request-viewer';
+import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
-import { getStorage } from '@/lib/store/store-factory';
 import { parseDashboardQuery } from '@/lib/view/dashboard-query';
 import { describeSync } from '@/lib/view/sync-freshness';
 
 /**
- * **정적 프리렌더를 막는다.** `getStorage()`의 결과(연결 성공/실패)는 빌드 시각이 아니라
+ * **정적 프리렌더를 막는다.** 저장소 연결의 결과(연결 성공/실패)는 빌드 시각이 아니라
  * 요청 시각의 사실이다. 프리렌더하면 배너가 빌드 때 상태로 굳어, 저장소가 죽어도 화면은
  * 「정상」이라고 말한다 — `ADR-005`가 막으려는 조용한 오해가 그대로 생긴다.
  */
 export const dynamic = 'force-dynamic';
 
 export default async function ExtractPage() {
-  const { repo, mode, driver } = await getStorage();
+  const view = await currentViewerContext();
+  const { mode, driver } = view.base;
 
-  const lastSyncedAt = await repo.getLastSyncedAt();
+  const lastSyncedAt = await view.repo.getLastSyncedAt();
   const freshness = describeSync(lastSyncedAt, kstToday(new Date()));
   const query = parseDashboardQuery(new URLSearchParams());
-  const role = resolveViewerRole(query.as, { nodeEnv: process.env.NODE_ENV, mode });
+  const role = resolveViewerRole(
+    query.as,
+    { nodeEnv: process.env.NODE_ENV, mode },
+    view.session
+  );
 
   return (
-    <PageShell mode={mode} driver={driver} freshness={freshness} role={role} query={query}>
+    <PageShell
+      mode={mode}
+      driver={driver}
+      freshness={freshness}
+      role={role}
+      query={query}
+      /* 로그인했으면 상단 바가 역할 전환 대신 계정을 말한다 (`ADR-026`) */
+      account={toAccount(view.session)}
+    >
       <h1 className="text-brand text-xl font-semibold">독스 → 배정표</h1>
       <p className="text-ink-body mt-1 text-sm">
         워크로드 문서(.docx)를 올리면 드롭다운이 붙은 업무 배정표 xlsx를 만들어 드립니다.

@@ -2,7 +2,7 @@
  * 부서별 탭 (`/teams/[teamSlug]`). 과제 원문의 「각 부서마다 new tabs」를 라우트로 충족한다.
  *
  * **새로 만든 것은 슬러그 변환 하나뿐이다.** KPI·상태 분포·필터 바·업무 표는 전부 대시보드와 같은
- * 컴포넌트이고, 데이터도 같은 경로(`getStorage` → `buildReadContext` → `lib/domain`)로 읽는다.
+ * 컴포넌트이고, 데이터도 같은 경로(`currentViewerContext` → `buildReadContext` → `lib/domain`)로 읽는다.
  * 팀 화면 전용 컴포넌트를 만들면 같은 숫자를 두 곳에서 세게 되고 그때 둘이 갈라진다.
  *
  * ## 경로가 `?team=`을 이긴다
@@ -44,10 +44,13 @@ import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
 import { TaskTable } from '@/components/tasks/task-table';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
 import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
+import { currentViewerContext } from '@/lib/auth/request-viewer';
+import { toAccount } from '@/lib/auth/viewer-session';
 import { collectAlerts } from '@/lib/domain/alert-rules';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip } from '@/lib/domain/progress-stats';
-import { getStorage } from '@/lib/store/store-factory';
+import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
+import { scopeTasks } from '@/lib/domain/viewer-scope';
 import { groupAlerts } from '@/lib/view/alert-groups';
 import { buildStatusBreakdown, toStatusSeries } from '@/lib/view/chart-series';
 import {
@@ -58,6 +61,7 @@ import {
   parseDashboardQuery,
   toURLSearchParams,
 } from '@/lib/view/dashboard-query';
+import { emptyReason } from '@/lib/view/empty-reason';
 import { toGoalRows } from '@/lib/view/goal-view';
 import {
   COMPACT_KPI_KEYS,
@@ -79,7 +83,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   const teamKey = toTeamKey(teamSlug);
   if (teamKey === null) notFound();
 
-  const storage = await getStorage();
+  const view = await currentViewerContext();
   const sp = toURLSearchParams(await searchParams);
 
   /* 이 화면의 링크가 돌아올 자리. `teamSlug` 원문이 아니라 정규화한 슬러그를 쓴다 */
@@ -88,7 +92,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   const query = { ...parseDashboardQuery(sp), team: [] };
 
   const parsed = parseTaskQuery(sp);
-  const read = await buildReadContext(storage, new Date(), {
+  const read = await buildReadContext(view, new Date(), {
     as: sp.get('as'),
     ...parsed,
     // 경로가 이긴다 (머리말)
@@ -101,6 +105,13 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   const visible = sortTasks(applyDisplayFilter(listed, query), query.sort);
   const activeFilters = countActiveFilters(query);
 
+  /* `/`와 같은 두 값이다 — 고르는 규칙도 판정도 화면이 아니라 `lib`이 진다 */
+  const reason = emptyReason(read.viewer, activeFilters);
+  const editableIds =
+    read.viewer === null
+      ? new Set<string>()
+      : new Set(scopeTasks(read.tasks, read.viewer).map((task) => task.id));
+
   /* `/`와 같은 규칙이다 — 이름은 화면이 자기 목록에서 붙이고, 못 붙이는 항목은 빼낸다 (`S6`) */
   const titles = new Map(visible.map((task) => [task.id, task.title ?? task.sourceKey]));
   const alertGroups = groupAlerts(
@@ -109,7 +120,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   );
 
   // 성과 행에도 담당자·채널이 섞여 들어온다. `toGoalResponse`를 거른다 (`S6`)
-  const goalStats = summarizeGoals(await storage.repo.listGoalMetrics({ teamKeys: [teamKey] }));
+  const goalStats = summarizeGoals(await view.repo.listGoalMetrics({ teamKeys: [teamKey] }));
   const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
 
   /** `/`와 같다 — `member`가 자기 업무를 고르지 않은 상태. 이름을 대신 채워 넣지 않는다 */
@@ -197,6 +208,8 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
                 role={read.role}
                 query={query}
                 pathname={pathname}
+                editableIds={editableIds}
+                statusOptions={STATUS_OPTIONS}
               />
             </div>
             {visible.length === 0 ? (
@@ -204,13 +217,17 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
                * 두 사실을 가른다 — 걸린 필터가 있으면 「조건에 맞는 업무가 없습니다」와
                * 초기화 링크이고, 없으면 이 팀에 업무가 없는 것이라 초기화할 것도 없다 (`X3`).
                */
-              activeFilters === 0 ? (
-                <EmptyState kind="no-data" />
-              ) : (
+              /*
+               * 세 번째 갈래가 붙었다 — 로그인한 부원의 계정이 담당자에 이어지지 않으면
+               * 필터를 지워도 결과가 같으므로 초기화 링크를 주지 않는다 (`emptyReason`).
+               */
+              reason === 'no-match' ? (
                 <EmptyState
                   kind="no-match"
                   resetHref={buildHref(pathname, query, FILTER_RESET_PATCH)}
                 />
+              ) : (
+                <EmptyState kind={reason} />
               )
             ) : (
               <div className="mt-4">
@@ -240,6 +257,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
       freshness={freshness}
       role={read.role}
       query={query}
+      account={toAccount(view.session)}
     >
       <h1 className="text-brand text-xl font-semibold">{teamLabel(teamKey)}</h1>
 

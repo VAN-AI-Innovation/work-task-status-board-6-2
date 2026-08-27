@@ -3,8 +3,8 @@ export const runtime = 'nodejs';
 
 import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { buildReadContext } from '@/lib/api/read-context';
+import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
-import { getStorage } from '@/lib/store/store-factory';
 
 /**
  * 대표·실장용 주간 보고 (`UC-08`, 과제 요구 5번).
@@ -23,8 +23,8 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
 
   try {
-    const storage = await getStorage();
-    const read = await buildReadContext(storage, new Date(), {
+    const view = await currentViewerContext();
+    const read = await buildReadContext(view, new Date(), {
       as: url.searchParams.get('as'),
       filter: {},
     });
@@ -33,7 +33,7 @@ export async function GET(request: Request): Promise<Response> {
       markdown: buildWeeklyReport({
         tasks: read.tasks,
         stages: read.stages,
-        goals: await storage.repo.listGoalMetrics(),
+        goals: await view.repo.listGoalMetrics(),
         events: [],
         ctx: read.ctx,
       }),

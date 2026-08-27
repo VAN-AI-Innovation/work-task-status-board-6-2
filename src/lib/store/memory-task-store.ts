@@ -24,6 +24,7 @@ import {
   type UpsertOptions,
   type UpsertResult,
 } from '@/lib/store/task-repository';
+import type { MemberRecord, TaskPatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
 import type { Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
 
@@ -48,10 +49,13 @@ export function createMemoryTaskStore(seed?: {
   tasks?: readonly Task[];
   stages?: readonly TaskStage[];
   goalMetrics?: readonly GoalMetric[];
+  members?: readonly MemberRecord[];
 }): TaskRepository & { clear(): void } {
   let tasks: Task[] = clone([...(seed?.tasks ?? [])]);
   let stages: TaskStage[] = clone([...(seed?.stages ?? [])]);
   let goalMetrics: GoalMetric[] = clone([...(seed?.goalMetrics ?? [])]);
+  // 구성원은 시드로만 들어온다 — 만드는 메서드가 계약에 없다 (시드 스크립트가 채운다).
+  let members: MemberRecord[] = clone([...(seed?.members ?? [])]);
   let events: TaskEvent[] = [];
   let lastSyncedAt: string | null = null;
 
@@ -209,6 +213,38 @@ export function createMemoryTaskStore(seed?: {
       return lastSyncedAt;
     },
 
+    // 인자가 둘뿐인 것은 오타가 아니다 — 계약의 셋째 인자(`updatedAt`)를 이 구현이
+    // 일부러 받지 않는다. 이유는 아래 주석에 있다.
+    async updateTask(id: string, patch: TaskPatch): Promise<Task | null> {
+      const existing = tasks.find((task) => task.id === id);
+      if (!existing) return null;
+
+      // `patch`에 **있는 키만** 옮긴다. `undefined`까지 대입하면 「안 줬다」가 「지워라」가
+      // 되어, `progress: null`(빈 셀)과 `progress` 미지정의 구분이 사라진다.
+      const merged: Task = clone(existing);
+      if (patch.status !== undefined) merged.status = patch.status;
+      if (patch.progress !== undefined) merged.progress = patch.progress;
+
+      // `lastProgressAt`은 손대지 않는다 — 사람이 화면에서 고친 것은 업로드가 아니다.
+      //
+      // 계약의 `updatedAt`은 여기서 쓸 곳이 없다. `Task`에 행 단위 수정 시각 필드가 없고,
+      // 유일한 후보인 `lastSyncedAt`은 「마지막으로 **업로드가** 돌아간 시각」이라(계약 17번)
+      // 사람의 수정으로 앞당기면 「마지막 반영: N일 전」이 데이터가 낡은 사실을 감춘다
+      // (`ADR-001`이 드러내기로 한 바로 그 약점이다).
+      //
+      // ⚠ supabase 구현은 같은 값을 `tasks.updated_at`에 쓴다(행 감사 컬럼이 `not null`이라
+      // 실제 변경을 반영해야 한다). 그쪽의 `getLastSyncedAt`이 `max(updated_at)`을 쓰므로
+      // **PATCH가 「마지막 반영」을 앞당기는 갈래가 supabase에만 생긴다.** 계약이 재지 않는
+      // 자리다 — 「PATCH가 반영인가」는 제품 결정이고, 그것을 처음 밟는 step 9가 정한다.
+
+      tasks[tasks.indexOf(existing)] = merged;
+      return clone(merged);
+    },
+
+    async listMembers(): Promise<MemberRecord[]> {
+      return clone(members);
+    },
+
     /**
      * 스냅샷 → 실행 → 실패하면 교체. **메모리 드라이버의 원자성이 이것이다** (`X4`).
      *
@@ -221,6 +257,7 @@ export function createMemoryTaskStore(seed?: {
         tasks: clone(tasks),
         stages: clone(stages),
         goalMetrics: clone(goalMetrics),
+        members: clone(members),
         events: clone(events),
         lastSyncedAt,
       };
@@ -230,6 +267,7 @@ export function createMemoryTaskStore(seed?: {
         tasks = snapshot.tasks;
         stages = snapshot.stages;
         goalMetrics = snapshot.goalMetrics;
+        members = snapshot.members;
         events = snapshot.events;
         lastSyncedAt = snapshot.lastSyncedAt;
         throw error;
@@ -240,6 +278,7 @@ export function createMemoryTaskStore(seed?: {
       tasks = [];
       stages = [];
       goalMetrics = [];
+      members = [];
       events = [];
       lastSyncedAt = null;
     },

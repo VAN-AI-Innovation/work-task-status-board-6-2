@@ -10,10 +10,12 @@
     "start": "next start",
     "lint": "eslint",
     "seed:build": "vite-node -c vitest.config.ts scripts/fixtures/build-seed-tasks.ts",
+    "seed:auth": "vite-node -c vitest.config.ts scripts/db/seed-auth.ts",
     "fixture:docx": "node scripts/fixtures/build-sample-workload-docx.mjs",
     "test": "vitest run"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.112.3",
     "chart.js": "^4.5.1",
     "exceljs": "4.4.0",

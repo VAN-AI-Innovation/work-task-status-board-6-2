@@ -10,6 +10,7 @@
  * 그 판단이 `lastProgressAt`을 움직이고, 그것이 「장기 미갱신」 알림의 근거가 된다.
  */
 
+import type { MemberRecord, TaskPatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
 import type { Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
 
@@ -80,6 +81,33 @@ export interface TaskRepository {
   ): Promise<GoalMetricUpsertResult>;
   recordEvents(events: readonly Omit<TaskEvent, 'id'>[]): Promise<void>;
   getLastSyncedAt(): Promise<string | null>;
+
+  /**
+   * 단건 수정 (`UC-16`, T8 step 9의 `PATCH /api/tasks/[id]`). `upsertTasks`와 달리
+   * **준 필드만** 바꾸고 나머지는 손대지 않는다 — 그쪽은 「시트 한 벌을 통째로 맞춘다」는
+   * 뜻이라, 한 사람이 자기 진행률만 고치는 경로로 쓰면 나머지 필드를 전부 실어 보내야 하고
+   * 그 값들이 시트 원문을 덮는다.
+   *
+   * 없는 id면 `null`이다 (권한 밖 행도 마찬가지 — RLS가 걸린 클라이언트에서는 후자가
+   * 실제로 일어난다). **`updatedAt`을 주입받는다** — 저장소는 시간을 읽지 않는다.
+   *
+   * 하지 않는 것 둘:
+   * - `lastProgressAt`을 **건드리지 않는다.** 그 값은 「업로드가 실제로 값을 바꿨다」는
+   *   뜻이라(`0001_init.sql` 주석), 사람이 화면에서 고친 것을 섞으면 「장기 미갱신」 판정이
+   *   사람의 클릭 한 번으로 리셋된다.
+   * - `task_events`를 남기지 않는다. 이벤트는 **업로드 diff의 산물**이고 그래서
+   *   `TASK_DIFF_FIELDS`도 고치지 않는다 (그 목록은 업로드 변경 감지용이다).
+   *
+   * **권한 판정을 하지 않는다.** 「본인 건인가」는 `lib/domain/viewer-scope.ts`가 지고
+   * DB 쪽은 RLS가 진다. 저장소까지 세 곳이 되면 하나만 고쳐지는 날이 온다.
+   */
+  updateTask(id: string, patch: TaskPatch, updatedAt: string): Promise<Task | null>;
+
+  /**
+   * 구성원 전량. 시트의 담당자 이름을 계정에 잇는 해석이 볼 표다.
+   * 수백 행 규모이고 조회는 업로드 확정 때 한 번이라 필터를 두지 않는다.
+   */
+  listMembers(): Promise<MemberRecord[]>;
 
   /**
    * 실패하면 호출 전 상태로 되돌린다. **메모리 드라이버의 원자성이 이것이다** (`X4`).

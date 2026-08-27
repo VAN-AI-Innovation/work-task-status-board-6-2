@@ -30,6 +30,7 @@ const CODES_FROM_ARCHITECTURE = [
   'TASK_NOT_FOUND',
   'STORAGE_READONLY',
   'STORAGE_UNAVAILABLE',
+  'UNAUTHENTICATED',
   'FORBIDDEN',
   'VALIDATION_FAILED',
 ] as const;
@@ -39,6 +40,15 @@ const CODES_FROM_ARCHITECTURE = [
  * 이 유닛 테스트에 딸려 오고, 두 표가 함께 틀려도 테스트는 통과한다. 실제로 라우트가 그
  * 문장을 그대로 흘려보내는지는 `uploads/doc/route.test.ts`가 진짜 파이프라인으로 잰다.
  */
+/**
+ * `PLAN.md`「T8 착수 시 확정」 결정 F의 표를 **손으로 옮겨 적은 것**이다. 문구가 문서와
+ * 갈리면 여기서 잡힌다 — 코드에서 파생하면 한 글자 바뀌어도 테스트가 따라간다.
+ */
+const AUTH_MESSAGES = {
+  UNAUTHENTICATED: '로그인이 필요합니다.',
+  FORBIDDEN: '이 작업을 수행할 권한이 없습니다.',
+} as const;
+
 const DOC_MESSAGES = {
   DOCUMENT_CORRUPT: '문서를 읽을 수 없습니다. 파일이 손상되었거나 지원하지 않는 형식입니다.',
   NO_OUTLINE_TASK:
@@ -48,6 +58,7 @@ const DOC_MESSAGES = {
 /** step 5에서 확정한 대응표. 아래 둘은 step 8이 더한 독스 경로다 (`PLAN.md` 결정 D) */
 const EXPECTED_STATUS: Record<(typeof CODES_FROM_ARCHITECTURE)[number], number> = {
   VALIDATION_FAILED: 400,
+  UNAUTHENTICATED: 401,
   FORBIDDEN: 403,
   UPLOAD_NOT_FOUND: 404,
   UPLOAD_ALREADY_COMMITTED: 409,
@@ -66,7 +77,7 @@ const EXPECTED_STATUS: Record<(typeof CODES_FROM_ARCHITECTURE)[number], number> 
 };
 
 describe('API_ERROR_CODES', () => {
-  it('ARCHITECTURE.md의 코드 16개와 정확히 일치한다 (빠짐도 남음도 없다)', () => {
+  it('ARCHITECTURE.md의 코드 17개와 정확히 일치한다 (빠짐도 남음도 없다)', () => {
     expect([...API_ERROR_CODES].sort()).toEqual([...CODES_FROM_ARCHITECTURE].sort());
   });
 
@@ -107,6 +118,19 @@ describe('API_ERROR_MESSAGES', () => {
       expect(message).not.toContain('/src/');
       expect(message).not.toContain('Error:');
     }
+  });
+});
+
+describe('인증 코드 2개 (PLAN.md T8 결정 F)', () => {
+  it('문구가 문서의 표와 글자까지 같다', () => {
+    expect(API_ERROR_MESSAGES.UNAUTHENTICATED).toBe(AUTH_MESSAGES.UNAUTHENTICATED);
+    expect(API_ERROR_MESSAGES.FORBIDDEN).toBe(AUTH_MESSAGES.FORBIDDEN);
+  });
+
+  it('401과 403을 뭉개지 않는다 — 사용자가 할 일이 정반대다', () => {
+    expect(API_ERROR_STATUS.UNAUTHENTICATED).toBe(401);
+    expect(API_ERROR_STATUS.FORBIDDEN).toBe(403);
+    expect(API_ERROR_MESSAGES.UNAUTHENTICATED).not.toBe(API_ERROR_MESSAGES.FORBIDDEN);
   });
 });
 

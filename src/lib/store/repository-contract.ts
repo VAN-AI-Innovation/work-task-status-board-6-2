@@ -20,6 +20,7 @@ import {
   type TaskRepository,
   type TaskUpsertInput,
 } from '@/lib/store/task-repository';
+import type { TaskPatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
 import type { Task, TaskStage } from '@/types/task';
 
@@ -88,6 +89,13 @@ const UPLOAD_1 = '11111111-1111-4111-8111-111111111111';
 const UPLOAD_2 = '22222222-2222-4222-8222-222222222222';
 
 /**
+ * 계약 22번 전용. **모양이 유효한 uuid인데 존재하지 않는** id다 — 모양이 깨진 문자열이면
+ * supabase 구현이 uuid 형식 검사에서 먼저 걸러 DB 경로를 밟지 않고, 그러면 "없는 행에
+ * 무엇을 하는가"를 재지 못한다.
+ */
+const MISSING_TASK_ID = '99999999-9999-4999-8999-999999999999';
+
+/**
  * supabase 픽스처가 미리 만들어 둬야 하는 `uploads` 행의 id (외래키 대상).
  * 실행마다 같아도 된다 — 계약은 이 행을 **지우지 않고** 참조만 한다.
  */
@@ -141,8 +149,17 @@ export function scopeToContractRows(repo: TaskRepository): TaskRepository {
       return at !== null && at >= CONTRACT_EPOCH ? at : null;
     },
 
+    async updateTask(id: string, patch: TaskPatch, updatedAt: string): Promise<Task | null> {
+      // `getTask`와 같은 결이다 — 계약 행이 아니면 계약에게는 없는 행이다.
+      const task = await repo.updateTask(id, patch, updatedAt);
+      return task !== null && isContractTask(task) ? task : null;
+    },
+
     upsertTasks: (tasks, options) => repo.upsertTasks(tasks, options),
     listStages: (taskIds) => repo.listStages(taskIds),
+    // 계약이 재지 않는다(구성원을 만드는 쓰기 메서드가 없다 — 두 구현의 각자 테스트가 잰다).
+    // 그래도 위임은 해 둔다: 껍데기가 `TaskRepository`를 만족하지 못하면 타입이 깨진다.
+    listMembers: () => repo.listMembers(),
     upsertGoalMetrics: (metrics, options) => repo.upsertGoalMetrics(metrics, options),
     recordEvents: (events) => repo.recordEvents(events),
   };
@@ -672,6 +689,62 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
 
       expect((await repo.listTasks()).map((task) => task.sourceKey)).toEqual(before);
       expect(await repo.getLastSyncedAt()).toBe(FIRST_UPLOAD_AT);
+    },
+  },
+  {
+    /**
+     * `upsertTasks`와의 차이가 이 케이스의 전부다. 그쪽은 「시트 한 벌을 통째로 맞춘다」라
+     * 주지 않은 필드가 `null`로 덮이고, 이쪽은 **준 필드만** 바꾼다 (`UC-16`).
+     */
+    name: '21. updateTask는 준 필드만 바꾸고 나머지를 보존한다',
+    async run(repo) {
+      await repo.upsertTasks([{ ...SEED_A, extras: { 채널: '인스타' }, note: '원본 비고' }], {
+        occurredAt: FIRST_UPLOAD_AT,
+      });
+      const before = findBySourceKey(await repo.listTasks(), KEY_A);
+
+      const patched = await repo.updateTask(
+        before.id,
+        { status: '검토 요청', progress: 65 },
+        SECOND_UPLOAD_AT,
+      );
+      expect(patched).not.toBeNull();
+      expect(patched?.status).toBe('검토 요청');
+      expect(patched?.progress).toBe(65);
+
+      // 준 것 말고는 한 칸도 움직이지 않는다.
+      expect(patched?.title).toBe(before.title);
+      expect(patched?.dueAt).toBe(before.dueAt);
+      expect(patched?.sourceKey).toBe(before.sourceKey);
+      expect(patched?.note).toBe('원본 비고');
+      expect(patched?.extras).toEqual({ 채널: '인스타' });
+      expect(patched?.raw).toEqual(before.raw);
+      // 사람이 화면에서 고친 것은 「업로드가 값을 바꿨다」가 아니다 — 「장기 미갱신」 판정이
+      // 클릭 한 번으로 리셋되면 그 알림이 무의미해진다.
+      expect(patched?.lastProgressAt).toBe(before.lastProgressAt);
+
+      // 돌려준 객체만 바뀐 것이 아니라 실제로 저장됐다.
+      expect(await repo.getTask(before.id)).toEqual(patched);
+
+      // `progress: null`은 「값을 지운다」이고 `progress` 미지정은 「안 건드린다」이다.
+      // 빈 셀과 0을 구분한다는 약속(`0001_init.sql`)이 여기서도 성립해야 한다.
+      const cleared = await repo.updateTask(before.id, { progress: null }, SECOND_UPLOAD_AT);
+      expect(cleared?.progress).toBeNull();
+      expect(cleared?.status).toBe('검토 요청');
+
+      // 빈 patch는 아무것도 바꾸지 않고 그 행을 그대로 돌려준다.
+      expect(await repo.updateTask(before.id, {}, SECOND_UPLOAD_AT)).toEqual(cleared);
+    },
+  },
+  {
+    name: '22. updateTask는 없는 id에 null을 돌려주고 저장소를 바꾸지 않는다',
+    async run(repo) {
+      await repo.upsertTasks([SEED_A, SEED_B], { occurredAt: FIRST_UPLOAD_AT });
+      const before = await repo.listTasks();
+
+      expect(await repo.updateTask(MISSING_TASK_ID, { status: '완료' }, SECOND_UPLOAD_AT)).toBeNull();
+
+      expect(await repo.listTasks()).toEqual(before);
     },
   },
 ];
