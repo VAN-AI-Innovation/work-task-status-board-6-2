@@ -315,7 +315,7 @@ describe('저장소 스캔', () => {
     expect(report).toBe('');
   });
 
-  it('출처 검사가 걸린 POST 라우트가 일곱이다 — 규칙이 대상을 실제로 보고 있다', () => {
+  it('출처 검사가 걸린 POST 라우트가 여덟이다 — 규칙이 대상을 실제로 보고 있다', () => {
     const posts = scanTargets().filter(
       (file) =>
         file.path.endsWith('/route.ts') &&
@@ -330,6 +330,7 @@ describe('저장소 스캔', () => {
       'src/app/api/auth/logout/route.ts',
       'src/app/api/auth/rejoin/route.ts',
       'src/app/api/auth/signup/route.ts',
+      'src/app/api/members/remove/route.ts',
       'src/app/api/members/role/route.ts',
       'src/app/api/team/requests/approve/route.ts',
       'src/app/api/team/requests/reject/route.ts',

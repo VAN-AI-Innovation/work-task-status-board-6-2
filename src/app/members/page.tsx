@@ -26,16 +26,19 @@
 
 import { notFound, redirect } from 'next/navigation';
 
-import { MemberTreeView } from '@/components/members/member-tree-view';
+import { MemberPanel } from '@/components/members/member-panel';
+import { MemberTreeView, keyOf } from '@/components/members/member-tree-view';
 import { PageShell } from '@/components/shell/page-shell';
 import { toMemberDirectoryResponse } from '@/lib/api/member-role-schema';
+import { buildReadContext } from '@/lib/api/read-context';
 import { resolveViewerRole } from '@/lib/api/viewer-role';
 import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentSessionClient, currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
 import { canManageMembers } from '@/lib/domain/member-admin';
-import { buildMemberTree } from '@/lib/domain/member-tree';
+import { buildMemberTree, type MemberNode } from '@/lib/domain/member-tree';
+import { openTasksOf, summarizeMemberWorkload } from '@/lib/domain/member-workload';
 import { parseDashboardQuery, toURLSearchParams } from '@/lib/view/dashboard-query';
 import { describeSync } from '@/lib/view/sync-freshness';
 
@@ -81,6 +84,46 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
     members = toMemberDirectoryResponse(data).members;
   }
 
+  const tree = buildMemberTree(members);
+
+  /*
+   * `?member=`가 곧 패널의 열림이다 — 업무 표의 `?task=`와 같은 방식이라 뒤로 가기가
+   * 패널을 닫고, 링크를 복사하면 같은 사람이 열린다 (`task-panel-slot.tsx`).
+   *
+   * 키는 트리가 쓰는 것과 **같은 함수**에서 온다. 여기서 따로 지으면 카드가 만든 주소와
+   * 페이지가 찾는 키가 갈라져, 눌러도 아무것도 열리지 않는 날이 온다.
+   */
+  const selectedKey = sp.get('member');
+  const everyone: MemberNode[] = [
+    ...tree.unassigned,
+    ...tree.teams.flatMap((branch) => [...branch.leads, ...branch.members]),
+  ];
+  const selected = everyone.find((node) => keyOf(node) === selectedKey) ?? null;
+
+  /** `?member=`만 갈아끼우고 나머지 쿼리는 그대로 들고 간다. `null`이면 닫는 주소다 */
+  const hrefFor = (key: string | null): string => {
+    const next = new URLSearchParams(sp);
+    if (key === null) next.delete('member');
+    else next.set('member', key);
+    const qs = next.toString();
+    return qs === '' ? PATH : `${PATH}?${qs}`;
+  };
+
+  /*
+   * **고른 사람이 있을 때만 업무를 읽는다.** 패널이 닫혀 있는데 전사 업무를 끌어오면
+   * 이 화면이 조직도를 그리는 값보다 훨씬 무거운 조회를 늘 하게 된다.
+   *
+   * 조회 라우트와 **같은 함수**를 쓴다 — 화면이 따로 세기 시작하면 같은 낱말이 두 수를 갖는다
+   * (`page.tsx` 머리말 · `ADR-006`).
+   */
+  let summary = null;
+  let openTasks: Awaited<ReturnType<typeof buildReadContext>>['tasks'] = [];
+  if (selected !== null) {
+    const read = await buildReadContext(view, new Date(), { as: sp.get('as'), filter: {} });
+    summary = summarizeMemberWorkload(read.tasks, read.ctx, selected.memberId, selected.teamId);
+    openTasks = openTasksOf(read.tasks, read.ctx, selected.memberId);
+  }
+
   const freshness = describeSync(await view.repo.getLastSyncedAt(), kstToday(new Date()));
 
   return (
@@ -99,8 +142,17 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
       </p>
 
       <div className="mt-6">
-        <MemberTreeView tree={buildMemberTree(members)} />
+        <MemberTreeView tree={tree} selectedKey={selectedKey} hrefFor={hrefFor} />
       </div>
+
+      {selected !== null && (
+        <MemberPanel
+          node={selected}
+          summary={summary}
+          openTasks={openTasks}
+          closeHref={hrefFor(null)}
+        />
+      )}
     </PageShell>
   );
 }

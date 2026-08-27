@@ -53,6 +53,18 @@ export const roleChangeSchema = z
 export type RoleChangeInput = z.infer<typeof roleChangeSchema>;
 
 /**
+ * 내보내기 (`0006`의 `remove_member`). **대상 하나뿐이다** — 「어떻게 내보낼지」를 고를
+ * 자리가 없다. 옵션을 두면 그중 하나는 명부 행을 지우는 길이 되고, 그 길은
+ * `tasks.owner_member_id`를 끊어 업무를 담당자 미상으로 만든다 (`0006` 머리말).
+ *
+ * `.strict()`라 `role`·`teamId` 같은 키가 섞여 오면 400이다. 내보내기와 승격이 한 요청에
+ * 섞이면 무엇이 먼저 일어났는지 화면이 설명할 수 없다.
+ */
+export const memberRemovalSchema = z.object({ userId: z.uuid() }).strict();
+
+export type MemberRemovalInput = z.infer<typeof memberRemovalSchema>;
+
+/**
  * `member_directory()`가 내는 행. 키가 스네이크케이스인 것은 SQL과 글자 그대로 같아야 하기
  * 때문이다 (`0005` 4-2의 `returns table`).
  *
