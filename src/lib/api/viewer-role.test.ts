@@ -14,6 +14,18 @@ const ANON: SessionOutcome = { status: 'anonymous' };
 /** 로그인은 됐는데 `profiles` 행이 없다 — 역할을 알 수 없으므로 세션이 이기지 않는다 */
 const NO_PROFILE: SessionOutcome = { status: 'no_profile', userId: 'u1', email: 'u1@example.com' };
 
+/**
+ * 승인 대기·거절 계정 (T11). **세션으로 치지 않는다** — `no_profile`과 같은 자리이고,
+ * 아래 테스트가 그 사실을 못박는다.
+ */
+const waiting = (status: 'pending' | 'rejected'): SessionOutcome => ({
+  status,
+  userId: 'u1',
+  email: 'u1@example.com',
+  teamId: 'edit',
+  displayName: null,
+});
+
 const session = (role: ViewerRole): SessionOutcome => ({
   status: 'ok',
   viewer: { userId: 'u1', email: 'u1@example.com', role, teamId: 'edit', memberId: 'm1' },
@@ -78,4 +90,27 @@ describe('resolveViewerRole', () => {
     // 데모에서는 기존 규칙 그대로 `?as=`가 산다
     expect(resolveViewerRole('admin', dev('demo'), NO_PROFILE)).toBe('admin');
   });
+
+  /*
+   * T11이 더한 두 상태. **이 파일은 한 줄도 고치지 않았다** — 첫 줄이 `status === 'ok'`라
+   * 대기·거절은 자동으로 그다음 규칙으로 내려간다. 아래는 그 우연을 고정한다: 나중에
+   * 누군가 「pending도 세션이니 세션 role을 쓰자」고 고치면 승인 대기 계정이 `member` 화면을
+   * 얻는다. DB의 `my_role()`이 `null`이라 실제로 내려오는 행은 0건이지만, 화면이 「부원」이라
+   * 말하면서 빈 표를 보이는 것과 「승인 대기 중」이라 말하는 것은 사용자에게 전혀 다르다.
+   */
+  it.each(['pending', 'rejected'] as const)(
+    '%s 계정은 세션으로 치지 않는다 — 프로덕션+live에서 member이고 ?as=admin이 그것을 못 바꾼다',
+    (status) => {
+      expect(resolveViewerRole(null, prod('live'), waiting(status))).toBe('member');
+      expect(resolveViewerRole('admin', prod('live'), waiting(status))).toBe('member');
+      expect(resolveViewerRole('lead', prod('live'), waiting(status))).toBe('member');
+    }
+  );
+
+  it.each(['pending', 'rejected'] as const)(
+    '%s 계정도 데모에서는 기존 규칙 그대로 ?as=가 산다 — 데모에는 붙을 profiles가 없다',
+    (status) => {
+      expect(resolveViewerRole('admin', dev('demo'), waiting(status))).toBe('admin');
+    }
+  );
 });

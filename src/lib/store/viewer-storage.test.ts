@@ -27,7 +27,9 @@ function fakeClient(spec: { user?: boolean } = {}): { client: SupabaseClient; ca
       limit: () => self,
       maybeSingle: async () =>
         table === 'profiles'
-          ? { data: { role: 'admin', team_id: null }, error: null }
+          ? // 실제 행에는 status가 반드시 있다 (`not null default 'active'` · T11).
+            // 빠뜨리면 이 가짜가 승인 대기 계정을 흉내 내게 된다.
+            { data: { role: 'admin', team_id: null, status: 'active', display_name: null }, error: null }
           : { data: { id: 'member-1' }, error: null },
     };
     return self;
