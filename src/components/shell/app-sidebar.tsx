@@ -9,12 +9,26 @@
  * 1024px 미만에서는 `w-14`로 줄어 아이콘만 남는다 (`ADR-014` — 그 아래는 깨지지 않고 읽히면
  * 통과다). 여닫는 토글을 두지 않는다: `UI_GUIDE.md`가 허용한 애니메이션은 사이드 패널
  * 슬라이딩과 스켈레톤 페이드 둘뿐이고, 접힘 상태를 기억시키면 폭 규칙이 두 곳이 된다.
+ *
+ * ## 역할에 따라 항목이 하나 갈린다 (T11)
+ *
+ * 「팀원 요청」은 `canReviewJoinRequests(role)`이 참일 때만 선다. ⚠ **이것은 권한이 아니다.**
+ * 실제 방어는 `/team/requests`가 `notFound()`를 내는 것과 그 아래 DB 함수들이고, 여기서
+ * 감추는 것은 **누를 수 없는 자리를 눈앞에 두지 않는** 편의다. 이 순서를 뒤집어 「사이드바에서
+ * 뺐으니 됐다」고 하면 주소를 직접 친 사람에게 그대로 열린다 (`role-layout.ts` 머리말이
+ * 같은 사고를 기록하고 있다).
+ *
+ * `role`은 루트 레이아웃이 세션에서 읽어 내려보낸다. 로그인하지 않았거나 프로필이 없으면
+ * `null`이고, 그때는 이 항목이 없다 — **데모 모드에도 없다.** 메모리 저장소에는 `profiles`가
+ * 없어 승인할 요청 자체가 존재하지 않는다 (`ADR-026`).
  */
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
+import type { ViewerRole } from '@/lib/domain/extras-visibility';
+import { canReviewJoinRequests } from '@/lib/domain/join-review';
 import { TEAM_KEYS } from '@/lib/domain/progress-stats';
 import { teamLabel, toTeamSlug } from '@/lib/view/team-slug';
 
@@ -107,6 +121,29 @@ function ReportIcon() {
   );
 }
 
+/** 팀원 요청. 사람 하나에 표시 하나 — 「받아들일지 정하는 사람」이라는 뜻이다 */
+function JoinRequestIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <circle cx="6" cy="5" r="2.5" />
+      <path d="M2 13.5c0-2.2 1.8-4 4-4s4 1.8 4 4" />
+      <path d="M11 7.5h4" />
+      <path d="M13 5.5v4" />
+    </svg>
+  );
+}
+
 /** 부서별 탭. 셋이 같은 아이콘을 쓴다 — 구분은 아이콘이 아니라 한글 이름이 진다 */
 function TeamIcon() {
   return (
@@ -129,7 +166,13 @@ function TeamIcon() {
   );
 }
 
-const ITEMS: readonly { href: string; label: string; icon: ReactNode }[] = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: ReactNode;
+}
+
+const BASE_ITEMS: readonly NavItem[] = [
   { href: '/', label: '대시보드', icon: <DashboardIcon /> },
   // 대시보드 바로 아래다. 둘 다 **읽고 가져가는** 화면이고, 브리핑 카드를 눌러 넘어오는
   // 곳이기도 하다 (`UC-08`). 데이터를 넣는 두 화면(업로드·추출)은 팀 탭 아래에 모여 있다
@@ -146,13 +189,27 @@ const ITEMS: readonly { href: string; label: string; icon: ReactNode }[] = [
 ];
 
 /**
+ * 역할이 정하는 것은 **마지막 한 줄뿐**이다. 나머지는 로그인한 전원이 같은 목록을 본다 —
+ * 범위는 화면 안에서 갈리지(`viewer-scope.ts`·RLS) 목록에서 갈리지 않는다.
+ */
+function navItemsFor(role: ViewerRole | null): NavItem[] {
+  const items: NavItem[] = [...BASE_ITEMS];
+
+  if (role !== null && canReviewJoinRequests(role)) {
+    items.push({ href: '/team/requests', label: '팀원 요청', icon: <JoinRequestIcon /> });
+  }
+
+  return items;
+}
+
+/**
  * 사이드바가 뜻을 갖지 않는 경로 — **아직 아무 화면도 열 수 없는 사람**이 서는 자리다.
  * 로그인 전(`/login`)과 승인 전(`/pending`, T11)이 같은 처지다: 아래 목록의 링크를 누르면
  * 전부 지금 있는 화면으로 되돌아온다 (`lib/auth/pending-gate.ts`).
  */
 const HIDDEN_ON = ['/login', '/signup', '/pending'];
 
-export function AppSidebar() {
+export function AppSidebar({ role }: { role: ViewerRole | null }) {
   const pathname = usePathname();
 
   /*
@@ -173,7 +230,7 @@ export function AppSidebar() {
       </div>
 
       <nav aria-label="주요 화면" className="flex flex-col gap-1 p-2">
-        {ITEMS.map((item) => {
+        {navItemsFor(role).map((item) => {
           const active = pathname === item.href;
           return (
             <Link

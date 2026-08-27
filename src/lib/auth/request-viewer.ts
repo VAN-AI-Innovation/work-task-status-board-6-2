@@ -15,6 +15,7 @@
  */
 
 import { cookies } from 'next/headers';
+import { cache } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createSessionClient, type CookieAdapter } from '@/lib/auth/session-client';
@@ -59,8 +60,17 @@ export async function currentSessionClient(): Promise<SupabaseClient | null> {
   });
 }
 
-export async function currentViewerContext(): Promise<ViewerContext> {
+/**
+ * **요청당 한 번만 푼다** (`cache`). T11에서 루트 레이아웃이 사이드바에 넘길 역할 때문에
+ * 이 함수를 부르게 됐는데, 화면도 자기 본문에서 부르므로 감싸지 않으면 **한 화면에
+ * `auth.getUser()`가 두 번** 나간다 — 그것은 Auth 서버 왕복이고(`viewer-session.ts` 1번),
+ * 토큰 회전(`setAll`)도 두 번 일어난다.
+ *
+ * 요청 스코프 밖(단위 테스트)에서는 React가 메모하지 않고 그냥 통과시킨다. 그래서 이
+ * 파일의 기존 테스트가 세는 쿠키 읽기 횟수는 바뀌지 않는다.
+ */
+export const currentViewerContext = cache(async (): Promise<ViewerContext> => {
   const base = await getStorage();
 
   return resolveViewerContext(base, await currentSessionClient());
-}
+});
