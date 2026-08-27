@@ -1,6 +1,6 @@
 # 티켓 / GitHub 이슈 목록
 
-> **총 11개** (T0~T10). 학회 기준 "1인 최소 5개"(`TEAM_RULES.md` 4장) 충족.
+> **총 12개** (T0~T11). 학회 기준 "1인 최소 5개"(`TEAM_RULES.md` 4장) 충족.
 > 노션 스프린트 매니저와 GitHub 이슈에 1:1로 등록한다.
 
 ## 이 문서를 읽는 법
@@ -23,7 +23,7 @@
 ```
 T0 ── T1 ── T2 ─┬─ T7                          (독스→엑셀, 독립)
                 │
-                └─ T3 ── T4 ── T5 ── T6 ── T8   (엑셀→조회 본류)
+                └─ T3 ── T4 ── T5 ── T6 ── T8 ── T11   (가입·승인)
                                        │
                              T9 ───────┤        (배포·문서)
                              T10 ──────┘        (알림 발송, 여유 시)
@@ -42,6 +42,7 @@ T0 ── T1 ── T2 ─┬─ T7                          (독스→엑셀, �
 | T8 | 인증 + RLS + 권한별 UI 게이팅 | L | T6 | `feat/#N` | **6** |
 | T9 | 배포 + README + 주간 보고 전용 화면 | M | T6, T7 | `feat/#N` | 5 |
 | T10 | 알림 발송 (디스코드 웹훅) — **여유 있을 때만** | S | T6 | `feat/#N` | 3 보강 |
+| T11 | 회원가입·팀 합류 승인 흐름과 멤버 관리 | L | T8 | `feat/#N` | **6** 보강, 7 |
 
 「충족 요구」의 숫자는 `PRD.md`「과제 원문 요구사항 대조」의 번호다.
 
@@ -966,3 +967,114 @@ prop, 라우트의 ⚠ 블록, `events: []`가 **전부 0건**이다. 실제 이
 - 웹훅 URL은 시크릿이다. 커밋 금지, `.env.example`에는 빈 값만.
 - 디스코드 메시지 2000자 제한. 알림이 많으면 잘리므로 상위 N건 + "외 M건"으로 요약한다.
 - **이 티켓은 초안 마감 안에 못 들어가도 된다.** 무리해서 넣다가 T6·T7이 밀리면 손해다.
+
+---
+
+## T11 · 회원가입·팀 합류 승인 흐름과 멤버 관리
+
+- **예상**: L · **선행**: T8 · **브랜치**: `feat/#29` · **이슈**: #29
+
+**목적**
+T8까지 계정과 `profiles` 행은 **손으로** 만들었다(`npm run seed:auth`). 사람이 스스로 들어오는
+길과 팀이 그 사람을 받아들이는 길을 만든다. 요구 6번(권한별 열람·수정)을 「누가 그 역할을
+갖게 되는가」까지 넓히는 티켓이고, `members`를 계정에 잇는 자리라 요구 7번(신원 단일 소스)의
+남은 한 칸이기도 하다.
+
+**범위 In**
+
+- 회원가입 `/signup` — 이름·이메일·비밀번호·가입할 팀. 가입하면 `status='pending'` ·
+  `role='member'` · `team_id=고른 팀`
+- 승인 대기 화면 `/pending` — `pending`인 사람은 **어느 경로로 들어와도** 여기를 본다.
+  `rejected`는 여기서 **다른 팀으로 재요청**한다
+- 팀원 요청 탭 `/team/requests` (lead·admin) — 자기 팀 요청 목록. **시트 담당자(`members`)를
+  고른 뒤** 승인한다. 후보가 없으면 새로 만든다
+- 멤버 탭 `/members` (admin 전용) — 전 팀을 **팀 → 리더 → 팀원 트리**로 보고 `lead` 승격·해제
+- 마이그레이션 `0005_signup_approval.sql` — `profiles.status`·`display_name`, 판정 함수 셋에
+  상태 게이트, 가입 트리거, 접근 제어 함수 여섯
+- 권한 상승·열거·CSRF 방어 검증 (`src/lib/security-rules.ts`)
+
+**범위 Out**
+
+- 비밀번호 재설정·변경, 이메일 변경, 소셜 로그인. 최초 `admin`은 **SQL로만** 심는다
+- 반려 사유 입력·표시 — DB에 사유 칸을 두지 않았다
+- 데모 모드의 가입 — 화면은 열리지만 붙을 Auth 서버가 없어 `?error=unavailable`이다 (결정 U)
+- `POST /api/uploads/*` · `POST /api/export/assignment`의 출처 검사 — 이 티켓이 넓힌 목록 밖이다
+  (`security-rules.ts` 머리말이 그 경계를 적고 있다)
+
+**산출물**
+
+| 자리 | 파일 |
+|---|---|
+| 스키마 | `supabase/migrations/0005_signup_approval.sql` — 상태 축 · 트리거 · 함수 7개 · 실행 권한 재구성 |
+| 세션 | `lib/auth/viewer-session.ts` — `SessionOutcome`이 **다섯 갈래**로 (`no_profile`·`pending`·`rejected` 추가) |
+| 문지기 | `lib/auth/pending-gate.ts` · `lib/auth/route-guard.ts`(`/signup` 한 줄) · `lib/api/api-error.ts`(`PENDING_APPROVAL`) |
+| 가입 | `app/api/auth/signup/route.ts` · `lib/api/signup-schema.ts` · `lib/auth/pwned-password.ts` · `app/signup/page.tsx` · `components/auth/signup-form.tsx` |
+| 대기 | `app/pending/page.tsx` · `components/auth/pending-notice.tsx` · `app/api/auth/rejoin/route.ts` · `lib/api/same-origin.ts` |
+| 승인 | `app/api/team/requests/{route,approve/route,reject/route}.ts` · `lib/api/join-request-schema.ts` · `lib/domain/join-review.ts` · `lib/view/join-request-rows.ts` · `app/team/requests/page.tsx` · `components/team/join-request-list.tsx` |
+| 멤버 | `app/api/members/role/route.ts` · `lib/api/member-role-schema.ts` · `lib/domain/member-admin.ts` · `lib/domain/member-tree.ts` · `app/members/page.tsx` · `components/members/member-tree-view.tsx` |
+| 감사 | `lib/security-rules.ts` (+ 테스트가 공격 15개를 재현한다) |
+
+**완료 기준** — 이슈 #29의 6개다.
+
+1. 가입 → 대기 화면. 이 상태에서 `/api/tasks`가 한 건도 주지 않는다
+2. 다른 팀 리더에게는 그 요청이 보이지 않는다
+3. 승인 후 `members`에 붙은 담당자의 업무가 보이고, 남의 업무 PATCH는 403
+4. 거절 후 재요청이 되고, 거절 상태에서는 여전히 아무것도 보이지 않는다
+5. admin 멤버 탭이 팀 → 리더 → 팀원 트리를 그리고, 승격/해제가 반영된다
+6. `lint` · `build` · `test` 통과
+
+**검증 방법 — 실계정으로 밟지 않고 재현 테스트로 쟀다.**
+
+원격 DB에는 **실업무 데이터가 있고**(`tasks` 10행 · `members` 6행) 실계정으로 상태 전이를
+시험하면 그 데이터가 실제로 움직인다 — 승인은 `members.auth_user_id`를 바꾸고 승격은
+`profiles.role`을 바꾼다. 되돌릴 수 있다고 믿고 밟는 것과 밟지 않는 것 사이에서 **밟지 않는
+쪽**을 택했고, 대신 **적용된 함수 정의 자체**와 **라우트·게이트의 동작**을 테스트가 읽는다.
+문장이 지워지면 테스트가 먼저 빨개진다.
+
+| # | 무엇으로 쟀나 |
+|---|---|
+| 1 | `pending-gate.test.ts` — `pending`·`rejected`·`no_profile` × `/api/**`가 전부 `deny`(→ 403 `PENDING_APPROVAL`)이고 화면은 `/pending`으로 간다. DB 쪽 한 겹은 `0005` 2절의 `status='active'` 조건을 `security-rules.test.ts`가 정의에서 읽는다 — 셋이 `null`이면 `0003`의 정책 12개가 그대로 막는다 (`ADR-030`) |
+| 2 | `security-rules.test.ts`가 `pending_requests()`의 범위 갈래를 정의에서 읽는다 — `admin` 전체 / `lead`는 **팀이 있고 그 팀이 대상과 같을 때만**. 앱은 범위를 다시 거르지 않는다(`GET /api/team/requests`에 필터가 0줄) |
+| 3 | 승인의 두 갈래를 `approve_join` 정의에서 읽는다 — 같은 팀이 아니면 예외, 이미 다른 계정에 붙은 행이면 예외, **역할은 건드리지 않는다.** 「남의 업무 PATCH는 403」은 T8이 라이브 `curl`로 이미 증명했고 T11이 그 경로를 바꾸지 않았다 |
+| 4 | `request_join` 정의 — `'pending'`만 세우고 `'active'`라는 문자열이 **없으며**, `where`에 `status='rejected'`가 있고 대상은 `auth.uid()`다. 화면 쪽은 `pending/page.test.ts`가 **재요청 폼이 `rejected`에만 있는 것**을 잰다(대기 중에 폼을 주면 눌러 보게 되고 그 실패는 고장으로 보인다) |
+| 5 | `member-tree.test.ts` 15건이 트리 규칙을 진다 — 팀 가지는 **언제나 셋**(사람이 0명이어도 남는다) · `admin`과 팀 없는 사람은 `unassigned` · 정렬이 결정적(이름 있는 사람 먼저 → `localeCompare` → 안정 키). `members/page.test.ts`가 화면이 그 함수 결과와 `toEqual`임을 못박아 **화면이 트리를 다시 묶지 않는 것**을 막는다. 승격은 `member-role-schema.test.ts`가 `'admin'`을 400으로 거부하는 것을 잰다 |
+| 6 | `npm run lint && npm run build && npm test` — **114파일 1965건 통과** |
+
+**공격 15개를 테스트로 재현했다 — 전부 막힌다** (step 9). 재현 자리는 한 파일이 아니라
+게이트·스키마·라우트·`security-rules` 테스트에 흩어져 있다. 요약하면 넷이다.
+
+- **권한 상승** — 가입 본문의 `role=admin`(스키마가 버린다) · `?as=admin`(세션이 `ok`가 아니면
+  URL이 이기지 않는다) · `set_role`로 자기를 admin으로(zod가 400, DB 함수도 거부) ·
+  `request_join`으로 스스로 `active`로(함수가 `'pending'`만 세운다)
+- **열거** — 가입 실패는 존재하는 이메일이든 아니든 `?error=invalid` 하나 · 로그인 실패도
+  `invalid` 하나 · 승인·거절·승격의 거부는 사유를 갈라 알리지 않는다(전부 403)
+- **CSRF** — 상태를 바꾸는 `POST` 일곱이 `Origin`을 본다. **`Origin`이 없으면 통과**하는 것이
+  의도다(결정 T)
+- **비밀번호 유출 대조** — 나가는 것은 해시 접두사 **5글자뿐**이고, 검사 API가 죽어도 가입이
+  막히지 않는다(fail-open · `ADR-033`)
+
+**착수 이후 바뀐 것 둘** — 이슈 #29의 문장과 결과가 다르다. 결과를 적는다.
+
+1. **「`my_role()` 하나만 고친다」 → 함수 셋 전부.** `goal_metrics_select_scope`·
+   `team_period_goals_select_scope`의 두 번째 갈래가 `my_role()`을 **보지 않아서**, 하나만
+   고치면 대기 계정에 자기 팀 목표 지표가 샌다 (`ADR-030`).
+2. **「승인·승격에 맞는 RLS 정책과 컬럼 GRANT를 새로 단다」 → 정책 0개 · GRANT 0칸.**
+   접근 제어를 `security definer` 함수 여섯에 모았다. `with check` 조합은 경우를 하나만
+   빠뜨려도 권한 상승이고, 승인은 두 테이블을 동시에 건드려 정책으로는 **한쪽만 성공한 상태**가
+   생긴다 (`ADR-031`). 「쓰기는 사용자 JWT로 한다」는 **그대로 지켰다** — 함수들도 `rpc()`로
+   불린다.
+
+**리스크·미결**
+
+- **최초 `admin`은 SQL로만 심는다.** 화면에도 `set_role`에도 `admin`으로 가는 길이 없다.
+  절차는 `README.md`「최초 관리자 계정」에 있다.
+- **승인 시 담당자 연결을 미룰 수 없다.** 상태만 `active`로 바꾸면 그 사람은 자기 업무 0건인
+  화면을 본다 (`PLAN.md` 결정 Q). `members`가 **시트 이름으로만** 서 있는 T8의 제약도 그대로다 —
+  동명이인은 여전히 `unknown_owner`가 된다.
+- **유출 비밀번호 검사는 가입 시점에만 걸린다.** 이 프로젝트에 비밀번호 변경 흐름이 없어서
+  걸 자리가 없고, 그 흐름을 만드는 사람이 같은 함수를 부르지 않아도 **아무 경고가 나지 않는다**.
+- **Supabase 대시보드 설정 둘은 코드가 켤 수 없다** — 비밀번호 최소 길이와 Confirm email.
+  앱은 자기 몫(`MIN_PASSWORD_LENGTH = 10` · 유출 대조)을 지지만 **다른 경로로 만들어진 계정에는
+  걸리지 않는다.** 절차는 `README.md`에 적었다.
+- **Leaked password protection은 Pro 전용이라 켤 수 없다** (T8 감사가 기록한 그 항목).
+  같은 방어를 `lib/auth/pwned-password.ts`가 직접 진다 (`ADR-033`).

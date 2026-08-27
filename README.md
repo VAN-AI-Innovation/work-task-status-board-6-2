@@ -59,8 +59,8 @@ npm run dev            # http://localhost:3000
 | 3 | 마감 임박·장기 미갱신·담당자 미지정 자동 알림 | 알림 패널 **5묶음** (요구 셋 + 기한 미설정 + 담당자 오타 의심). **화면 알림까지다 — 디스코드·메일 발송은 없다**(T10 미구현) | `/` 알림 카드 · 팀 탭 알림 카드 |
 | 4 | 부서별 목표와 실제 성과 비교 | 시트 B섹션 → `goal_metrics`. 달성률은 시트 값을 믿지 않고 `actual/target`으로 **재계산**하고, 어긋나면 시트 값을 병기 | `/`「목표 대비 성과」(접힌 카드) · 팀 탭 |
 | 5 | 회의 전 자동 요약 및 대표·실장용 주간 보고서 | `buildWeeklyReport`가 마크다운을 만든다. 주 단위 이동(`?week=`) · 복사 · `.md` 내려받기 | **`/report`** · `/` 주간 브리핑 카드 |
-| 6 | 권한별 열람·수정 범위 구분 | Supabase Auth + RLS 정책 11개 + `security definer` 함수 셋. 조회는 사용자 JWT로 나가고 `service_role`은 업로드 확정·시드에만 | `/login` 후 전 화면 (`admin` 전사 / `lead` 자기 팀 / `member` 본인 건) |
-| 7 | 향후 출결·평가·경고·활동인증서 연계 | `members`를 신원 단일 소스로 잡고 `auth_user_id`로 계정과 이었다. **연계 기능 자체는 만들지 않았다 — 자리만 있다** | 화면 없음 (`supabase/migrations/`) |
+| 6 | 권한별 열람·수정 범위 구분 | Supabase Auth + RLS 정책 12개 + `security definer` 판정 함수 셋. 조회는 사용자 JWT로 나가고 `service_role`은 업로드 확정·시드에만. **T11이 승인 상태 축을 더했다** — 가입 → 대기 → 팀장 승인 → 활성 | `/login` 후 전 화면 (`admin` 전사 / `lead` 자기 팀 / `member` 본인 건) · `/signup` · `/pending` · `/team/requests` · `/members` |
+| 7 | 향후 출결·평가·경고·활동인증서 연계 | `members`를 신원 단일 소스로 잡고 `auth_user_id`로 계정과 이었다. **T11의 승인이 그 연결을 만드는 자리다** — 팀장이 승인할 때 시트 담당자를 고른다. 다만 **연계 기능 자체는 만들지 않았다 — 자리만 있다** | `/team/requests` (승인 시 담당자 연결) · `/members` 트리 |
 
 담당자 지시 2건(엑셀→조회 / 독스→엑셀)은 `/upload`와 `/extract`가 진다. 위 7개보다 우선이다.
 
@@ -86,10 +86,16 @@ npm run dev            # http://localhost:3000
 | `/upload` | 팀 시트 `.xlsx` 업로드 → 미리보기 → 확정 |
 | `/extract` | 워크로드 `.docx` → 업무 배정표 `.xlsx` |
 | `/login` | 로그인. 세션이 있으면 역할·열람 범위를 **서버가** 정한다 (`?as=`는 무시된다) |
+| `/signup` | 회원가입. 이름·이메일·비밀번호·가입할 팀 |
+| `/pending` | 승인 대기 안내. 거절된 계정은 여기서 다른 팀으로 재요청한다 |
+| `/team/requests` | 팀원 요청 탭 (`lead`·`admin`). 승인·거절 |
+| `/members` | 멤버 트리 탭 (`admin` 전용). `lead` 승격·해제 |
 
-로그인 계정은 `npm run seed:auth`가 만든다 — 역할마다 하나씩 **`admin` · `lead` · `member`**
-셋이다. 이메일·비밀번호는 `.env.local`에 있고 저장소·문서 어디에도 적지 않는다.
-`STORAGE_DRIVER=memory`(데모)에서는 로그인이 필요 없고 `?as=`가 그대로 역할을 정한다.
+역할 계정 셋(`admin` · `lead` · `member`)은 `npm run seed:auth`가 만든다. 이메일·비밀번호는
+`.env.local`에 있고 저장소·문서 어디에도 적지 않는다. **그 밖의 사람은 `/signup`으로 스스로
+들어온다** (아래 「계정과 승인」).
+`STORAGE_DRIVER=memory`(데모)에서는 로그인이 필요 없고 `?as=`가 그대로 역할을 정한다 —
+가입 화면도 열리지만 **붙을 Auth 서버가 없어 가입은 되지 않는다**(「지금은 가입할 수 없습니다」).
 
 ### `/report` — 주간 보고
 
@@ -126,6 +132,99 @@ Google Docs 워크로드 문서를 `.docx`로 내보내 올리면, 사람이 이
 받은 배정표를 채운 뒤에는 그 값을 팀 시트에 옮겨 적고 `/upload`에 올린다 —
 배정표 파일 자체를 `/upload`에 올리면 `NO_KNOWN_TAB`으로 거부되는 것이 정상이다
 (팀 탭 시그니처가 아니다). 자세한 이유는 `docs/TICKETS.md` T7「고리의 남은 한 칸」.
+
+## 계정과 승인
+
+T11 이전에는 계정과 `profiles` 행을 **손으로** 만들었다. 지금은 사람이 스스로 들어오고,
+팀이 그 사람을 받아들인다. 근거는 `docs/PLAN.md`「8. 권한」의 **T11 착수·구현 확정** 절과
+`docs/ADR.md` ADR-030~033.
+
+### 흐름
+
+```
+/signup  이름 · 이메일 · 비밀번호 · 가입할 팀
+   │  auth.signUp() 한 번. 앱은 profiles를 만들지 않는다
+   ▼  DB 트리거가 role=member · status=pending 을 박아 넣는다
+/pending  승인 대기 안내        ← 어느 주소로 들어와도 여기로 온다
+   │
+   │  팀장·대표가 [팀원 요청] 탭에서 본다  (/team/requests)
+   │    · 승인 → status=active + 시트 담당자(members)에 그 계정을 잇는다  ★ 같은 트랜잭션
+   │    · 거절 → status=rejected. 계정은 살아 있고 /pending 에서 다른 팀으로 재요청한다
+   ▼
+평범한 부원 화면. 이후로는 그냥 로그인한다
+```
+
+- **승인할 때 담당자를 반드시 고른다.** 후보 드롭다운(같은 팀의 미연결 `members` 행)에서
+  고르거나, 없으면 이름을 적어 새로 만든다. **이 연결이 없으면 승인된 사람이 자기 업무 0건인
+  화면을 본다** — 부원의 범위는 `tasks.owner_member_id`가 자기 `members` 행일 때뿐이다.
+- **승인은 승격이 아니다.** 역할은 `member` 그대로이고, `lead`로 올리는 것은 `admin`의
+  `/members` 탭에서 따로 한다.
+- 대기·거절 상태에서는 **한 행도 보이지 않는다.** 화면이 숨기는 것이 아니라 DB가 주지 않는다
+  (`my_role()`·`my_team()`·`my_member_id()` 셋이 `null`을 돌려준다).
+- **데모 모드(`STORAGE_DRIVER=memory`)에서는 가입이 되지 않는다.** 화면은 열리지만 붙을 Auth
+  서버가 없어 「지금은 가입할 수 없습니다」로 되돌아온다.
+
+### 마이그레이션 적용 — `0005_signup_approval.sql`
+
+`0003_auth_rls.sql`과 **같은 방식**이다.
+
+1. Supabase 대시보드 → **SQL Editor** → **New query**
+2. `supabase/migrations/0005_signup_approval.sql`을 **파일 전체** 복사해 붙여넣는다
+3. **Run**
+
+- **`0001` ~ `0004`가 먼저 적용돼 있어야 한다.** 이 파일은 `profiles`·`members`·`teams`가
+  이미 있다고 가정한다.
+- **재적용 가능하다.** `add column if not exists` · `create or replace` · `drop … if exists`가
+  그것을 보장하고, 두 번 돌려도 결과가 같다. 데이터를 만들지 않으므로 다시 돌려도 계정이
+  늘거나 상태가 되돌아가지 않는다.
+- 적용하면 **기존 계정은 전부 `status='active'`가 된다** (컬럼 기본값이 `active`다).
+  운영 중인 계정이 마이그레이션 순간 잠기지 않게 한 것이다.
+
+### 최초 관리자 계정
+
+**화면에서는 `admin`을 만들 수 없다.** 역할 변경 함수(`set_role`)가 `'admin'`을 받지 않는다 —
+계정 하나가 뚫렸을 때 관리자가 번식하지 않게 하려는 것이다 (`ADR-032`). 그래서 최초 한 명은
+**SQL로만** 심는다.
+
+1. `/signup`으로 평범하게 가입한다 (또는 `npm run seed:auth`로 역할 계정을 만든다)
+2. Supabase 대시보드 → **SQL Editor**에서 아래를 실행한다. `<관리자-이메일>`을 1에서 쓴
+   주소로 바꾼다 — **이 문서에 실제 주소를 적지 않는다**
+
+```sql
+update public.profiles
+   set role = 'admin', status = 'active', team_id = null
+ where id = (select u.id from auth.users u where u.email = '<관리자-이메일>');
+```
+
+3. 로그아웃 후 다시 로그인한다. 왼쪽 메뉴에 **[팀원 요청]** · **[멤버]** 가 보이면 된 것이다.
+
+⚠ **`npm run seed:auth`로 계정을 새로 만들면 그 계정도 `pending`으로 선다.** 트리거가
+`status`를 박고, 시드 스크립트는 `role`·`team_id`만 쓰기 때문이다. 위 SQL의 `role`·`team_id`를
+그 계정에 맞게 바꿔 같은 방법으로 열어 주거나, `admin`이 `/team/requests`에서 승인한다.
+
+### Supabase 대시보드에서 **사람이** 켜야 하는 설정
+
+코드로 켤 수 없는 자리다. 마이그레이션에도 `.env`에도 들어가지 않는다.
+메뉴 이름이 조금 다르면 같은 뜻의 자리를 찾으면 된다 — Supabase도 대시보드 문구를 자주 바꾼다.
+
+| 자리 | 무엇을 하나 | 왜 코드가 못 하나 |
+|---|---|---|
+| **Authentication → Sign In / Providers → 비밀번호 최소 길이** | 앱과 같은 **10자** 이상으로 올린다 | 앱의 `MIN_PASSWORD_LENGTH`는 `/signup` 폼만 지킨다. 대시보드·다른 경로로 만들어진 계정에는 걸리지 않는다 |
+| **Authentication → Sign In / Providers → Confirm email** | 켜면 가입자가 메일을 확인해야 세션이 생긴다 | 프로젝트 설정이다. 앱은 이 설정을 **알지 못하도록** 만들어져 있다 — `signUp()`이 세션을 줬는지로만 갈라서, 켜져 있으면 `/pending` 대신 「확인 메일을 보냈습니다」 화면이 뜬다 |
+
+⚠ **Leaked password protection(유출된 비밀번호 차단)은 Supabase Pro 플랜 전용이라 켤 수 없다.**
+무료 플랜에서 시도하면 `available on Pro Plans and up`으로 거절당한다.
+**같은 방어를 `src/lib/auth/pwned-password.ts`가 직접 진다** — 비밀번호의 SHA-1 해시 중
+**앞 5글자만** Have I Been Pwned의 range API로 보내고 나머지는 내보내지 않는다(k-익명성).
+유출 목록에 있으면 계정을 만들지 않고 「다른 비밀번호를 쓰세요」로 되돌린다.
+
+두 가지를 분명히 해 둔다.
+
+- **가입 시점에만 걸린다.** 이 프로젝트에 비밀번호 변경 흐름이 없어서 걸 자리가 그것뿐이다.
+  변경 화면을 만드는 사람은 같은 함수를 그 자리에도 불러야 하고, **부르지 않아도 아무 경고가
+  나지 않는다.**
+- **검사 API가 죽으면 가입은 그대로 진행된다**(fail-open). 외부 서비스 장애가 회원가입 장애가
+  되지 않게 한 것이고, 그 대신 문은 최소 길이와 **승인 절차**가 진다 (`ADR-033`).
 
 ## 배포
 
@@ -321,7 +420,7 @@ step 실행은 `claude -p`(Claude Code CLI)로 한다. **구독 인증(OAuth)만
 - `docs/ARCHITECTURE.md` — 디렉토리 구조·데이터 흐름·상태 관리
 - `docs/ADR.md` — 기술 결정 기록
 - `docs/UI_GUIDE.md` — UI 가이드
-- `docs/TICKETS.md` — 작업 단위 T0~T10
+- `docs/TICKETS.md` — 작업 단위 T0~T11
 - `CLAUDE.md` — 에이전트 가드레일 (하네스가 매 step 주입)
 
 ## GitHub Actions

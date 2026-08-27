@@ -27,15 +27,24 @@ src/
 │   ├── upload/page.tsx               # 엑셀 업로드 + 미리보기
 │   ├── extract/page.tsx              # 독스 → 배정표
 │   ├── login/page.tsx                # 로그인 (T8). 앱 셸을 쓰지 않는다
+│   ├── signup/page.tsx               # 회원가입 (T11). 앱 셸을 쓰지 않는다
+│   ├── pending/page.tsx              # 승인 대기·거절·프로필 없음 (T11). 앱 셸을 쓰지 않는다
+│   ├── team/requests/page.tsx        # 팀원 요청 탭 (T11). lead·admin
+│   ├── members/page.tsx              # 멤버 트리 탭 (T11). admin 전용
 │   ├── report/page.tsx               # 주간 보고 전용 (T9)
 │   ├── error.tsx                     # 조회 실패 바운더리 (teams/ 에도 둔다)
 │   └── api/  uploads/sheet · uploads/[id]/commit · uploads/seed · uploads/doc
 │             export/assignment · tasks · tasks/[id] · stats · alerts
 │             goals · report/weekly · health
 │             auth/login · auth/logout                     # T8. 둘 다 폼을 받는다
+│             auth/signup · auth/rejoin                    # T11. 둘 다 폼을 받는다
+│             team/requests · team/requests/approve        # T11. 조회는 GET,
+│             team/requests/reject · members/role          #      쓰기 셋은 JSON POST
 ├── components/   shell/ dashboard/ charts/ alerts/ tasks/ goals/ upload/ extract/ auth/
 │                  report/                     # 주간 보고 화면 (T9)
 │                                              #   report-period-nav · report-document
+│                  team/ members/              # 승인 화면 (T11)
+│                                              #   join-request-list · member-tree-view
 │                                              # props 받아 JSX만. 계산 금지
 ├── lib/
 │   ├── sheet/   workbook-reader · header-resolver · tab-detector
@@ -51,6 +60,7 @@ src/
 │   │            progress-stats · goal-stats · alert-rules · weekly-report
 │   │            report-period                                   # 주 기간 정규화 (T9)
 │   │            extras-visibility · viewer-scope                 # 열람 범위 판정 (T8)
+│   │            join-review · member-admin · member-tree          # 승인·명부 판정 (T11)
 │   ├── store/   task-repository · repository-contract · memory-task-store
 │   │            supabase-task-store · upload-record-store · store-factory
 │   │            viewer-storage                                   # 요청 스코프·사용자 JWT (T8)
@@ -61,14 +71,21 @@ src/
 │   ├── api/     api-error · read-context · task-response · viewer-role
 │   │            assignment-schema · task-patch-schema · credentials-schema
 │   │            report-context                                  # ?week= 해석·이력 적재 (T9)
+│   │            signup-schema · join-request-schema             # 가입·승인 계약 (T11)
+│   │            member-role-schema · same-origin                # 승격 계약·출처 검사 (T11)
 │   ├── auth/    session-client · viewer-session                  # 쿠키 → `Viewer` (T8)
 │   │            request-viewer · route-guard · safe-redirect
+│   │            pending-gate · pwned-password                    # 대기 판정·유출 대조 (T11)
 │   ├── view/    화면이 쓰는 표시 규칙 (role-layout · status-badge · chart-series …)
+│   │            join-request-rows                                # 요청 줄 표시 (T11)
+│   ├── security-rules.ts   # 권한 상승·CSRF 방어를 파일 내용으로 재는 순수 함수 (T11)
+│   │                       # env-guard.ts와 나란히 서되 합치지 않는다
 │   └── fixtures/  sample-workbook.xlsx · sample-workload.md · sample-workload.docx
 │                  seed-tasks.json
 ├── proxy.ts                            # Next.js 16의 middleware. 세션 갱신·보호 라우트 (T8)
 ├── supabase/migrations/   *.sql        # 스키마 단일 소스 (T4부터)
-│                          0004_events_policy.sql   # task_events 열람 정책 (T9)
+│                          0004_events_policy.sql      # task_events 열람 정책 (T9)
+│                          0005_signup_approval.sql    # 승인 상태 축 · 접근 제어 함수 (T11)
 └── types/  task.ts · sheet.ts · doc.ts · goal.ts · api.ts · auth.ts
 ```
 
@@ -273,10 +290,21 @@ TaskRepository  (저장/조회만)                domain/  (판정/집계만)
 배너 문구를 **"읽기 전용 — 저장소 연결 실패"**로 두어 의도된 데모 모드(`STORAGE_DRIVER=memory`)와 구분한다.
 폴백 중 쓰기를 메모리에 받으면 재시작 시 조용히 사라진다.
 
-## 권한 (T8)
+## 권한 (T8 · T11)
 
-`profiles.role`: `admin`(대표·실장) / `lead`(팀장) / `member`(부원). 결정 근거는
-`PLAN.md`「8. 권한」의 **T8 착수 시 확정** 절과 `ADR-024`~`ADR-026`.
+`profiles.role`: `admin`(대표·실장) / `lead`(팀장) / `member`(부원).
+`profiles.status`: `pending` / `active` / `rejected` — **T11이 더한 축**이고 역할보다 **앞에**
+선다. 결정 근거는 `PLAN.md`「8. 권한」의 **T8 착수 시 확정**·**T11 착수·구현 확정** 두 절과
+`ADR-024`~`ADR-026` · `ADR-030`~`ADR-033`.
+
+**축이 둘이고 순서가 있다.** `status`가 `active`가 아니면 역할은 읽히지 않는다 — 화면이 숨기는
+것이 아니라 `my_role()`이 `null`을 돌려주므로 **DB가 한 행도 주지 않는다**(`ADR-030`).
+
+| `status` | 볼 수 있는 것 | 화면 |
+|---|---|---|
+| `pending` | 없음 | `/pending` (안내) |
+| `rejected` | 없음 | `/pending` (재요청 폼) |
+| `active` | 역할 범위 그대로 (`viewer-scope.ts`) | 지금까지와 같다 |
 
 ### 세션 → 열람자
 
@@ -291,16 +319,54 @@ TaskRepository  (저장/조회만)                domain/  (판정/집계만)
    │     · 판정은 lib/auth/route-guard.ts의 순수 함수가 진다. proxy는 DB를 조회하지 않는다
    │
    └─ src/lib/auth/          ← 쿠키 → Viewer(`types/auth.ts`) 해석
-         · profiles.role · profiles.team_id · members.auth_user_id → memberId
+         · profiles.role · profiles.team_id · profiles.status
+         · members.auth_user_id → memberId   (status='active'일 때만 읽는다)
 ```
+
+`resolveSession`이 내는 `SessionOutcome`은 **다섯 갈래**다 (T11에서 셋이 늘었다).
+
+```
+anonymous                        세션이 없다
+no_profile   { userId, email }   로그인했는데 profiles 행이 없다 (트리거 실패)
+pending      { userId, email, teamId, displayName }
+rejected     { 〃 — pending과 필드가 글자 그대로 같다 }
+ok           { viewer }          여기서만 Viewer가 만들어진다
+```
+
+- 판정 순서는 **역할이 상태보다 먼저**다 — 알 수 없는 `role`이면 `no_profile`이고, 그 뒤에
+  `rejected` → `active`가 아닌 나머지 전부(`undefined`·`null`·모르는 값 포함) `pending`
+  → `active`가 `ok`다. **모르는 상태는 열지 않고 닫는다.**
+- `pending`·`rejected`는 `members`를 **읽지 않는다.** 붙일 범위가 없어서 왕복이 낭비다.
+
+```
+브라우저 쿠키 → resolveSession → SessionOutcome
+                                     │
+                    lib/auth/pending-gate.ts  ← 판정만 한다. redirect도 Response도 만들지 않는다
+                                     │
+      ok · anonymous                        → allow
+      /pending 또는 그 아래                  → allow   ★ 자기를 막으면 리다이렉트 고리가 된다
+      /api/auth/** (로그아웃·재요청)          → allow   나갈 문을 막으면 계정이 갇힌다
+      pending·rejected·no_profile + /api/**  → deny → 403 PENDING_APPROVAL
+      pending·rejected·no_profile + 그 밖     → redirect → /pending
+```
+
+⚠ **`proxy`는 여전히 DB를 조회하지 않는다.** 대기 여부는 `profiles` 행을 읽어야 알고 그 조회는
+`resolveSession`이 이미 한다 — 그래서 `route-guard.ts`(「로그인 없이 열려 있는가」)와
+`pending-gate.ts`(「로그인은 했는데 범위가 없는 사람이 지나갈 수 있는가」)를 **합치지 않았다.**
+공개 목록에 T11이 더한 것은 **`/signup` 하나뿐**이고, **`/pending`은 공개가 아니다**(대기
+사용자는 로그인한 상태다).
 
 `?as=`는 **세션이 없을 때만** 산다.
 
 ```
-세션이 있으면              → 세션의 role이 이긴다. ?as=는 무시된다 (개발 환경에서도)
+세션이 ok이면               → 세션의 role이 이긴다. ?as=는 무시된다 (개발 환경에서도)
 세션이 없고 프로덕션+실저장소 → member        (S4)
 세션이 없고 데모·폴백        → ?as= 해석      (ADR-013)
 ```
+
+⚠ **대기·거절·프로필 없음은 `ok`가 아니라 아래 두 줄로 흐른다** (T11). 프로덕션+실저장소면
+`member`이므로 `?as=admin`으로 역할을 올릴 수 없고, 애초에 `pending-gate`가 그 요청을
+`/pending`이나 `403`으로 접는다. **세션이 있는데 URL이 이기는 경우는 여전히 없다.**
 
 **데모 모드에서는 범위가 갈리지 않는다.** `?as=lead`에는 붙일 팀도 구성원도 없다 — 메모리
 저장소에는 `profiles`도 `members`도 없어서 「우리 팀」이라고 부를 대상 자체가 없고, 흉내에
@@ -336,13 +402,42 @@ API는 `UNAUTHENTICATED`(401)로 답한다. **T8 감사 실측** — 라이브 �
 나오지 않는다. 503 갈래는 여전히 코드에 있고 그것이 맞다 — `proxy`의 공개 목록이 늘어나면
 그 경로가 다시 열리므로, **문 하나에만 기대지 않는다.**
 
-### `security definer` 함수 — **셋이다** (`ADR-025`)
+### `security definer` 함수 — 판정 셋(`ADR-025`) + 접근 제어 여섯(`ADR-031`)
+
+**판정 셋. T11이 여기에 `status` 게이트를 걸었다** (`0005` 2절 · `ADR-030`).
 
 ```sql
-public.my_role()       → text   -- profiles.role.    없으면 null (프로필 없는 계정)
-public.my_team()       → text   -- profiles.team_id. admin은 null일 수 있다
-public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행의 id. 없으면 null
+public.my_role()       → text   -- profiles.role.    status='active'가 아니면 null
+public.my_team()       → text   -- profiles.team_id. 〃 (admin은 active여도 null일 수 있다)
+public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행의 id. 〃
 ```
+
+⚠ **셋을 다 고쳐야 했다.** `my_role()`만 고치면 `goal_metrics_select_scope`·
+`team_period_goals_select_scope`의 두 번째 갈래가 `my_role()`을 **보지 않아** 대기 계정에
+자기 팀 목표 지표가 샌다. 근거와 SQL은 `ADR-030`.
+
+**접근 제어 여섯 + 내부 헬퍼 하나.** 여기 모은 이유는 `ADR-031` — `profiles`·`members`에
+`insert`·`update`·`delete` GRANT를 **한 칸도 주지 않는다.**
+
+| 함수 | 하는 일 | `authenticated` 실행 권한 |
+|---|---|---|
+| `pending_requests()` | 대기·거절 요청 목록. admin 전체 / lead 자기 팀 | ✅ |
+| `member_directory()` | 전 팀 명부(`profiles` ⟗ `members` full outer join). **admin 전용** | ✅ |
+| `approve_join(target, member_id, new_member_name)` | `status='active'` + `members` 연결을 **한 트랜잭션에서** | ✅ |
+| `reject_join(target)` | `status='rejected'`. `members` 연결은 건드리지 않는다 | ✅ |
+| `request_join(team)` | 재요청. **대상은 언제나 `auth.uid()`** — 인자로 남을 지목할 수 없다 | ✅ |
+| `set_role(target, new_role, new_team)` | 역할 변경. **admin 전용이고 `'admin'`을 받지 않는다** | ✅ |
+| `can_review_join(target)` | 위 둘이 공유하는 자격 검사 | ❌ **주지 않는다** |
+| `handle_new_user()` | 가입 트리거. `role='member'`·`status='pending'`을 하드코딩 | ❌ **주지 않는다** |
+
+- **여섯 다 사용자 JWT로 불린다**(`rpc()`). 검사가 `auth.uid()`에 기대므로 `service_role`로
+  부르면 오히려 판정이 깨진다 — 인증·팀·멤버 라우트에 `service_role`이 닿지 않는 것을
+  `lib/security-rules.ts`의 규칙 1이 파일 내용으로 잰다.
+- ⚠ `can_review_join`을 열지 않는 이유: 부를 이유가 없고, 부를 수 있으면 **「내가 누구를
+  심사할 수 있는지」를 uuid로 훑는 도구**가 된다.
+- ⚠ 실행 권한은 `revoke … from public, anon, authenticated` 뒤에 되돌려준다. **`from public`만으로는
+  걷히지 않는다** — Supabase가 `public` 스키마에 `alter default privileges`로 `authenticated`에
+  **직접** grant를 걸어 두기 때문이다(실측). 테이블 권한을 `revoke all`로 다시 쌓은 것과 같은 방식이다.
 
 - ⚠ **RLS 재귀 함정**: 정책 안에서 `profiles`·`members`를 직접 select하면 그 테이블의 정책이
   다시 걸린다. 셋 다 `security definer`로 감싼다.
@@ -356,6 +451,8 @@ public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행�
 
 **적용본은 `supabase/migrations/0003_auth_rls.sql`이다.** 아래는 그 파일에 실제로 들어간
 정책 **11개**이며, 대상 롤은 전부 `authenticated`다 — `anon` 정책은 하나도 없다.
+`0004`가 `task_events`에 하나를 더해 **총 12개**이고, **`0005`(T11)는 정책을 0개 더한다** —
+상태 축은 정책이 아니라 위 판정 함수 셋이 진다 (`ADR-030`).
 
 | 테이블 | select | update | insert·delete |
 |---|---|---|---|
