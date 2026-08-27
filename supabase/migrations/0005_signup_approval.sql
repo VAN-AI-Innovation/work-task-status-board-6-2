@@ -320,13 +320,22 @@ end $$;
 -- 5. 실행 권한 — 좁힌다
 -- ---------------------------------------------------------------------------
 --
--- ⚠ **revoke를 빠뜨리면 안 된다.** Postgres는 새 함수의 EXECUTE를 public 롤에 **기본
---   부여**한다. 그대로 두면 anon이 pending_requests()를 부를 수 있다 — 함수 안의
---   my_role()이 null이라 행은 안 나오지만, 로그아웃 상태에서 닿을 수 있는 표면을
---   남길 이유가 없다 (0003이 anon에게서 테이블 권한을 통째로 회수한 것과 같은 규율).
+-- ⚠ **`from public`만으로는 부족하다. 실측으로 확인된 사실이다.**
+--   Postgres는 새 함수의 EXECUTE를 public 롤에 기본 부여하는데, Supabase는 그 위에
+--   public 스키마에 대해
+--       alter default privileges ... grant all on functions to anon, authenticated, service_role
+--   을 걸어 둔다. 그래서 함수를 만드는 순간 authenticated에게 **직접** grant가 붙는다
+--   (proacl이 `authenticated=X/postgres`로 보인다 — PUBLIC 경유가 아니다).
+--   `revoke ... from public`은 그 직접 부여를 걷지 못한다.
 --
--- can_review_join은 4-4·4-5의 내부 헬퍼다. authenticated에게도 주지 않는다 — 부를 이유가
--- 없고, 부를 수 있으면 「내가 누구를 심사할 수 있는지」를 훑는 도구가 된다.
+--   그래서 0003이 테이블에 한 것과 같은 방식으로 간다: **바닥부터 다시 쌓는다.**
+--   세 롤에서 전부 걷고, 줄 것만 되돌려준다. 「revoke 목록과 grant 목록이 다르다」가
+--   눈으로 읽히는 형태여야 한다.
+--
+-- can_review_join은 4-4·4-5의 내부 헬퍼다. **authenticated에게도 주지 않는다** — 부를
+-- 이유가 없고, 부를 수 있으면 「내가 누구를 심사할 수 있는지」를 uuid로 훑는 도구가 된다.
+-- handle_new_user는 트리거 전용이다. 직접 호출은 Postgres가 막지만(트리거 문맥이 아니면
+-- 에러) 권한을 남길 이유가 없다.
 --
 -- 2절의 my_role·my_team·my_member_id는 손대지 않는다. 정책 안에서 불리므로 public에
 -- 남아 있어야 하고, 셋 다 호출자 자신의 행만 돌려준다 (0003의 판단 그대로).
@@ -340,8 +349,9 @@ revoke execute on function
   public.request_join(text),
   public.set_role(uuid, text, text),
   public.handle_new_user()
-from public, anon;
+from public, anon, authenticated;
 
+-- 되돌려주는 것은 여섯이다. can_review_join · handle_new_user는 이 목록에 **없다.**
 grant execute on function
   public.pending_requests(),
   public.member_directory(),

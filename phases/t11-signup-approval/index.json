@@ -2,16 +2,72 @@
   "project": "work-task-status-board",
   "phase": "t11-signup-approval",
   "steps": [
-    { "step": 0, "name": "auth-schema", "commit": "chore: 회원가입·승인 마이그레이션 SQL 작성", "status": "pending" },
-    { "step": 1, "name": "session-status", "commit": "feat: 대기·거절 상태를 세션 해석에 추가", "status": "pending" },
-    { "step": 2, "name": "route-guard-signup", "commit": "feat: 가입·대기 경로를 라우트 가드에 반영", "status": "pending" },
-    { "step": 3, "name": "signup-flow", "commit": "feat: 회원가입 라우트와 화면 구현", "status": "pending" },
-    { "step": 4, "name": "pending-screen", "commit": "feat: 승인 대기·거절 화면과 재요청 구현", "status": "pending" },
-    { "step": 5, "name": "join-requests-api", "commit": "feat: 팀 합류 요청 조회·승인·거절 API 구현", "status": "pending" },
-    { "step": 6, "name": "team-requests-tab", "commit": "feat: 팀원 요청 탭 화면 구현", "status": "pending" },
-    { "step": 7, "name": "member-tree", "commit": "feat: 멤버 트리 도메인 함수 구현", "status": "pending" },
-    { "step": 8, "name": "members-tab", "commit": "feat: 어드민 멤버 탭과 리더 승격 구현", "status": "pending" },
-    { "step": 9, "name": "security-audit", "commit": "test: 권한 상승·열거 방어 검증 테스트 추가", "status": "pending" },
-    { "step": 10, "name": "docs-update", "commit": "docs: 회원가입·승인 흐름을 설계 문서에 반영", "status": "pending" }
+    {
+      "step": 0,
+      "name": "auth-schema",
+      "commit": "chore: 회원가입·승인 마이그레이션 SQL 작성",
+      "status": "completed",
+      "summary": "supabase/migrations/0005_signup_approval.sql 작성·원격 적용 완료(t11_signup_approval). profiles에 status(pending|active|rejected, default active)·display_name 추가. my_role()·my_team()·my_member_id() 셋 모두 status='active' 게이트 — my_role()만 고치면 goal_metrics_select_scope의 둘째 갈래가 my_role()을 안 봐서 대기 계정에 목표 지표가 샌다. 트리거 on_auth_user_created→handle_new_user()가 role='member'·status='pending'을 하드코딩하고 team_id는 teams에 실재할 때만 넣는다(user_metadata는 사용자가 고칠 수 있는 자리). 함수 시그니처: pending_requests() / member_directory() / can_review_join(target uuid) / approve_join(target uuid, member_id uuid default null, new_member_name text default null) / reject_join(target uuid) / request_join(team text) / set_role(target uuid, new_role text, new_team text default null). set_role은 'admin'을 받지 않고, request_join은 대상이 언제나 auth.uid()다. 실행 권한: authenticated에 위 6개만(can_review_join·handle_new_user 제외). ⚠ Supabase는 public 스키마에 alter default privileges로 authenticated에 직접 grant를 걸므로 revoke는 반드시 'from public, anon, authenticated'여야 한다 — from public만으로는 안 걷힌다(실측). 새 RLS 정책 0개, insert/update/delete GRANT 0개. 0003의 정책 12개 그대로."
+    },
+    {
+      "step": 1,
+      "name": "session-status",
+      "commit": "feat: 대기·거절 상태를 세션 해석에 추가",
+      "status": "pending"
+    },
+    {
+      "step": 2,
+      "name": "route-guard-signup",
+      "commit": "feat: 가입·대기 경로를 라우트 가드에 반영",
+      "status": "pending"
+    },
+    {
+      "step": 3,
+      "name": "signup-flow",
+      "commit": "feat: 회원가입 라우트와 화면 구현",
+      "status": "pending"
+    },
+    {
+      "step": 4,
+      "name": "pending-screen",
+      "commit": "feat: 승인 대기·거절 화면과 재요청 구현",
+      "status": "pending"
+    },
+    {
+      "step": 5,
+      "name": "join-requests-api",
+      "commit": "feat: 팀 합류 요청 조회·승인·거절 API 구현",
+      "status": "pending"
+    },
+    {
+      "step": 6,
+      "name": "team-requests-tab",
+      "commit": "feat: 팀원 요청 탭 화면 구현",
+      "status": "pending"
+    },
+    {
+      "step": 7,
+      "name": "member-tree",
+      "commit": "feat: 멤버 트리 도메인 함수 구현",
+      "status": "pending"
+    },
+    {
+      "step": 8,
+      "name": "members-tab",
+      "commit": "feat: 어드민 멤버 탭과 리더 승격 구현",
+      "status": "pending"
+    },
+    {
+      "step": 9,
+      "name": "security-audit",
+      "commit": "test: 권한 상승·열거 방어 검증 테스트 추가",
+      "status": "pending"
+    },
+    {
+      "step": 10,
+      "name": "docs-update",
+      "commit": "docs: 회원가입·승인 흐름을 설계 문서에 반영",
+      "status": "pending"
+    }
   ]
 }
