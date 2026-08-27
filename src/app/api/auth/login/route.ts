@@ -5,6 +5,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 import { readCredentials } from '@/lib/api/credentials-schema';
+import { requestIsSameOrigin } from '@/lib/api/same-origin';
 import { safeRedirectPath } from '@/lib/auth/safe-redirect';
 import { createSessionClient, type CookieAdapter } from '@/lib/auth/session-client';
 
@@ -23,6 +24,12 @@ import { createSessionClient, type CookieAdapter } from '@/lib/auth/session-clie
  * 이 엔드포인트가 계정 존재 확인 도구가 된다. 그래서 둘 다 `?error=invalid`이고, 다른
  * 사유는 **자격증명이 아예 없어 붙을 곳이 없는 경우**(`unavailable`) 하나뿐이다 —
  * 그것은 사용자가 고칠 수 있는 일이 아니라 운영 상태라 문구가 달라야 한다.
+ *
+ * **남의 페이지에서 밀어 넣은 폼은 받지 않는다** (T11 step 9). 로그인은 「상태를 바꾸는
+ * `POST`」다 — 공격자가 자기 계정으로 피해자를 **로그인시켜** 그 뒤의 활동을 자기 계정에
+ * 쌓게 만드는 것이 login CSRF이고, 이 앱에서는 그 계정으로 올린 시트가 남는다. 판정은
+ * `same-origin.ts` 하나가 지고 **`Origin`이 없으면 통과한다** — 그 근거(`curl` 검증 절차)는
+ * 그 파일 머리말에 있다.
  *
  * **아무것도 로그에 남기지 않는다** (`S6`). 검증과 본문 읽기가 `lib/api/credentials-schema.ts`에
  * 있어서 이 파일에는 자격증명 필드 이름조차 나오지 않는다 — 규칙이 grep으로 확인된다.
@@ -54,6 +61,10 @@ function toLoginScreen(request: Request, reason: LoginFailure, next: string): Ne
 
 export async function POST(request: Request): Promise<Response> {
   const next = safeRedirectPath(new URL(request.url).searchParams.get('next'));
+
+  // 출처가 다르면 **자격증명을 읽기도 전에** 접는다. 사유는 갈라 알리지 않는다 — 다른 실패와
+  // 같은 `invalid`다 (사유가 갈리면 그 차이가 곧 정보다)
+  if (!requestIsSameOrigin(request)) return toLoginScreen(request, 'invalid', next);
 
   const credentials = await readCredentials(request);
   if (credentials === null) return toLoginScreen(request, 'invalid', next);

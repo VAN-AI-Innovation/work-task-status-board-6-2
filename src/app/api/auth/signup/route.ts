@@ -4,6 +4,7 @@ export const runtime = 'nodejs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
+import { requestIsSameOrigin } from '@/lib/api/same-origin';
 import { isBreachedSignup, readSignup, toSignUpCredentials } from '@/lib/api/signup-schema';
 import { createSessionClient, type CookieAdapter } from '@/lib/auth/session-client';
 
@@ -43,6 +44,11 @@ import { createSessionClient, type CookieAdapter } from '@/lib/auth/session-clie
  * `?sent=1`이 있는 이유: Confirm email 설정이 켜져 있으면 `signUp`이 세션을 돌려주지
  * 않는다. **그 설정을 코드가 알 필요가 없게** 응답의 세션 유무로만 가른다.
  *
+ * **남의 페이지에서 밀어 넣은 폼은 받지 않는다** (T11 step 9). 판정은 `same-origin.ts`
+ * 하나가 지고 **`Origin`이 없으면 통과한다** — 근거는 그 파일 머리말에 있다. 여기서
+ * 막는 것은 남의 사이트가 피해자의 브라우저로 **계정을 양산**하는 것이고, 그 계정 하나
+ * 하나가 리더의 승인 목록에 쌓인다.
+ *
  * **아무것도 로그에 남기지 않는다** (`S6`). 본문 읽기·유출 대조·payload 만들기가 전부
  * `lib/api/signup-schema.ts`에 있어서 이 파일에는 자격증명 필드 이름조차 나오지 않는다 —
  * 규칙이 grep으로 확인된다.
@@ -72,6 +78,10 @@ function toSignupScreen(request: Request, reason: SignupFailure): NextResponse {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  // 출처가 다르면 **본문을 읽기도 전에** 접는다. 사유는 갈라 알리지 않는다 — 다른 실패와
+  // 같은 `invalid`다
+  if (!requestIsSameOrigin(request)) return toSignupScreen(request, 'invalid');
+
   const signup = await readSignup(request);
   if (signup === null) return toSignupScreen(request, 'invalid');
 

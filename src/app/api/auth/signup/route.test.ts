@@ -222,3 +222,50 @@ describe('POST /api/auth/signup — 유출된 비밀번호', () => {
     expect(seenArgs).not.toBeNull();
   });
 });
+
+/**
+ * 공격 #8 — 남의 사이트가 피해자의 브라우저로 **계정을 양산**한다. 가입은 인증이 필요 없는
+ * 자리라 「세션을 훔친다」가 아니라 **쓰레기를 밀어 넣는** 공격이고, 그 계정 하나하나가
+ * 리더의 승인 목록에 쌓여 사람의 손을 요구한다.
+ */
+describe('POST /api/auth/signup — 출처 (T11 step 9)', () => {
+  function withOrigin(request: Request, origin: string): Request {
+    const headers = new Headers(request.headers);
+    headers.set('origin', origin);
+    headers.set('host', 'localhost:3000');
+
+    return new Request(request, { headers });
+  }
+
+  it('다른 출처의 폼은 본문에 닿기도 전에 `invalid`이고 계정을 만들지 않는다', async () => {
+    const response = await POST(withOrigin(formRequest(VALID), 'https://evil.example'));
+
+    expect(response.status).toBe(303);
+    expect(locationOf(response)).toBe('/signup?error=invalid');
+    // 급소 — Auth로 아무것도 나가지 않았고 세션 쿠키도 실리지 않았다
+    expect(seenArgs).toBeNull();
+    expect(response.headers.getSetCookie()).toEqual([]);
+  });
+
+  it('같은 출처의 폼은 통과한다', async () => {
+    const response = await POST(withOrigin(formRequest(VALID), 'http://localhost:3000'));
+
+    expect(locationOf(response)).toBe('/pending');
+    expect(seenArgs).not.toBeNull();
+  });
+
+  it('`Origin`이 없는 요청(`curl`)은 통과한다 — T8의 검증 절차가 죽지 않는다', async () => {
+    const response = await POST(formRequest(VALID));
+
+    expect(locationOf(response)).toBe('/pending');
+  });
+
+  it('거절도 사유를 갈라 알리지 않는다 — 출처 불일치와 가입 실패가 같은 답이다', async () => {
+    signUpFails = true;
+    const failed = await POST(formRequest(VALID));
+    signUpFails = false;
+    const crossSite = await POST(withOrigin(formRequest(VALID), 'https://evil.example'));
+
+    expect(locationOf(crossSite)).toBe(locationOf(failed));
+  });
+});

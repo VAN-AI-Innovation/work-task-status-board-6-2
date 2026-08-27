@@ -62,6 +62,15 @@ function formRequest(body: Record<string, string>, search = ''): Request {
   });
 }
 
+/** cross-site 폼 전송을 흉내 낸다. 브라우저가 스스로 붙이는 헤더다 */
+function withOrigin(request: Request, origin: string): Request {
+  const headers = new Headers(request.headers);
+  headers.set('origin', origin);
+  headers.set('host', 'localhost:3000');
+
+  return new Request(request, { headers });
+}
+
 /** `Location`은 절대 URL이다. 비교는 경로+쿼리로 한다 */
 function locationOf(response: Response): string {
   const raw = response.headers.get('location') ?? '';
@@ -216,5 +225,51 @@ describe('POST /api/auth/login — 실패', () => {
     );
 
     expect(locationOf(response)).toBe('/login?error=invalid');
+  });
+});
+
+/**
+ * 공격 #8 — 남의 사이트에 숨긴 `<form action="…/api/auth/login">`이 피해자의 브라우저로
+ * 공격자 계정에 로그인시킨다(login CSRF). 그 뒤 피해자가 올리는 시트는 **공격자 계정에**
+ * 쌓인다. 브라우저는 cross-site `POST`에 언제나 `Origin`을 붙이므로 그것으로 갈린다.
+ */
+describe('POST /api/auth/login — 출처 (T11 step 9)', () => {
+  it('다른 출처의 폼은 자격증명에 닿기도 전에 `invalid`다', async () => {
+    const response = await POST(
+      withOrigin(formRequest({ email: 'a@example.com', password: 'pw' }), 'https://evil.example')
+    );
+
+    expect(response.status).toBe(303);
+    expect(locationOf(response)).toBe('/login?error=invalid');
+    // 세션이 만들어지지 않았다 — 쿠키도 Auth 호출도 없다
+    expect(response.headers.getSetCookie()).toEqual([]);
+    expect(seenCredentials).toBeNull();
+  });
+
+  it('같은 출처의 폼은 통과한다', async () => {
+    const response = await POST(
+      withOrigin(formRequest({ email: 'a@example.com', password: 'pw' }), 'http://localhost:3000')
+    );
+
+    expect(response.status).toBe(303);
+    expect(locationOf(response)).toBe('/');
+  });
+
+  it('`Origin`이 없는 요청(`curl`)은 통과한다 — T8의 검증 절차가 죽지 않는다', async () => {
+    const response = await POST(formRequest({ email: 'a@example.com', password: 'pw' }));
+
+    expect(response.status).toBe(303);
+    expect(locationOf(response)).toBe('/');
+  });
+
+  it('거절도 사유를 갈라 알리지 않는다 — 출처 불일치와 틀린 비밀번호가 같은 답이다', async () => {
+    signInFails = true;
+    const wrongPassword = await POST(formRequest({ email: 'a@example.com', password: 'pw' }));
+    signInFails = false;
+    const crossSite = await POST(
+      withOrigin(formRequest({ email: 'a@example.com', password: 'pw' }), 'https://evil.example')
+    );
+
+    expect(locationOf(crossSite)).toBe(locationOf(wrongPassword));
   });
 });

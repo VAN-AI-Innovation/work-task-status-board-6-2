@@ -85,7 +85,9 @@
       "step": 9,
       "name": "security-audit",
       "commit": "test: 권한 상승·열거 방어 검증 테스트 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-27T22:29:17+0900",
+      "summary": "src/lib/security-rules.ts(216줄) + security-rules.test.ts(447줄, 40케이스) 작성. 표의 15개 공격을 테스트로 재현했고 전부 막힌다. Origin 검사를 상태 변경 POST 전반으로 확대: login·logout·signup·rejoin·승인·거절·승격. Origin이 없으면 통과하는 규칙은 유지 (curl 기반 T8 검증 절차가 죽지 않도록). 정적 규칙(auth·team·members 라우트의 SERVICE_ROLE/getStorage 금지, console 금지, viewer-session의 getSession 금지, 마이그레이션의 raw_user_meta_data->>'role'|'status' 금지, pwned range 접두사 5글자 초과 금지)이 현재 코드에서 위반 0건. lint·build·test(114파일 1965케이스) 통과. ⚠ 하네스 세션이 45분 실행 제한에 3회 걸려 이 step은 대화 세션에서 AC를 직접 실행해 검증·완료 처리했다. 라이브 DB 계약 테스트가 1회 실패했다가 재실행에 통과 — 이슈 #20 계열의 알려진 경합이며 이 step과 무관하다."
     },
     {
       "step": 10,
