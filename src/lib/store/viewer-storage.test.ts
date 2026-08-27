@@ -48,6 +48,47 @@ function fakeClient(spec: { user?: boolean } = {}): { client: SupabaseClient; ca
   return { client, calls };
 }
 
+/**
+ * `listEvents`만 답하는 가짜. 위 `fakeClient`의 체인은 `maybeSingle`로 끝나는 세션 조회용이라
+ * `order`에서 끝나는 이 질의를 태울 수 없다. 어느 테이블을 지났는지 기록한다 —
+ * 「무엇을 돌려받았나」만 재면 그 값이 어느 클라이언트에서 왔는지 알 수 없다.
+ */
+function eventClient(): { client: SupabaseClient; calls: { tables: string[] } } {
+  const calls = { tables: [] as string[] };
+
+  const client = {
+    auth: {
+      getUser: async () => ({ data: { user: { id: 'user-1', email: 'a@example.com' } }, error: null }),
+    },
+    from: (table: string) => {
+      calls.tables.push(table);
+      const self = {
+        select: () => self,
+        eq: () => self,
+        in: () => self,
+        gte: () => self,
+        lt: () => self,
+        maybeSingle: async () => ({ data: null, error: null }),
+        order: async () => ({
+          data: [
+            {
+              id: 'event-1',
+              task_id: 'task-1',
+              upload_id: null,
+              changed_fields: ['status'],
+              occurred_at: '2026-08-27T00:00:00+00:00',
+            },
+          ],
+          error: null,
+        }),
+      };
+      return self;
+    },
+  } as unknown as SupabaseClient;
+
+  return { client, calls };
+}
+
 /** 진짜 구현을 담는다 — 껍데기를 캐스팅으로 지으면 `repo`가 바뀌었는지만 재고 끝난다 */
 function fakeHandle(mode: StorageMode): StorageHandle {
   return {
@@ -142,6 +183,27 @@ describe('resolveViewerContext', () => {
         expect(ctx.base.readOnly).toBe(mode === 'fallback');
       }
     }
+  });
+
+  it('이력 조회가 사용자 JWT 클라이언트로 나간다 — service_role 핸들을 타지 않는다', async () => {
+    // `0004_events_policy.sql`의 `task_events_select_via_task`는 **authenticated 정책**이다.
+    // 이 조회가 `base.repo`(service_role)로 새면 정책이 통째로 우회되고, 그 실패는
+    // 에러가 아니라 **에러 없이 더 많이 보이는** 모양으로 나타난다 (`ADR-024`·`ADR-028`).
+    const base = fakeHandle('live');
+    const { client, calls } = eventClient();
+
+    const ctx = await resolveViewerContext(base, client);
+    // 세션 해석이 지나간 테이블은 여기서 잘라 낸다 — 재려는 것은 그 뒤의 이력 조회다
+    calls.tables.length = 0;
+    const events = await ctx.repo.listEvents();
+
+    // 조회가 인자로 받은 클라이언트를 지났다
+    expect(calls.tables).toEqual(['task_events']);
+    expect(events).toEqual([
+      { id: 'event-1', taskId: 'task-1', uploadId: null, changedFields: ['status'], occurredAt: '2026-08-27T00:00:00.000Z' },
+    ]);
+    // 같은 호출을 service_role 핸들에 걸면 이 행이 없다 — 두 경로가 실제로 다르다
+    expect(await base.repo.listEvents()).toEqual([]);
   });
 
   it('캐시하지 않는다 — 같은 인자로 두 번 부르면 두 번 만든다', async () => {
