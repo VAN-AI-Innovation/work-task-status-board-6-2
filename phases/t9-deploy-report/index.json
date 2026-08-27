@@ -15,7 +15,10 @@
       "step": 1,
       "name": "list-events",
       "commit": "feat: 태스크 이벤트 조회를 저장소 계약에 추가",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-27T14:15:00+0900",
+      "summary": "TaskRepository에 listEvents(filter?: TaskEventFilter)를 더하고 두 구현을 맞췄다. TaskEventFilter{since?,until?,taskIds?} — TaskFilter 재사용 안 함(결정 L), limit 없음(자르면 건수가 틀린다). **경계: since는 포함(>=), until은 제외(<)** — step 3이 기간을 자를 때 이 규칙을 쓴다(이어붙인 두 주가 경계의 이벤트를 두 번 세지 않는다). taskIds:[]는 「아무것도 아님」(listStages([])와 같은 규칙), 정렬은 occurredAt 내림차순(동시각 순서는 미정의). 비교는 문자열이 아니라 Date.parse — 표기가 달라도(+09:00 대 Z) 같은 순간이면 같다. 계약 케이스 **23~27** 추가(23 왕복·id, 24 정렬, 25 since/until 경계, 26 taskIds, 27 복사본+changedFields는 이름만/S6). scopeToContractRows.listEvents는 계약 태스크 id로 좁힌다(이벤트에는 붙일 접두사가 없다; 부모 삭제 시 cascade). 기준 구현 matchesTaskEventFilter·compareTaskEventsDesc를 task-repository.ts에 export. supabase는 PostgREST 쪽에서 gte/lt/in + order(occurred_at desc), SQL 집계 없음. store-factory의 읽기 전용 래퍼에도 통과(읽기라 막지 않는다). 게이트: lint·build 통과, npm run test 1586건 전부 통과(라이브 Supabase 계약 포함, SKIP_LIVE_DB 없이). 계약이 틀린 구현을 잡는 것도 확인 — since/until을 반대로 하고 정렬을 뒤집자 24·25가 빨개졌고 되돌렸다. src/app 무변경(라우트·각주는 step 4의 몫). grep 'listEvents' src/app 히트 1건은 page.tsx:123의 기존 각주 문구뿐이고 코드 호출은 0이다. 게이트를 5회 돌려 4회는 1586건 전부 통과, 1회만 라이브 DB 병렬 접속의 기존 간헐 실패(T8 감사 기록) 1건이 났고 재실행에서 사라졌다.",
+      "completed_at": "2026-08-27T14:33:11+0900"
     },
     {
       "step": 2,
