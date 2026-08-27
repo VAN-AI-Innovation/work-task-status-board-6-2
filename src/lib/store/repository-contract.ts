@@ -14,15 +14,17 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  TASK_DIFF_FIELDS,
   matchesTaskFilter,
   type GoalMetricUpsertInput,
+  type TaskEventFilter,
   type TaskFilter,
   type TaskRepository,
   type TaskUpsertInput,
 } from '@/lib/store/task-repository';
 import type { TaskPatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
-import type { Task, TaskStage } from '@/types/task';
+import type { Task, TaskEvent, TaskStage } from '@/types/task';
 
 export interface RepositoryFixture {
   create(): Promise<TaskRepository>;
@@ -56,6 +58,11 @@ const SECOND_UPLOAD_AT = '2099-07-27T09:00:00.000Z';
  */
 const THIRD_UPLOAD_AT = '2099-08-03T09:00:00.000Z';
 const FOURTH_UPLOAD_AT = '2099-08-10T09:00:00.000Z';
+/**
+ * 계약 25번 전용. `until`이 **제외 경계**라, 마지막 이벤트까지 담는 구간을 만들려면
+ * 어떤 이벤트보다도 뒤인 시각이 하나 필요하다.
+ */
+const CONTRACT_TAIL = '2099-08-17T09:00:00.000Z';
 
 /**
  * 자연키·기간 라벨에 붙이는 접두사. 계약 테스트는 **실제 저장소에도** 붙어 도는데(supabase),
@@ -153,6 +160,16 @@ export function scopeToContractRows(repo: TaskRepository): TaskRepository {
       // `getTask`와 같은 결이다 — 계약 행이 아니면 계약에게는 없는 행이다.
       const task = await repo.updateTask(id, patch, updatedAt);
       return task !== null && isContractTask(task) ? task : null;
+    },
+
+    async listEvents(filter?: TaskEventFilter): Promise<TaskEvent[]> {
+      // 이벤트에는 접두사를 붙일 칸이 없다 — 붙일 수 있는 것은 **부모 태스크의 자연키**뿐이다.
+      // 그래서 계약 행의 id를 먼저 모으고 그것으로 좁힌다. 부모가 지워지면 이벤트도 함께
+      // 사라지므로(`task_events.task_id ... on delete cascade`) `reset`은 그대로 둔다.
+      const contractTaskIds = new Set(
+        (await repo.listTasks()).filter(isContractTask).map((task) => task.id),
+      );
+      return (await repo.listEvents(filter)).filter((event) => contractTaskIds.has(event.taskId));
     },
 
     upsertTasks: (tasks, options) => repo.upsertTasks(tasks, options),
@@ -745,6 +762,149 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       expect(await repo.updateTask(MISSING_TASK_ID, { status: '완료' }, SECOND_UPLOAD_AT)).toBeNull();
 
       expect(await repo.listTasks()).toEqual(before);
+    },
+  },
+  {
+    /**
+     * `recordEvents`만 있고 읽는 길이 없어서 주간 보고의 「이번 주 변경 건수」가 항상 0으로
+     * 나갔다 (T9 `listEvents`). **두 경로로 들어온 이벤트가 같은 창구로 나온다** —
+     * `upsertTasks`가 diff로 만든 것과 `recordEvents`로 직접 넣은 것.
+     */
+    name: '23. listEvents는 recordEvents·upsertTasks 양쪽이 남긴 이벤트를 돌려주고 id가 채워져 있다',
+    async run(repo) {
+      expect(await repo.listEvents()).toEqual([]);
+
+      await repo.upsertTasks([SEED_A], { occurredAt: FIRST_UPLOAD_AT });
+      const taskId = findBySourceKey(await repo.listTasks(), KEY_A).id;
+
+      await repo.recordEvents([
+        { taskId, uploadId: UPLOAD_2, changedFields: ['progress'], occurredAt: SECOND_UPLOAD_AT },
+      ]);
+
+      const recorded = await repo.listEvents();
+      expect(recorded).toHaveLength(1);
+      expect(recorded[0].id).toBeTruthy();
+      expect(recorded[0].taskId).toBe(taskId);
+      expect(recorded[0].uploadId).toBe(UPLOAD_2);
+      expect(recorded[0].changedFields).toEqual(['progress']);
+      expect(recorded[0].occurredAt).toBe(SECOND_UPLOAD_AT);
+
+      // 업로드가 diff로 만든 이벤트도 같은 창구로 나온다. 실제 「변경 건수」의 출처가 이쪽이다.
+      const upserted = await repo.upsertTasks([{ ...SEED_A, progress: 90 }], {
+        uploadId: UPLOAD_1,
+        occurredAt: THIRD_UPLOAD_AT,
+      });
+      expect(upserted.events).toHaveLength(1);
+
+      const all = await repo.listEvents();
+      expect(all).toHaveLength(2);
+      expect(all.map((event) => event.id)).toContain(upserted.events[0].id);
+    },
+  },
+  {
+    name: '24. listEvents는 occurredAt 내림차순이다 (최신이 먼저)',
+    async run(repo) {
+      await repo.upsertTasks([SEED_A], { occurredAt: FIRST_UPLOAD_AT });
+      const taskId = findBySourceKey(await repo.listTasks(), KEY_A).id;
+
+      // 넣는 순서를 일부러 뒤섞는다 — 정렬이 입력 순서를 따라가면 여기서 걸린다.
+      await repo.recordEvents([
+        { taskId, uploadId: null, changedFields: ['status'], occurredAt: SECOND_UPLOAD_AT },
+        { taskId, uploadId: null, changedFields: ['progress'], occurredAt: FOURTH_UPLOAD_AT },
+        { taskId, uploadId: null, changedFields: ['note'], occurredAt: THIRD_UPLOAD_AT },
+      ]);
+
+      expect((await repo.listEvents()).map((event) => event.occurredAt)).toEqual([
+        FOURTH_UPLOAD_AT,
+        THIRD_UPLOAD_AT,
+        SECOND_UPLOAD_AT,
+      ]);
+    },
+  },
+  {
+    /**
+     * 경계를 한쪽으로 몰아 두는 이유: 주 단위 보고서가 기간을 **이어 붙여** 조회한다.
+     * 양끝을 다 포함하면 경계에 놓인 이벤트가 앞 주와 뒤 주에서 **두 번 세인다.**
+     */
+    name: '25. listEvents의 since는 포함(>=)이고 until은 제외(<)다 — 이어붙인 기간에서 두 번 세이지 않는다',
+    async run(repo) {
+      await repo.upsertTasks([SEED_A], { occurredAt: FIRST_UPLOAD_AT });
+      const taskId = findBySourceKey(await repo.listTasks(), KEY_A).id;
+      await repo.recordEvents(
+        [SECOND_UPLOAD_AT, THIRD_UPLOAD_AT, FOURTH_UPLOAD_AT].map((occurredAt) => ({
+          taskId,
+          uploadId: null,
+          changedFields: ['progress'],
+          occurredAt,
+        })),
+      );
+
+      expect((await repo.listEvents({ since: THIRD_UPLOAD_AT })).map((e) => e.occurredAt)).toEqual([
+        FOURTH_UPLOAD_AT,
+        THIRD_UPLOAD_AT,
+      ]);
+      expect((await repo.listEvents({ until: THIRD_UPLOAD_AT })).map((e) => e.occurredAt)).toEqual([
+        SECOND_UPLOAD_AT,
+      ]);
+      expect(
+        (await repo.listEvents({ since: THIRD_UPLOAD_AT, until: FOURTH_UPLOAD_AT })).map(
+          (e) => e.occurredAt,
+        ),
+      ).toEqual([THIRD_UPLOAD_AT]);
+
+      // 이어 붙인 두 구간이 셋을 정확히 한 번씩 덮는다.
+      const early = await repo.listEvents({ since: SECOND_UPLOAD_AT, until: THIRD_UPLOAD_AT });
+      const late = await repo.listEvents({ since: THIRD_UPLOAD_AT, until: CONTRACT_TAIL });
+      expect(early.length + late.length).toBe(3);
+      expect(new Set([...early, ...late].map((event) => event.id)).size).toBe(3);
+    },
+  },
+  {
+    name: '26. listEvents의 taskIds는 그 태스크의 것만 돌려주고, 빈 배열은 「아무것도 아님」이다',
+    async run(repo) {
+      await repo.upsertTasks([SEED_A, SEED_B], { occurredAt: FIRST_UPLOAD_AT });
+      const tasks = await repo.listTasks();
+      const idA = findBySourceKey(tasks, KEY_A).id;
+      const idB = findBySourceKey(tasks, KEY_B).id;
+
+      await repo.recordEvents([
+        { taskId: idA, uploadId: null, changedFields: ['progress'], occurredAt: SECOND_UPLOAD_AT },
+        { taskId: idB, uploadId: null, changedFields: ['status'], occurredAt: THIRD_UPLOAD_AT },
+      ]);
+
+      expect((await repo.listEvents({ taskIds: [idA] })).map((e) => e.taskId)).toEqual([idA]);
+      expect((await repo.listEvents({ taskIds: [idA, idB] }))).toHaveLength(2);
+      // 「필터 없음」과 「빈 필터」는 다른 뜻이다 (계약 13번의 `listStages([])`와 같은 규칙).
+      expect(await repo.listEvents({ taskIds: [] })).toEqual([]);
+      expect(await repo.listEvents()).toHaveLength(2);
+    },
+  },
+  {
+    /**
+     * 계약 19번과 같은 규칙이고, 뒤쪽 절반은 `S6`이다 — `changedFields`는 **바뀐 필드
+     * 이름만** 담는다. 저장·조회를 왕복해도 셀 값이 섞여 나오면 이력 테이블이 개인정보
+     * 사본이 된다.
+     */
+    name: '27. listEvents가 돌려준 객체를 고쳐도 저장소가 오염되지 않고, changedFields는 이름만 담는다',
+    async run(repo) {
+      await repo.upsertTasks([SEED_A], { occurredAt: FIRST_UPLOAD_AT });
+      const taskId = findBySourceKey(await repo.listTasks(), KEY_A).id;
+      await repo.recordEvents([
+        { taskId, uploadId: null, changedFields: ['progress'], occurredAt: SECOND_UPLOAD_AT },
+      ]);
+
+      const [event] = await repo.listEvents();
+      event.changedFields.push('망가뜨린 필드');
+      event.taskId = '망가뜨린 id';
+
+      const [reread] = await repo.listEvents();
+      expect(reread.changedFields).toEqual(['progress']);
+      expect(reread.taskId).toBe(taskId);
+
+      // 값이 아니라 이름이다. `TASK_DIFF_FIELDS`에 있는 낱말만 나온다.
+      expect(reread.changedFields.every((field) => TASK_DIFF_FIELDS.includes(field as never))).toBe(
+        true,
+      );
     },
   },
 ];

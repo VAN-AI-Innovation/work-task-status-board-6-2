@@ -11,13 +11,16 @@
  */
 
 import {
+  compareTaskEventsDesc,
   diffGoalMetricFields,
   diffTaskFields,
   goalMetricUpsertKey,
+  matchesTaskEventFilter,
   matchesTaskFilter,
   taskUpsertKey,
   type GoalMetricUpsertInput,
   type GoalMetricUpsertResult,
+  type TaskEventFilter,
   type TaskFilter,
   type TaskRepository,
   type TaskUpsertInput,
@@ -207,6 +210,15 @@ export function createMemoryTaskStore(seed?: {
       for (const event of incoming) {
         events.push({ ...clone(event), id: crypto.randomUUID() });
       }
+    },
+
+    async listEvents(filter?: TaskEventFilter): Promise<TaskEvent[]> {
+      // `sort`는 제자리 정렬이지만 `filter`가 이미 새 배열을 만들었으므로 내부 순서는
+      // 그대로다. 돌려줄 때는 복사한다 — 호출자가 고쳐도 저장소가 오염되지 않아야 한다.
+      const matched = events
+        .filter((event) => matchesTaskEventFilter(event, filter))
+        .sort(compareTaskEventsDesc);
+      return clone(matched);
     },
 
     async getLastSyncedAt(): Promise<string | null> {

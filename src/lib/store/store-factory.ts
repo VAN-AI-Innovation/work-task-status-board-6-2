@@ -92,6 +92,8 @@ function toReadOnly(repo: TaskRepository): TaskRepository {
     getTask: (id) => repo.getTask(id),
     listStages: (taskIds) => repo.listStages(taskIds),
     listGoalMetrics: (filter) => repo.listGoalMetrics(filter),
+    /** **읽기다.** 이력 조회는 막을 이유가 없다 — `recordEvents`(쓰기)만 아래에서 막힌다 */
+    listEvents: (filter) => repo.listEvents(filter),
     getLastSyncedAt: () => repo.getLastSyncedAt(),
     /** **읽기다.** 구성원 목록은 막을 이유가 없다 — 폴백은 조회 불가가 아니라 읽기 전용이다 */
     listMembers: () => repo.listMembers(),

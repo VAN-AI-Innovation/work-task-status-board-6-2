@@ -22,6 +22,7 @@ import {
   taskUpsertKey,
   type GoalMetricUpsertInput,
   type GoalMetricUpsertResult,
+  type TaskEventFilter,
   type TaskFilter,
   type TaskRepository,
   type TaskUpsertInput,
@@ -144,6 +145,8 @@ const GOAL_COLUMNS =
 
 const STAGE_COLUMNS =
   'id,task_id,seq,stage_key,stage_label,planned_date,actual_date,content,confirm_status,sla_days';
+
+const EVENT_COLUMNS = 'id,task_id,upload_id,changed_fields,occurred_at';
 
 const MEMBER_COLUMNS = 'id,team_id,name,auth_user_id';
 
@@ -341,6 +344,18 @@ function toStage(row: StageRow): TaskStage {
     content: row.content,
     confirmStatus: row.confirm_status,
     slaDays: row.sla_days,
+  };
+}
+
+function toEvent(row: EventRow): TaskEvent {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    uploadId: row.upload_id,
+    // `changed_fields`는 jsonb라 무엇이든 올 수 있다. **바뀐 필드 이름 배열**이 아니면
+    // 이력으로서 뜻이 없으므로 빈 배열로 떨어뜨린다 (값을 문자열로 뭉개지 않는다).
+    changedFields: Array.isArray(row.changed_fields) ? row.changed_fields : [],
+    occurredAt: toIsoTimestamp(row.occurred_at) ?? row.occurred_at,
   };
 }
 
@@ -563,7 +578,7 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
         const { data: insertedEvents, error: eventError } = await client
           .from('task_events')
           .insert(eventRows)
-          .select('id,task_id,upload_id,changed_fields,occurred_at');
+          .select(EVENT_COLUMNS);
         if (eventError) fail('task_events', 'insert', eventError);
 
         result.events = (insertedEvents as unknown as EventRow[]).map((row) => ({
@@ -663,6 +678,24 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
         })),
       );
       if (error) fail('task_events', 'insert', error);
+    },
+
+    async listEvents(filter?: TaskEventFilter): Promise<TaskEvent[]> {
+      // 빈 배열은 「해당 없음」이다. `.in('task_id', [])`도 0행이지만 왕복을 아낀다
+      // (`listGoalMetrics`의 `teamKeys` 처리와 같은 결).
+      if (filter?.taskIds?.length === 0) return [];
+
+      let query = client.from('task_events').select(EVENT_COLUMNS);
+      if (filter?.taskIds) query = query.in('task_id', [...filter.taskIds]);
+      // 경계는 계약이 정한다 — `since`는 포함(`gte`), `until`은 제외(`lt`).
+      if (filter?.since !== undefined) query = query.gte('occurred_at', filter.since);
+      if (filter?.until !== undefined) query = query.lt('occurred_at', filter.until);
+
+      // 자르지 않는다(`limit` 없음). 건수를 세는 것은 도메인의 일이고, 여기서 자르면
+      // 「이번 주 N건」이 조용히 틀린다.
+      const { data, error } = await query.order('occurred_at', { ascending: false });
+      if (error) fail('task_events', 'select', error);
+      return (data as unknown as EventRow[]).map(toEvent);
     },
 
     async updateTask(id: string, patch: TaskPatch, updatedAt: string): Promise<Task | null> {
