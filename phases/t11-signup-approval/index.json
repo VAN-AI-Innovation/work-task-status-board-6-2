@@ -58,7 +58,10 @@
       "step": 6,
       "name": "team-requests-tab",
       "commit": "feat: 팀원 요청 탭 화면 구현",
-      "status": "pending"
+      "status": "completed",
+      "started_at": "2026-08-27T21:36:33+0900",
+      "summary": "화면 src/app/team/requests/page.tsx(서버 컴포넌트) · 판정 src/lib/domain/join-review.ts의 canReviewJoinRequests(role) · 표시 규칙 src/lib/view/join-request-rows.ts의 toJoinRequestRows · 목록 src/components/team/join-request-list.tsx. 최초 렌더는 자기 API가 아니라 currentSessionClient()의 rpc('pending_requests')를 직접 부른다(ADR-007) — 저장소(view.repo)가 아니라 raw 클라이언트인 이유는 대상이 테이블이 아니라 security definer 함수이고 그 검사가 auth.uid()에 기대기 때문이다(ADR-024). 권한 없으면 notFound() — 403 화면은 '팀장 전용 기능이 존재한다'를 알려 준다. canReviewJoinRequests는 역할 하나만 받고 팀을 보지 않는다(팀 대조는 can_review_join·pending_requests가 진다 — 두 벌이면 어긋난다). 역할 축만 두 벌인 근거: 404를 낼지 조회 '전에' 알아야 한다. 화면 계산 0줄 — 역할은 resolveViewerRole(세션이 이기고 ?as=는 프로덕션+실저장소에서 무시된다), 행은 toJoinRequestRows, 범위는 pending_requests()가 정한다. <select> 후보는 '요청자 팀 + authUserId===null'만이고 이름순으로 세운다 — approve_join도 거부하지만 거부는 누른 뒤에 온다(DB가 문, 여기는 문 앞의 안내). 반려·팀 미상 요청에는 후보가 빈 배열이고 버튼 자체가 없다(대상이 pending일 때만 통하는 함수라 눌러도 반드시 실패한다). rpc 실패는 빈 목록으로 접지 않고 error.tsx로 올린다 — '요청이 없다'와 '읽지 못했다'가 화면에서 같아 보이면 안 된다(X3). 자격증명 없는 데모는 client===null이라 빈 목록(사고가 아니라 없는 것). 승인·거절은 fetch로 step 5 라우트를 치고 성공하면 router.refresh() — 응답에 실려 온 갱신 목록을 상태에 넣지 않는 이유는 후보 목록이 함께 바뀌기 때문이다(승인된 사람에게 붙은 명부 행은 다음 요청의 후보에서 빠져야 하는데 응답에는 요청 목록만 있다). 낙관적 업데이트 없음, confirm() 없음(거절은 재요청으로 되돌아가고 이 프로젝트 화면은 평범한 폼이다). 실패 문구는 서버가 준 message 그대로. 사이드바: ITEMS 상수 배열을 navItemsFor(role)로 바꿔 「팀원 요청」 한 줄만 갈린다(BASE_ITEMS는 그대로) — 감추는 것은 편의이고 방어는 404다. 그 role 때문에 RootLayout이 async가 되어 currentViewerContext()를 부르므로 **그 함수를 react cache()로 감쌌다** — /login·/signup·/pending·모든 화면이 이미 본문에서 같은 함수를 불러서, 감싸지 않으면 한 화면에 auth.getUser() Auth 왕복과 토큰 회전이 두 번 일어난다. 요청 스코프 밖(단위 테스트)에서는 React가 메모하지 않아 기존 테스트가 세는 쿠키 읽기 횟수는 그대로다. ⚠ 이전 회차가 남긴 page.test.ts 픽스처의 user_id가 'user-9'라 step 5의 z.uuid()에 걸려 2건이 빨갰다 — 스키마가 아니라 픽스처를 고쳤다(실제 auth.users.id는 UUID다). 게이트: lint·build 통과, npm test 1851건 전부 통과(108파일, +20 — join-review 3 · join-request-rows 9 · page 8). AC grep 둘 다 0건(page.tsx에 fetch( 없음 · components/team에 rpc(·getStorage·createClient 없음), src/lib 아래 basename 중복 0건.",
+      "completed_at": "2026-08-27T22:08:49+0900"
     },
     {
       "step": 7,
