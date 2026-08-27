@@ -9,6 +9,7 @@
 
 import type { ApiErrorCode } from '@/lib/api/api-error';
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
+import type { DirectoryRow } from '@/lib/domain/member-tree';
 import type { TaskFlags } from '@/lib/domain/task-derive';
 import type { StorageDriver, StorageMode } from '@/lib/store/store-factory';
 import type { DisplayStatus, Task, TaskStage, TeamKey } from '@/types/task';
@@ -79,4 +80,17 @@ export type JoinRequestStatus = 'pending' | 'rejected';
  */
 export interface JoinRequestsResponse {
   requests: JoinRequest[];
+}
+
+/**
+ * 전사 명부 응답 (T11 · `POST /api/members/role`). **행 타입을 여기서 다시 선언하지 않는다** —
+ * `DirectoryRow`는 이미 `buildMemberTree`의 입력이고(`lib/domain/member-tree.ts`), 두 벌이
+ * 되면 트리가 보는 모양과 응답이 싣는 모양이 갈린다.
+ *
+ * **이메일이 실린다.** 그 노출을 좁히는 것은 앱이 아니라 DB다 — `member_directory()`가
+ * `active` admin에게만 행을 낸다(`0005` 4-2). `JoinRequestsResponse`와 같은 판단이고,
+ * 실제 강제는 `lib/api/member-role-schema.ts`의 `.strict()` 스키마가 한다.
+ */
+export interface MemberDirectoryResponse {
+  members: DirectoryRow[];
 }

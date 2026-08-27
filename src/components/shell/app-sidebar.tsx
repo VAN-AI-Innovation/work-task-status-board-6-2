@@ -10,17 +10,18 @@
  * 통과다). 여닫는 토글을 두지 않는다: `UI_GUIDE.md`가 허용한 애니메이션은 사이드 패널
  * 슬라이딩과 스켈레톤 페이드 둘뿐이고, 접힘 상태를 기억시키면 폭 규칙이 두 곳이 된다.
  *
- * ## 역할에 따라 항목이 하나 갈린다 (T11)
+ * ## 역할에 따라 항목이 둘 갈린다 (T11)
  *
- * 「팀원 요청」은 `canReviewJoinRequests(role)`이 참일 때만 선다. ⚠ **이것은 권한이 아니다.**
+ * 「팀원 요청」은 `canReviewJoinRequests(role)`이, 「멤버」는 `canManageMembers(role)`이 참일
+ * 때만 선다 — 앞은 팀장까지, 뒤는 대표·실장뿐이다. ⚠ **이것은 권한이 아니다.**
  * 실제 방어는 `/team/requests`가 `notFound()`를 내는 것과 그 아래 DB 함수들이고, 여기서
  * 감추는 것은 **누를 수 없는 자리를 눈앞에 두지 않는** 편의다. 이 순서를 뒤집어 「사이드바에서
  * 뺐으니 됐다」고 하면 주소를 직접 친 사람에게 그대로 열린다 (`role-layout.ts` 머리말이
  * 같은 사고를 기록하고 있다).
  *
  * `role`은 루트 레이아웃이 세션에서 읽어 내려보낸다. 로그인하지 않았거나 프로필이 없으면
- * `null`이고, 그때는 이 항목이 없다 — **데모 모드에도 없다.** 메모리 저장소에는 `profiles`가
- * 없어 승인할 요청 자체가 존재하지 않는다 (`ADR-026`).
+ * `null`이고, 그때는 두 항목이 없다 — **데모 모드에도 없다.** 메모리 저장소에는 `profiles`도
+ * `members`도 없어 승인할 요청도 세울 명부도 존재하지 않는다 (`ADR-026`).
  */
 
 import Link from 'next/link';
@@ -29,6 +30,7 @@ import type { ReactNode } from 'react';
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
 import { canReviewJoinRequests } from '@/lib/domain/join-review';
+import { canManageMembers } from '@/lib/domain/member-admin';
 import { TEAM_KEYS } from '@/lib/domain/progress-stats';
 import { teamLabel, toTeamSlug } from '@/lib/view/team-slug';
 
@@ -144,6 +146,29 @@ function JoinRequestIcon() {
   );
 }
 
+/** 멤버. 사람 셋이 겹쳐 선다 — 「조직 전체의 명부」라는 뜻이다 */
+function MembersIcon() {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <circle cx="5.5" cy="5" r="2.5" />
+      <path d="M1.5 13.5c0-2.2 1.8-4 4-4s4 1.8 4 4" />
+      <path d="M10.5 3.2a2.5 2.5 0 0 1 0 4.6" />
+      <path d="M11.5 9.8c1.7.4 3 1.9 3 3.7" />
+    </svg>
+  );
+}
+
 /** 부서별 탭. 셋이 같은 아이콘을 쓴다 — 구분은 아이콘이 아니라 한글 이름이 진다 */
 function TeamIcon() {
   return (
@@ -189,14 +214,20 @@ const BASE_ITEMS: readonly NavItem[] = [
 ];
 
 /**
- * 역할이 정하는 것은 **마지막 한 줄뿐**이다. 나머지는 로그인한 전원이 같은 목록을 본다 —
- * 범위는 화면 안에서 갈리지(`viewer-scope.ts`·RLS) 목록에서 갈리지 않는다.
+ * 역할이 정하는 것은 **마지막 두 줄뿐**이고 그 둘은 문턱이 다르다. 나머지는 로그인한 전원이
+ * 같은 목록을 본다 — 범위는 화면 안에서 갈리지(`viewer-scope.ts`·RLS) 목록에서 갈리지 않는다.
  */
 function navItemsFor(role: ViewerRole | null): NavItem[] {
   const items: NavItem[] = [...BASE_ITEMS];
 
   if (role !== null && canReviewJoinRequests(role)) {
     items.push({ href: '/team/requests', label: '팀원 요청', icon: <JoinRequestIcon /> });
+  }
+
+  // 「팀원 요청」 바로 아래다. 둘 다 **사람을 다루는** 화면이고, 승인한 사람이 다음에
+  // 서는 자리가 여기다. 대표·실장에게만 선다 (`canManageMembers`)
+  if (role !== null && canManageMembers(role)) {
+    items.push({ href: '/members', label: '멤버', icon: <MembersIcon /> });
   }
 
   return items;
