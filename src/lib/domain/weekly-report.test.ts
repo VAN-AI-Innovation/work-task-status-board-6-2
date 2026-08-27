@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { buildKpiStrip, summarizeAllTeams } from '@/lib/domain/progress-stats';
+import { resolveReportPeriod } from '@/lib/domain/report-period';
 import { buildSemanticIndex } from '@/lib/domain/task-semantic';
 import { buildWeeklyReport, type WeeklyReportInput } from '@/lib/domain/weekly-report';
 import { parseWorkbook } from '@/lib/sheet/sheet-pipeline';
@@ -176,7 +177,15 @@ function ctx(overrides: Partial<AlertContext> = {}): AlertContext {
 }
 
 function input(overrides: Partial<WeeklyReportInput> = {}): WeeklyReportInput {
-  return { tasks: [], stages: [], goals: [], events: [], ctx: ctx(), ...overrides };
+  return {
+    tasks: [],
+    stages: [],
+    goals: [],
+    period: resolveReportPeriod(TODAY, null),
+    events: [],
+    ctx: ctx(),
+    ...overrides,
+  };
 }
 
 beforeAll(async () => {
@@ -225,6 +234,43 @@ describe('문서 뼈대', () => {
 
     expect(report).toContain('- 전체 활성 업무: 0건');
     expect(report).toContain('- 이번 주 변경: 0건');
+  });
+});
+
+describe('기간과 변경 건수', () => {
+  it('제목의 기간은 today가 아니라 넘겨받은 period가 정한다', () => {
+    // 같은 `ctx.today`로 지난 주를 뽑을 수 있어야 `/report`의 기간 선택이 성립한다
+    const report = buildWeeklyReport(input({ period: resolveReportPeriod(TODAY, '2026-07-08') }));
+
+    expect(report).toContain('# 주간 업무 보고 — 2026-07-06 ~ 2026-07-12');
+  });
+
+  it('「이번 주 마감」이 그 기간을 따라간다', () => {
+    const tasks = [task({ id: 'a', title: '지난 주 마감', dueAt: '2026-07-09' })];
+
+    expect(
+      buildWeeklyReport(input({ tasks, period: resolveReportPeriod(TODAY, '2026-07-08') }))
+    ).toContain('## 이번 주 마감 (1건)');
+    expect(buildWeeklyReport(input({ tasks }))).toContain('## 이번 주 마감 (0건)');
+  });
+
+  it('events가 빈 배열이면 0건이다 — 실제로 아무 일도 없었다는 뜻이다', () => {
+    expect(buildWeeklyReport(input({ events: [] }))).toContain('- 이번 주 변경: 0건');
+  });
+
+  it('events가 null이면 「집계되지 않음」이다 — 0건과 같은 말로 뭉개지 않는다', () => {
+    const report = buildWeeklyReport(input({ events: null }));
+
+    expect(report).toContain('- 이번 주 변경: 집계되지 않음');
+    expect(report).not.toContain('- 이번 주 변경: 0건');
+  });
+
+  it('건수만 쓴다 — changedFields의 필드 이름이 문서에 실리지 않는다 (`S6`)', () => {
+    const report = buildWeeklyReport(input({ events: [event(), event()] }));
+
+    expect(report).toContain('- 이번 주 변경: 2건');
+    expect(report).not.toContain('changedFields');
+    expect(report).not.toContain('status');
   });
 });
 

@@ -10,7 +10,8 @@
  * - **집계하지 않고 가져다 쓴다.** `summarizeAllTeams`·`buildKpiStrip`·`summarizeGoals`·
  *   `collectAlerts`·`deriveAllFlags`를 호출한다. 여기서 새 계산식을 만들면 화면 숫자와
  *   보고서 숫자가 갈라지고, 회의 자리에서 그 둘이 다르면 둘 다 못 믿게 된다.
- * - **오늘을 인자로 받는다** (`ctx.today`). 주 범위는 `startOfWeek`·`endOfWeek`가 만든다.
+ * - **오늘을 인자로 받는다** (`ctx.today`). 주 범위도 **받는다** — `resolveReportPeriod`가
+ *   한 번 정한 값을 넘겨받으므로 API·화면이 같은 주를 본다. 여기서 다시 계산하지 않는다.
  * - **출력이 결정적이다.** 모든 목록에 정렬 기준이 있고 `Map`·`Set` 순회 순서에 기대지
  *   않는다. 같은 입력이 다른 문서를 내면 스냅샷도 회의록도 못 믿는다.
  * - **`extras`·`raw`를 한 값도 싣지 않는다.** 이 문자열은 복사돼 밖으로 나간다. 연락처·
@@ -19,7 +20,7 @@
 
 import { collectAlerts, type Alert, type AlertContext } from '@/lib/domain/alert-rules';
 import { summarizeGoals, type ComputedGoalMetric } from '@/lib/domain/goal-stats';
-import { endOfWeek, startOfWeek } from '@/lib/domain/kst-today';
+import type { ReportPeriod } from '@/lib/domain/report-period';
 import {
   buildKpiStrip,
   summarizeAllTeams,
@@ -50,8 +51,16 @@ export interface WeeklyReportInput {
   tasks: readonly Task[];
   stages: readonly TaskStage[];
   goals: readonly GoalMetric[];
-  /** 이번 주 변경 이력. 건수만 쓴다 */
-  events: readonly TaskEvent[];
+  /** 보고 기간. `resolveReportPeriod`가 정한 값을 그대로 받는다 */
+  period: ReportPeriod;
+  /**
+   * 그 기간의 변경 이력. **건수만 쓴다** — `changedFields`를 풀어 쓰지 않는다
+   * (`S6`: 이력은 이름만 담고 값을 담지 않으며, 이 문자열은 복사돼 밖으로 나간다).
+   *
+   * **`null`은 「0건」이 아니라 「이력을 읽지 못했다」다.** 둘을 같게 말하면 회의에서
+   * 「이번 주 아무 일도 없었다」로 읽힌다. 빈 배열은 실제로 0건이라는 뜻이다.
+   */
+  events: readonly TaskEvent[] | null;
   ctx: AlertContext;
 }
 
@@ -112,16 +121,21 @@ function section(title: string, body: readonly string[]): string {
   return [`## ${title}`, '', ...(body.length === 0 ? [EMPTY] : body)].join('\n');
 }
 
+/** 「0건」과 「집계되지 않음」을 같은 문장으로 말하지 않는다 — 앞은 사실이고 뒤는 결측이다 */
+function eventCountLabel(events: readonly TaskEvent[] | null): string {
+  return events === null ? '집계되지 않음' : `${events.length}건`;
+}
+
 function summarySection(
   tiles: readonly KpiTile[],
-  eventCount: number
+  events: readonly TaskEvent[] | null
 ): string {
   return section('요약', [
     `- 전체 활성 업무: ${cell(kpiValue(tiles, 'active_total'))}건` +
       ` / 완료율: ${percent(kpiValue(tiles, 'completion_rate'))}` +
       ` / 지연: ${cell(kpiValue(tiles, 'overdue'))}건` +
       ` / 마감 임박: ${cell(kpiValue(tiles, 'due_soon'))}건`,
-    `- 이번 주 변경: ${eventCount}건`,
+    `- 이번 주 변경: ${eventCountLabel(events)}`,
   ]);
 }
 
@@ -187,12 +201,12 @@ function overdueSection(tasks: readonly Task[], flags: ReadonlyMap<string, TaskF
 function dueThisWeekSection(
   tasks: readonly Task[],
   flags: ReadonlyMap<string, TaskFlags>,
-  weekStart: string | null,
-  weekEnd: string | null
+  weekStart: string,
+  weekEnd: string
 ): string {
   const rows = tasks
     .filter((task) => {
-      if (task.dueAt === null || weekStart === null || weekEnd === null) return false;
+      if (task.dueAt === null) return false;
       if (task.dueAt < weekStart || task.dueAt > weekEnd) return false;
       return !isTerminal(flags.get(task.id)?.semantic ?? null);
     })
@@ -264,20 +278,19 @@ function checkSection(alerts: readonly Alert[]): string {
 }
 
 export function buildWeeklyReport(input: WeeklyReportInput): string {
-  const { tasks, stages, goals, events, ctx } = input;
+  const { tasks, stages, goals, period, events, ctx } = input;
 
   // 한 번 판정해 모든 집계에 같은 플래그를 넘긴다. 섹션마다 다시 판정하면 느린 것보다
   // 갈라지는 것이 문제다
   const flags = ctx.flags ?? deriveAllFlags(tasks, ctx);
   const withFlags: AlertContext = { ...ctx, flags };
 
-  const weekStart = startOfWeek(ctx.today);
-  const weekEnd = endOfWeek(ctx.today);
+  const { weekStart, weekEnd } = period;
 
   return [
     `# 주간 업무 보고 — ${cell(weekStart)} ~ ${cell(weekEnd)}`,
     '',
-    summarySection(buildKpiStrip(tasks, withFlags), events.length),
+    summarySection(buildKpiStrip(tasks, withFlags), events),
     '',
     teamSection(summarizeAllTeams(tasks, withFlags)),
     '',

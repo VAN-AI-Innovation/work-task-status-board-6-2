@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionOutcome } from '@/lib/auth/viewer-session';
 import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
 import { buildKpiStrip, type KpiTile, type TeamSummary } from '@/lib/domain/progress-stats';
+import { resolveReportPeriod } from '@/lib/domain/report-period';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 import { kstToday } from '@/lib/domain/kst-today';
 import { buildSemanticIndex, STATUS_OPTIONS } from '@/lib/domain/task-semantic';
@@ -791,6 +792,7 @@ describe('/ — 주간 브리핑 카드 (`UC-08` · 완료 기준 9)', () => {
         tasks,
         stages: await handle.repo.listStages(tasks.map((task) => task.id)),
         goals: await handle.repo.listGoalMetrics(),
+        period: resolveReportPeriod(kstToday(new Date()), null),
         events: [],
         ctx: { today: kstToday(new Date()), semanticIndex: buildSemanticIndex(null) },
       })

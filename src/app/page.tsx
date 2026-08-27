@@ -77,6 +77,7 @@ import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip, summarizeAllTeams } from '@/lib/domain/progress-stats';
 import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
 import { scopeTasks } from '@/lib/domain/viewer-scope';
+import { resolveReportPeriod } from '@/lib/domain/report-period';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 import { approvalQueue, groupAlerts } from '@/lib/view/alert-groups';
 import {
@@ -206,6 +207,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     tasks: read.tasks,
     stages: read.stages,
     goals,
+    period: resolveReportPeriod(read.ctx.today, null),
     events: [],
     ctx: read.ctx,
   });

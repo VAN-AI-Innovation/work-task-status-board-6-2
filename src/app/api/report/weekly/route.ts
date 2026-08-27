@@ -4,6 +4,7 @@ export const runtime = 'nodejs';
 import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { buildReadContext } from '@/lib/api/read-context';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
+import { resolveReportPeriod } from '@/lib/domain/report-period';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 
 /**
@@ -34,6 +35,7 @@ export async function GET(request: Request): Promise<Response> {
         tasks: read.tasks,
         stages: read.stages,
         goals: await view.repo.listGoalMetrics(),
+        period: resolveReportPeriod(read.ctx.today, null),
         events: [],
         ctx: read.ctx,
       }),
