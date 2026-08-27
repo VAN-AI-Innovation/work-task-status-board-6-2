@@ -11,7 +11,7 @@ import type { ApiErrorCode } from '@/lib/api/api-error';
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
 import type { TaskFlags } from '@/lib/domain/task-derive';
 import type { StorageDriver, StorageMode } from '@/lib/store/store-factory';
-import type { DisplayStatus, Task, TaskStage } from '@/types/task';
+import type { DisplayStatus, Task, TaskStage, TeamKey } from '@/types/task';
 
 /** 모든 조회 응답에 함께 실리는 화면 상태. 배너·「마지막 반영」 표시의 근거다 */
 export interface ApiMeta {
@@ -47,4 +47,36 @@ export interface TaskDetailResponse {
 
 export interface ApiErrorBody {
   error: { code: ApiErrorCode; message: string };
+}
+
+/**
+ * 팀 합류 요청 한 건 (T11). `pending_requests()`가 낸 행을 카멜케이스로 옮긴 것이며,
+ * **이메일이 실리는 것이 의도다** — 리더가 요청자를 알아보려면 이름만으로는 부족하다.
+ *
+ * 그 노출을 좁히는 것은 앱이 아니라 DB다. `pending_requests()`가 `active` admin·lead에게만
+ * 행을 내므로(`0005` 4-1) 이 타입이 실려 나가는 응답 자체가 그 둘에게만 만들어진다.
+ * 실제 강제는 `lib/api/join-request-schema.ts`의 `.strict()` 스키마가 한다 — 타입만으로는
+ * 강제가 아니다.
+ */
+export interface JoinRequest {
+  userId: string;
+  /** 가입 폼에 적은 이름. 트리거가 비어 있으면 `null`로 접는다 (`0005` 3절) */
+  displayName: string | null;
+  email: string | null;
+  /** 트리거가 `teams`에 실재하는 값일 때만 넣는다. `null`이면 admin만 볼 수 있다 */
+  teamId: TeamKey | null;
+  /** `rejected`도 목록에 남는다 — 거절이 재요청으로 되돌아오는 것을 리더가 본다 */
+  status: JoinRequestStatus;
+  /** ISO. `profiles.created_at` */
+  createdAt: string;
+}
+
+export type JoinRequestStatus = 'pending' | 'rejected';
+
+/**
+ * 조회·승인·거절 **세 라우트가 모두** 돌려주는 모양이다. 승인 직후 화면이 자기 힘으로
+ * 목록을 다시 계산하면 그것이 곧 계산 로직이므로, 서버가 갱신된 목록을 함께 준다.
+ */
+export interface JoinRequestsResponse {
+  requests: JoinRequest[];
 }

@@ -15,6 +15,7 @@
  */
 
 import { cookies } from 'next/headers';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 import { createSessionClient, type CookieAdapter } from '@/lib/auth/session-client';
 import { getStorage } from '@/lib/store/store-factory';
@@ -36,17 +37,30 @@ async function requestCookies(): Promise<CookieAdapter | null> {
   }
 }
 
+/**
+ * 이 요청의 **사용자 JWT 클라이언트**. 자격증명이나 쿠키가 없으면 `null`이고 던지지 않는다.
+ *
+ * `ViewerContext`가 이것을 밖으로 내보내지 않는 이유는 그 타입이 **저장소 핸들**이기 때문이다
+ * (`TaskRepository`). 그런데 T11의 합류 요청 라우트 셋은 저장소가 아니라 **`security definer`
+ * 함수**를 부른다 — 접근 제어가 함수 안에 있고 그 검사는 `auth.uid()`에 기댄다 (`0005` 4절).
+ * 그래서 raw 클라이언트가 필요하고, 그것을 각 라우트가 스스로 만들면 **이 파일이 선언한
+ * 「`cookies()`를 만지는 유일한 자리」가 깨진다.** 라우트마다 어댑터를 손으로 지으면 언젠가
+ * 하나가 `setAll`을 빠뜨리고, 그때 토큰 회전이 유실돼 사용자가 조용히 로그아웃된다.
+ *
+ * ⚠ **`service_role`이 아니다.** `getStorage()`의 싱글턴은 이 함수에 닿지 않는다 (`ADR-024`).
+ */
+export async function currentSessionClient(): Promise<SupabaseClient | null> {
+  const adapter = await requestCookies();
+  if (adapter === null) return null;
+
+  return createSessionClient(adapter, {
+    url: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  });
+}
+
 export async function currentViewerContext(): Promise<ViewerContext> {
   const base = await getStorage();
-  const adapter = await requestCookies();
 
-  const client =
-    adapter === null
-      ? null
-      : createSessionClient(adapter, {
-          url: process.env.NEXT_PUBLIC_SUPABASE_URL,
-          anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-        });
-
-  return resolveViewerContext(base, client);
+  return resolveViewerContext(base, await currentSessionClient());
 }
