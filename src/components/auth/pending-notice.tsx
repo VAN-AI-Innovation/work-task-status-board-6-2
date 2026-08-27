@@ -13,6 +13,8 @@
  * 낱말이 두 곳에 있게 되고, 한쪽만 고쳐지는 날이 온다.
  */
 
+import Link from 'next/link';
+
 import { TEAM_KEYS } from '@/lib/domain/progress-stats';
 import { teamLabel } from '@/lib/view/team-slug';
 
@@ -55,14 +57,80 @@ export function PendingNotice({
 }) {
   return (
     <div className="flex flex-col gap-3">
+      <StatusPill state="pending" />
       <p className="text-ink-body text-sm">
         {displayName === null ? '' : `${displayName}님, `}
         {teamName === null ? '' : `${teamName} `}
-        합류를 요청했습니다. 팀장의 승인을 기다리는 중입니다.
+        합류를 요청했습니다.
+      </p>
+      <p className="text-ink-body text-sm">
+        가입하신 팀의 <strong className="font-semibold">팀장이 승인하면</strong> 이용하실 수
+        있습니다.
       </p>
       <p className="text-ink-muted text-xs">
-        승인되면 이 화면 대신 현황판이 열립니다. 잠시 후 다시 들어와 주세요.
+        승인되면 이 화면의 상태가 「승인 완료」로 바뀝니다. 잠시 후 다시 들어와 주세요.
       </p>
+      <AccountLine email={email} />
+      <LogoutButton />
+    </div>
+  );
+}
+
+/**
+ * 이 화면이 말하는 **단 하나의 사실**. 대기와 완료가 같은 자리에서 같은 모양으로 바뀌어야
+ * 사용자가 「무엇이 달라졌는지」를 글을 읽지 않고도 안다 — 문구만 갈리면 두 화면이 서로
+ * 다른 페이지처럼 보인다.
+ *
+ * 색만으로 구분하지 않는다 (`UI_GUIDE.md`). 낱말이 먼저이고 색은 거드는 것이다.
+ */
+function StatusPill({ state }: { state: 'pending' | 'approved' }) {
+  const approved = state === 'approved';
+
+  return (
+    <p>
+      <span className="text-ink-muted text-xs">상태</span>{' '}
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+          approved ? 'bg-brand-soft text-brand' : 'bg-warn-bg text-warn'
+        }`}
+      >
+        {approved ? '승인 완료' : '승인 대기'}
+      </span>
+    </p>
+  );
+}
+
+/**
+ * 승인됐다. **이 화면을 그냥 지나치지 않고 한 번 보여 준다** — 대기 화면을 열어 두고
+ * 기다리던 사람에게 「됐다」를 말해 주는 자리가 없으면, 새로고침했더니 갑자기 현황판이
+ * 떠 있는 것으로 끝난다.
+ *
+ * 버튼은 `/`로 간다. **「로그인」이라고 적지 않는다** — 이 사람은 승인 시점에 이미 로그인된
+ * 상태이고, 로그인 폼을 다시 띄우면 방금 승인된 사람이 자기가 뭘 잘못했나 생각하게 된다.
+ */
+export function ApprovedNotice({
+  teamName,
+  displayName,
+  email,
+}: {
+  teamName: string | null;
+  displayName: string | null;
+  email: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <StatusPill state="approved" />
+      <p className="text-ink-body text-sm">
+        {displayName === null ? '' : `${displayName}님, `}
+        {teamName === null ? '' : `${teamName} `}
+        합류가 승인되었습니다. 이제 현황판을 이용하실 수 있습니다.
+      </p>
+      <Link
+        href="/"
+        className="bg-brand text-canvas hover:bg-brand-strong rounded px-3 py-2 text-center text-sm font-medium"
+      >
+        현황판 들어가기
+      </Link>
       <AccountLine email={email} />
       <LogoutButton />
     </div>

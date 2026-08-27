@@ -121,11 +121,21 @@ export function SignupForm({ error }: { error: string | null }) {
  * 않으므로 사용자가 할 일이 하나 더 있다 — **폼을 다시 보여 주지 않는다.** 보여 주면
  * 같은 이메일로 다시 눌러 보게 되고, 그 시도는 사용자에게 실패처럼 보인다.
  */
+/**
+ * **평소에는 뜨지 않는 화면이다.** 가입은 곧바로 세션을 얻어 `/pending`으로 가고, 이 갈래는
+ * `signUp`이 세션을 주지 않을 때 — 즉 Supabase의 **Confirm email이 켜져 있을 때**만 선다
+ * (`api/auth/signup/route.ts`). 그 설정을 끄기로 한 것이 지금의 결정이고, 이 갈래는 누군가
+ * 다시 켰을 때 **사용자가 아무 말 없이 로그인 실패로 떨어지지 않게** 남겨 둔 안전망이다.
+ *
+ * 그래서 문구가 메일과 팀장 승인을 **둘 다** 말한다. 메일만 말하면 인증을 마친 사람이
+ * 「이제 되겠지」 하고 기다리다 아무 일도 일어나지 않는 것을 보게 된다.
+ */
 export function SignupSentNotice() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-ink-body text-sm">
-        확인 메일을 보냈습니다. 메일의 링크를 눌러 인증을 마치면 승인 대기 상태가 됩니다.
+        확인 메일을 보냈습니다. 메일의 링크를 눌러 인증을 마치면 승인 대기 상태가 되고, 그다음
+        가입하신 팀의 팀장이 승인하면 이용하실 수 있습니다.
       </p>
       <a
         href="/login"

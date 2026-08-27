@@ -23,6 +23,7 @@
 import { redirect } from 'next/navigation';
 
 import {
+  ApprovedNotice,
   MissingProfileNotice,
   PendingNotice,
   RejectedNotice,
@@ -34,16 +35,35 @@ import { teamLabel } from '@/lib/view/team-slug';
 /** 승인 여부는 요청 시각의 사실이다. 프리렌더하면 승인된 뒤에도 이 화면이 굳는다 */
 export const dynamic = 'force-dynamic';
 
+/**
+ * 제목은 **상태 하나에서만** 온다. 조건식을 늘려 가며 짓다 보면 갈래가 하나 늘 때 제목이
+ * 조용히 빠지고, 그 화면은 이름 없이 뜬다.
+ */
+const TITLES = {
+  ok: '승인 완료',
+  pending: '승인 대기 중',
+  rejected: '요청이 반려되었습니다',
+  no_profile: '프로필이 준비되지 않았습니다',
+  anonymous: '',
+} as const;
+
 export default async function PendingPage({ searchParams }: PageProps<'/pending'>) {
   // Next 16에서 `searchParams`는 Promise다
   const sp = toURLSearchParams(await searchParams);
 
   const { session } = await currentViewerContext();
-  if (session.status === 'ok') redirect('/');
   if (session.status === 'anonymous') redirect('/login?next=%2Fpending');
 
-  // `no_profile`에는 팀 칸 자체가 없고, 나머지 둘도 `teamId`가 null일 수 있다
-  const teamId = session.status === 'no_profile' ? null : session.teamId;
+  /*
+   * `no_profile`에는 팀 칸 자체가 없다. `ok`는 `Viewer` 안에 들어 있고, 나머지 둘은 평평하다 —
+   * 셋의 모양이 달라서 여기서 한 번 고른다.
+   */
+  const teamId =
+    session.status === 'no_profile'
+      ? null
+      : session.status === 'ok'
+        ? session.viewer.teamId
+        : session.teamId;
   const teamName = teamId === null ? null : teamLabel(teamId);
 
   return (
@@ -51,17 +71,24 @@ export default async function PendingPage({ searchParams }: PageProps<'/pending'
       {/* 로그인·가입과 함께 중앙 정렬이 허용되는 자리다 (`UI_GUIDE.md`「정렬」의 빈 상태
           화면과 같은 이유 — 읽을 데이터가 없어 좌측 기준선을 세울 것이 없다) */}
       <div className="border-line bg-panel w-full max-w-[360px] rounded-md border p-6">
-        <h1 className="text-brand text-xl font-semibold">
-          {session.status === 'rejected' ? '요청이 반려되었습니다' : '승인 대기 중'}
-        </h1>
+        <h1 className="text-brand text-xl font-semibold">{TITLES[session.status]}</h1>
         <p className="text-ink-muted mt-1 text-xs">
           {session.status === 'no_profile'
             ? '권한 지정이 필요합니다.'
-            : '승인되면 현황판을 볼 수 있습니다.'}
+            : session.status === 'ok'
+              ? '이제 현황판을 이용하실 수 있습니다.'
+              : '승인되면 현황판을 볼 수 있습니다.'}
         </p>
 
         <div className="mt-5">
           {session.status === 'no_profile' && <MissingProfileNotice email={session.email} />}
+          {session.status === 'ok' && (
+            <ApprovedNotice
+              teamName={teamName}
+              displayName={null}
+              email={session.viewer.email}
+            />
+          )}
           {session.status === 'pending' && (
             <PendingNotice
               teamName={teamName}

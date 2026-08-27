@@ -90,14 +90,30 @@ beforeEach(() => {
 });
 
 describe('/pending — 나가는 문', () => {
-  it('승인된 사람은 여기 붙잡히지 않는다 — 북마크로 돌아와도 대시보드로 간다', async () => {
-    session = { status: 'ok', viewer: VIEWER };
+  /*
+   * 예전에는 승인된 사람을 `/`로 튕겼다. **지금은 붙잡아 「승인 완료」를 한 번 보여 준다** —
+   * 대기 화면을 열어 두고 기다리던 사람에게 「됐다」를 말해 주는 자리가 없으면, 새로고침했더니
+   * 갑자기 현황판이 떠 있는 것으로 끝난다. 나가는 문은 리다이렉트가 아니라 **버튼**이다.
+   */
+  it('승인된 사람에게는 「승인 완료」와 나갈 버튼을 보여 준다 — 튕기지 않는다', async () => {
+    // 방금 승인된 사람은 팀이 있다. `VIEWER`(팀 없는 대표·실장)로는 그 갈래를 못 잰다
+    session = {
+      status: 'ok',
+      viewer: { ...VIEWER, role: 'member', teamId: 'marketing', email: 'newbie@van.test' },
+    };
 
-    // `redirect()`는 던져서 렌더를 끊는다. 목적지는 에러의 `digest`에 실린다.
-    // 목적지를 정확히 본다 — 느슨하게 보면 `/login`도 「`/`로 시작한다」에 걸린다
-    await expect(PendingPage(props())).rejects.toMatchObject({
-      digest: 'NEXT_REDIRECT;replace;/;307;',
+    const tree = await PendingPage(props());
+    const notice = findComponent(tree, 'ApprovedNotice');
+
+    expect(notice).not.toBeNull();
+    // 팀 이름은 `Viewer` 안에 있다 — 대기 갈래와 모양이 달라서 페이지가 한 번 고른다
+    expect(notice?.props).toMatchObject({
+      teamName: '마케팅·관리팀',
+      email: 'newbie@van.test',
     });
+    // 승인된 사람에게 대기·반려 문구를 함께 보여 주지 않는다
+    expect(findComponent(tree, 'PendingNotice')).toBeNull();
+    expect(findComponent(tree, 'RejectedNotice')).toBeNull();
   });
 
   it('미인증이면 로그인으로 보낸다 — 백지를 두지 않는다', async () => {
