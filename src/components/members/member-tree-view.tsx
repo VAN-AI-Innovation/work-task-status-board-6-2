@@ -91,16 +91,28 @@ export function MemberTreeView({
   tree,
   selectedKey,
   hrefFor,
+  openable,
 }: {
   tree: MemberTree;
   selectedKey: string | null;
   /** `?member=`를 갈아끼운 주소. 나머지 쿼리는 호출자가 들고 간다 */
   hrefFor: (key: string) => string;
+  /**
+   * 이 사람의 패널을 열 수 있는가. **판정을 여기서 하지 않는다** — 팀장이 남의 팀을 못
+   * 여는 규칙은 페이지가 지고(`members/page.tsx`), 진짜 문은 DB다 (`0007`이 남의 팀
+   * 이메일을 null로 내린다).
+   */
+  openable: (node: MemberNode) => boolean;
 }) {
   return (
     <ul>
       <li className="flex flex-col items-center">
-        <TopBox unassigned={tree.unassigned} selectedKey={selectedKey} hrefFor={hrefFor} />
+        <TopBox
+          unassigned={tree.unassigned}
+          selectedKey={selectedKey}
+          hrefFor={hrefFor}
+          openable={openable}
+        />
 
         {/* 위 칸에서 들보까지 내려가는 줄기. 이것이 없으면 들보가 허공에 뜬다 */}
         <div className={TRUNK} aria-hidden="true" />
@@ -109,7 +121,12 @@ export function MemberTreeView({
         <ul className={`flex w-full flex-col gap-8 lg:flex-row lg:items-stretch ${GAP}`}>
           {tree.teams.map((branch) => (
             <li key={branch.teamId} className={`${CONNECTOR} lg:min-w-0 lg:flex-1`}>
-              <TeamColumn branch={branch} selectedKey={selectedKey} hrefFor={hrefFor} />
+              <TeamColumn
+                branch={branch}
+                selectedKey={selectedKey}
+                hrefFor={hrefFor}
+                openable={openable}
+              />
             </li>
           ))}
         </ul>
@@ -126,10 +143,12 @@ function TopBox({
   unassigned,
   selectedKey,
   hrefFor,
+  openable,
 }: {
   unassigned: MemberNode[];
   selectedKey: string | null;
   hrefFor: (key: string) => string;
+  openable: (node: MemberNode) => boolean;
 }) {
   return (
     <div className="w-full max-w-md">
@@ -146,6 +165,7 @@ function TopBox({
               node={node}
               selectedKey={selectedKey}
               hrefFor={hrefFor}
+              openable={openable}
             />
           ))
         )}
@@ -158,10 +178,12 @@ function TeamColumn({
   branch,
   selectedKey,
   hrefFor,
+  openable,
 }: {
   branch: TeamBranch;
   selectedKey: string | null;
   hrefFor: (key: string) => string;
+  openable: (node: MemberNode) => boolean;
 }) {
   return (
     <>
@@ -181,6 +203,7 @@ function TeamColumn({
               lead
               selectedKey={selectedKey}
               hrefFor={hrefFor}
+              openable={openable}
             />
           ))
         )}
@@ -193,6 +216,7 @@ function TeamColumn({
               node={node}
               selectedKey={selectedKey}
               hrefFor={hrefFor}
+              openable={openable}
             />
           ))
         )}
@@ -225,25 +249,29 @@ function MemberCard({
   lead = false,
   selectedKey,
   hrefFor,
+  openable,
 }: {
   node: MemberNode;
   lead?: boolean;
   selectedKey: string | null;
   hrefFor: (key: string) => string;
+  openable: (node: MemberNode) => boolean;
 }) {
   const key = keyOf(node);
   const selected = key === selectedKey;
+  const canOpen = openable(node);
 
-  return (
-    <li>
-      <Link
-        href={hrefFor(key)}
-        aria-current={selected ? 'true' : undefined}
-        className={`bg-panel hover:border-line-strong block rounded-md border px-3 py-2 ${
-          lead ? 'border-l-4 border-l-[var(--color-brand)]' : ''
-        } ${selected ? 'border-brand ring-brand-soft ring-2' : 'border-line'}`}
-      >
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+  const shell = `bg-panel block rounded-md border px-3 py-2 ${
+    lead ? 'border-l-4 border-l-[var(--color-brand)]' : ''
+  } ${selected ? 'border-brand ring-brand-soft ring-2' : 'border-line'}`;
+
+  /*
+   * **열 수 없는 사람은 링크가 아니다.** 링크로 두고 클릭만 막으면 커서와 밑줄이 「누를 수
+   * 있다」고 말하고, 키보드로는 여전히 닿는다. 아예 다른 태그로 그리는 편이 정직하다.
+   */
+  const body = (
+    <>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="text-ink text-sm font-medium">{node.name ?? '(이름 없음)'}</span>
           {/* 역할 이름은 한 곳에서만 온다 (`role-label.ts`). 계정이 없으면 부를 역할이 없다 */}
           {node.role !== null && (
@@ -251,10 +279,25 @@ function MemberCard({
           )}
           <StatusBadge node={node} />
         </div>
-        {node.email !== null && node.email !== '' && (
-          <p className="text-ink-muted mt-0.5 truncate text-xs">{node.email}</p>
-        )}
-      </Link>
+      {node.email !== null && node.email !== '' && (
+        <p className="text-ink-muted mt-0.5 truncate text-xs">{node.email}</p>
+      )}
+    </>
+  );
+
+  return (
+    <li>
+      {canOpen ? (
+        <Link
+          href={hrefFor(key)}
+          aria-current={selected ? 'true' : undefined}
+          className={`${shell} hover:border-line-strong`}
+        >
+          {body}
+        </Link>
+      ) : (
+        <div className={`${shell} opacity-60`}>{body}</div>
+      )}
     </li>
   );
 }

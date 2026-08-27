@@ -129,16 +129,20 @@ describe('/members — 누가 여는가', () => {
     });
   });
 
-  it('팀장에게도 없는 것처럼 보인다 — 「팀원 요청」과 다르다', async () => {
+  /*
+   * 예전에는 팀장에게도 404였다. **지금은 열린다** — `member_directory()`가 `lead`를 받고
+   * (`0007`) 남의 팀 사람의 이메일만 null로 내려보내므로, 팀장은 조직도를 보되 남의 팀
+   * 개인정보는 못 본다. 바꾸는 것은 여전히 대표·실장뿐이다(`canManageMembers`).
+   */
+  it('팀장에게는 열린다 — 보는 것과 바꾸는 것이 다른 질문이다', async () => {
     session = viewer('lead', 'edit');
 
-    await expect(MembersPage(props())).rejects.toMatchObject({
-      digest: 'NEXT_HTTP_ERROR_FALLBACK;404',
-    });
+    await expect(MembersPage(props())).resolves.toBeTruthy();
+    expect(rpcCalls).toContain('member_directory');
   });
 
   it('404를 내기 전에는 명부를 부르지도 않는다', async () => {
-    session = viewer('lead', 'edit');
+    session = viewer('member');
 
     await expect(MembersPage(props())).rejects.toThrow();
     expect(rpcCalls).toEqual([]);

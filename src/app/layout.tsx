@@ -32,6 +32,12 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
    */
   const { session } = await currentViewerContext();
   const role = session.status === "ok" ? session.viewer.role : null;
+  /*
+   * 팀 탭을 좁히는 데 쓴다 (`team-visibility.ts`). **세션이 없으면 좁히지 않는다** —
+   * 데모에는 「우리 팀」이라고 부를 대상이 없고, 여기서 좁히면 `.env` 없이 클론한 사람이
+   * 팀 메뉴가 하나도 없는 화면을 본다 (`ARCHITECTURE.md`「권한」).
+   */
+  const viewerTeamId = session.status === "ok" ? session.viewer.teamId : null;
 
   return (
     <html
@@ -43,7 +49,11 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           각 페이지가 `PageShell`을 부른다 (`components/shell/page-shell.tsx`). */}
       <body className="bg-canvas text-ink min-h-full">
         <div className="flex min-h-screen">
-          <AppSidebar role={role} />
+          <AppSidebar
+            role={role}
+            teamId={viewerTeamId}
+            hasSession={session.status === "ok"}
+          />
           <div className="flex min-w-0 flex-1 flex-col">{children}</div>
         </div>
       </body>

@@ -46,6 +46,7 @@ import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
 import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
 import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
+import { canSeeTeam } from '@/lib/domain/team-visibility';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { collectAlerts } from '@/lib/domain/alert-rules';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
@@ -126,6 +127,18 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   );
 
   // 성과 행에도 담당자·채널이 섞여 들어온다. `toGoalResponse`를 거른다 (`S6`)
+  /*
+   * **남의 팀 화면은 없는 것으로 둔다** (`team-visibility.ts`). 사이드바가 항목을 감추는
+   * 것과 **같은 함수**를 쓴다 — 두 곳이 각자 판단하면 목록에는 없는데 주소로는 열리는 날이 온다.
+   *
+   * 403이 아니라 404인 이유는 `/members`와 같다: 「그 팀 화면은 있지만 당신 것이 아니다」가
+   * 곧 정보다. 데이터는 이미 RLS가 막고 있어 열려도 빈 화면이지만, **빈 화면은 「데이터가
+   * 없다」와 구분되지 않는다** — 그것이 이 줄이 없애는 헛걸음이다.
+   */
+  if (!canSeeTeam(read.role, read.viewer?.teamId ?? null, read.viewer !== null, teamKey)) {
+    notFound();
+  }
+
   const goalStats = summarizeGoals(await view.repo.listGoalMetrics({ teamKeys: [teamKey] }));
   const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
 

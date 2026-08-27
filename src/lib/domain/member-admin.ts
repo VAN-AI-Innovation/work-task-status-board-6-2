@@ -7,12 +7,17 @@
  * 사람을 받아들일 수 있는가」이고 여기는 「전사 명부를 보고 팀장을 세울 수 있는가」다.
  * 한 파일에 두면 다음에 한쪽 답이 바뀔 때 다른 쪽이 딸려 온다.
  *
- * ## 팀장이 빠지는 것이 이 함수의 전부다
+ * ## 보는 것과 바꾸는 것이 다른 질문이다
  *
- * `canReviewJoinRequests`는 `lead`에게 참인데 이쪽은 거짓이다. 근거는 취향이 아니라 DB다 —
- * `member_directory()`가 `my_role() = 'admin'`일 때만 행을 내고(`0005` 4-2), `set_role`은
- * admin이 아니면 예외를 던진다(4-6). 팀장에게 화면을 열어 주면 **빈 트리와 403뿐인 버튼**을
- * 보게 된다. 여기서 막는 것은 그 헛걸음을 없애는 일이다.
+ * 함수가 둘인 이유가 그것이다. `canViewMembers`는 팀장에게 참이고 `canManageMembers`는
+ * 거짓이다 — 근거는 취향이 아니라 DB다.
+ *
+ * - `member_directory()`는 `admin`·`lead` 둘 다 부른다. 다만 **남의 팀 사람의 이메일은
+ *   null로 내려온다** (`0007`). 팀장은 조직도를 보되 남의 팀 개인정보는 못 본다.
+ * - `set_role`·`remove_member`는 admin이 아니면 예외를 던진다 (`0005` 4-7 · `0006`).
+ *   팀장에게 그 버튼을 보여 주면 **403뿐인 버튼**을 누르게 된다.
+ *
+ * 그래서 화면은 팀장에게 조직도를 열되 변경 칸을 그리지 않는다 (`member-panel.tsx`).
  *
  * ## 감추는 것은 방어가 아니다
  *
@@ -23,11 +28,22 @@
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
 
+/** 조직도를 **볼 수 있는가.** 팀장도 참이다 (머리말) */
+export function canViewMembers(role: ViewerRole): boolean {
+  switch (role) {
+    case 'admin':
+    case 'lead':
+      return true;
+    case 'member':
+      return false;
+  }
+}
+
+/** 직책·팀을 **바꾸고 내보낼 수 있는가.** 여기서 팀장은 부원과 같다 (머리말) */
 export function canManageMembers(role: ViewerRole): boolean {
   switch (role) {
     case 'admin':
       return true;
-    // 팀장도 여기서는 부원과 같다 (머리말)
     case 'lead':
     case 'member':
       return false;

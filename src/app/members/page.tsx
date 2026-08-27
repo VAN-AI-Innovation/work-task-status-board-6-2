@@ -36,7 +36,7 @@ import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentSessionClient, currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
-import { canManageMembers } from '@/lib/domain/member-admin';
+import { canManageMembers, canViewMembers } from '@/lib/domain/member-admin';
 import { buildMemberTree, type MemberNode } from '@/lib/domain/member-tree';
 import { openTasksOf, summarizeMemberWorkload } from '@/lib/domain/member-workload';
 import { parseDashboardQuery, toURLSearchParams } from '@/lib/view/dashboard-query';
@@ -66,7 +66,9 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
     { nodeEnv: process.env.NODE_ENV, mode: view.base.mode },
     view.session
   );
-  if (!canManageMembers(role)) notFound();
+  if (!canViewMembers(role)) notFound();
+  /** 팀장은 보기만 한다 — 직책·팀·내보내기는 admin만이다 (`0005` 4-7 · `0006`) */
+  const manageable = canManageMembers(role);
 
   const client = await currentSessionClient();
 
@@ -98,7 +100,20 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
     ...tree.unassigned,
     ...tree.teams.flatMap((branch) => [...branch.leads, ...branch.members]),
   ];
-  const selected = everyone.find((node) => keyOf(node) === selectedKey) ?? null;
+  /*
+   * **누를 수 있는 카드**. 어드민은 전부, 팀장은 자기 팀만이다.
+   *
+   * 판정 기준이 `teamId`인 것이 요점이다 — `member_directory()`가 남의 팀 사람의 이메일을
+   * null로 내려보내므로(`0007`), 팀장이 남의 팀 카드를 열어도 볼 것이 이름뿐이다. 여기서
+   * 막는 것은 그 헛걸음을 없애는 일이고, **진짜 문은 DB다.**
+   */
+  const viewerTeamId = view.session.status === 'ok' ? view.session.viewer.teamId : null;
+  const openable = (node: MemberNode): boolean =>
+    manageable || (viewerTeamId !== null && node.teamId === viewerTeamId);
+
+  const found = everyone.find((node) => keyOf(node) === selectedKey) ?? null;
+  // 주소를 직접 쳐도 열리지 않는다. 열 수 없는 카드의 패널은 **없는 것으로 둔다**
+  const selected = found !== null && openable(found) ? found : null;
 
   /** `?member=`만 갈아끼우고 나머지 쿼리는 그대로 들고 간다. `null`이면 닫는 주소다 */
   const hrefFor = (key: string | null): string => {
@@ -137,12 +152,18 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
     >
       <h1 className="text-brand text-xl font-semibold">멤버</h1>
       <p className="text-ink-body mt-1 text-sm">
-        조직 전체의 계정과 시트 명부입니다. 팀장 승격·해제는 여기서 합니다 — 대표·실장은
-        화면에서 만들지 않습니다.
+        {manageable
+          ? '조직 전체의 계정과 시트 명부입니다. 팀장 승격·해제는 여기서 합니다 — 대표·실장은 화면에서 만들지 않습니다.'
+          : '조직 전체의 구성입니다. 자세히 볼 수 있는 사람은 우리 팀뿐입니다.'}
       </p>
 
       <div className="mt-6">
-        <MemberTreeView tree={tree} selectedKey={selectedKey} hrefFor={hrefFor} />
+        <MemberTreeView
+          tree={tree}
+          selectedKey={selected === null ? null : selectedKey}
+          hrefFor={hrefFor}
+          openable={openable}
+        />
       </div>
 
       {selected !== null && (
@@ -150,6 +171,7 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
           node={selected}
           summary={summary}
           openTasks={openTasks}
+          manageable={manageable}
           closeHref={hrefFor(null)}
         />
       )}

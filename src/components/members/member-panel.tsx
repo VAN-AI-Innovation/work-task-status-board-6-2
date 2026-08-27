@@ -49,12 +49,19 @@ export function MemberPanel({
   node,
   summary,
   openTasks,
+  manageable,
   closeHref,
 }: {
   node: MemberNode;
   /** 팀을 모르면 null이다 — 0건과 다르다 (`member-workload.ts`) */
   summary: TeamSummary | null;
   openTasks: Task[];
+  /**
+   * 직책·팀을 바꾸고 내보낼 수 있는가 (`canManageMembers`). 팀장에게는 거짓이다 —
+   * `set_role`·`remove_member`가 admin 전용이라(`0005` 4-7 · `0006`) 버튼을 보여 주면
+   * **403뿐인 버튼**을 누르게 된다. 감추는 것은 그 헛걸음을 없애는 일이고 진짜 문은 DB다.
+   */
+  manageable: boolean;
   closeHref: string;
 }) {
   const router = useRouter();
@@ -73,7 +80,7 @@ export function MemberPanel({
    * 되돌릴 수 없고, 자기 자신을 내리면 아무도 이 화면을 열 수 없다.
    * 계정이 없는 명부 행에도 버튼이 없다 — 바꿀 `profiles` 행 자체가 없다.
    */
-  const changeable = node.userId !== null && node.role !== 'admin';
+  const changeable = manageable && node.userId !== null && node.role !== 'admin';
   /** `admin`은 위에서 걸러졌다. 남은 값은 둘뿐이라 여기서 좁혀 둔다 */
   const currentRole: 'lead' | 'member' = node.role === 'lead' ? 'lead' : 'member';
 
@@ -167,12 +174,16 @@ export function MemberPanel({
           </Link>
         </header>
 
-        <div className="flex flex-col gap-6 px-5 py-5">
-          <WorkloadSection summary={summary} node={node} />
-          <OpenTaskList tasks={openTasks} />
+        <div className="divide-line flex flex-col divide-y px-5">
+          <div className="py-6">
+            <WorkloadSection summary={summary} node={node} />
+          </div>
+          <div className="py-6">
+            <OpenTaskList tasks={openTasks} />
+          </div>
 
           {changeable && (
-            <section>
+            <section className="py-6">
               <h3 className="text-ink text-sm font-semibold">직책·소속</h3>
 
               {/* 고르는 칸과 누르는 버튼을 **짝으로** 둔다. 고르기만 하면 아무 일도 일어나지
@@ -209,7 +220,7 @@ export function MemberPanel({
           )}
 
           {changeable && node.status !== 'rejected' && (
-            <section className="border-line border-t pt-5">
+            <section className="py-6">
               <h3 className="text-ink text-sm font-semibold">내보내기</h3>
               <p className="text-ink-muted mt-1 text-xs">
                 계정 접근을 끊습니다. <strong className="font-semibold">지우지 않습니다</strong> —
@@ -229,7 +240,7 @@ export function MemberPanel({
           )}
 
           {message !== null && (
-            <p role="alert" className="border-late-line bg-late-bg text-late rounded border px-3 py-2 text-sm">
+            <p role="alert" className="border-late-line bg-late-bg text-late my-6 rounded border px-3 py-2 text-sm">
               {message}
             </p>
           )}
@@ -302,7 +313,7 @@ function ChangeRow({
           type="button"
           onClick={onSubmit}
           disabled={disabled}
-          className={`shrink-0 rounded border px-3 py-1.5 text-sm ${
+          className={`w-24 shrink-0 rounded border px-3 py-1.5 text-sm ${
             disabled
               ? 'border-line text-ink-faint cursor-not-allowed'
               : 'border-brand text-brand hover:bg-brand-soft'

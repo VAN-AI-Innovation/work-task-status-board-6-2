@@ -30,9 +30,10 @@ import type { ReactNode } from 'react';
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
 import { canReviewJoinRequests } from '@/lib/domain/join-review';
-import { canManageMembers } from '@/lib/domain/member-admin';
-import { TEAM_KEYS } from '@/lib/domain/progress-stats';
+import { canViewMembers } from '@/lib/domain/member-admin';
+import { visibleTeamKeys } from '@/lib/domain/team-visibility';
 import { teamLabel, toTeamSlug } from '@/lib/view/team-slug';
+import type { TeamKey } from '@/types/task';
 
 /** 아이콘은 인라인 SVG 16px · `strokeWidth 1.5` · 컨테이너 없이 (`UI_GUIDE.md`) */
 function DashboardIcon() {
@@ -197,36 +198,41 @@ interface NavItem {
   icon: ReactNode;
 }
 
-const BASE_ITEMS: readonly NavItem[] = [
-  { href: '/', label: '대시보드', icon: <DashboardIcon /> },
-  // 대시보드 바로 아래다. 둘 다 **읽고 가져가는** 화면이고, 브리핑 카드를 눌러 넘어오는
-  // 곳이기도 하다 (`UC-08`). 데이터를 넣는 두 화면(업로드·추출)은 팀 탭 아래에 모여 있다
-  { href: '/report', label: '주간 보고', icon: <ReportIcon /> },
-  ...TEAM_KEYS.map((teamKey) => ({
-    href: `/teams/${toTeamSlug(teamKey)}`,
-    label: teamLabel(teamKey),
-    icon: <TeamIcon />,
-  })),
-  { href: '/upload', label: '시트 업로드', icon: <UploadIcon /> },
-  // 「시트 업로드」 바로 아래다. 둘 다 데이터를 넣는 화면이고, 이 순서가 곧 `UC-05`→`UC-06`
-  // 이다 — 배정표를 뽑아(`/extract`) 채운 뒤 시트로 다시 올리면 고리가 닫힌다
-  { href: '/extract', label: '독스 → 배정표', icon: <ExtractIcon /> },
-];
-
 /**
- * 역할이 정하는 것은 **마지막 두 줄뿐**이고 그 둘은 문턱이 다르다. 나머지는 로그인한 전원이
- * 같은 목록을 본다 — 범위는 화면 안에서 갈리지(`viewer-scope.ts`·RLS) 목록에서 갈리지 않는다.
+ * **팀 탭도 역할에 따라 갈린다.** 팀장·부원에게는 자기 팀 하나만 선다 — 누를 수 없는 남의
+ * 팀 항목이 셋 서 있으면 매번 「내 것이 아닌 곳」을 확인하게 된다.
+ *
+ * 판정은 `visibleTeamKeys`가 지고 여기서 다시 하지 않는다. 팀 화면(`/teams/[teamSlug]`)이
+ * **같은 함수로** 404를 내므로, 목록에서 사라진 것과 주소로 못 여는 것이 늘 같다 —
+ * 두 곳이 각자 판단하면 사이드바에는 없는데 주소로는 열리는 날이 온다.
+ *
+ * ⚠ 감추는 것은 방어가 아니다. 진짜 문은 `viewer-scope.ts`와 RLS다 (`role-layout.ts` 머리말).
  */
-function navItemsFor(role: ViewerRole | null): NavItem[] {
-  const items: NavItem[] = [...BASE_ITEMS];
+function navItemsFor(role: ViewerRole | null, teamId: TeamKey | null, hasSession: boolean): NavItem[] {
+  const items: NavItem[] = [
+    { href: '/', label: '대시보드', icon: <DashboardIcon /> },
+    // 대시보드 바로 아래다. 둘 다 **읽고 가져가는** 화면이고, 브리핑 카드를 눌러 넘어오는
+    // 곳이기도 하다 (`UC-08`). 데이터를 넣는 두 화면(업로드·추출)은 팀 탭 아래에 모여 있다
+    { href: '/report', label: '주간 보고', icon: <ReportIcon /> },
+    ...visibleTeamKeys(role ?? 'member', teamId, hasSession).map((teamKey) => ({
+      href: `/teams/${toTeamSlug(teamKey)}`,
+      label: teamLabel(teamKey),
+      icon: <TeamIcon />,
+    })),
+    { href: '/upload', label: '시트 업로드', icon: <UploadIcon /> },
+    // 「시트 업로드」 바로 아래다. 둘 다 데이터를 넣는 화면이고, 이 순서가 곧 `UC-05`→`UC-06`
+    // 이다 — 배정표를 뽑아(`/extract`) 채운 뒤 시트로 다시 올리면 고리가 닫힌다
+    { href: '/extract', label: '독스 → 배정표', icon: <ExtractIcon /> },
+  ];
 
   if (role !== null && canReviewJoinRequests(role)) {
     items.push({ href: '/team/requests', label: '팀원 요청', icon: <JoinRequestIcon /> });
   }
 
   // 「팀원 요청」 바로 아래다. 둘 다 **사람을 다루는** 화면이고, 승인한 사람이 다음에
-  // 서는 자리가 여기다. 대표·실장에게만 선다 (`canManageMembers`)
-  if (role !== null && canManageMembers(role)) {
+  // 서는 자리가 여기다. 팀장에게도 선다 — 보는 것과 바꾸는 것은 다른 질문이다
+  // (`canViewMembers` · `0007`)
+  if (role !== null && canViewMembers(role)) {
     items.push({ href: '/members', label: '멤버', icon: <MembersIcon /> });
   }
 
@@ -240,7 +246,17 @@ function navItemsFor(role: ViewerRole | null): NavItem[] {
  */
 const HIDDEN_ON = ['/login', '/signup', '/pending'];
 
-export function AppSidebar({ role }: { role: ViewerRole | null }) {
+export function AppSidebar({
+  role,
+  teamId,
+  hasSession,
+}: {
+  role: ViewerRole | null;
+  /** 로그인한 사람의 팀. 팀 탭을 좁히는 데만 쓴다 */
+  teamId: TeamKey | null;
+  /** 세션이 없으면 팀을 좁히지 않는다 — 데모에서는 범위가 갈리지 않는다 */
+  hasSession: boolean;
+}) {
   const pathname = usePathname();
 
   /*
@@ -261,7 +277,7 @@ export function AppSidebar({ role }: { role: ViewerRole | null }) {
       </div>
 
       <nav aria-label="주요 화면" className="flex flex-col gap-1 p-2">
-        {navItemsFor(role).map((item) => {
+        {navItemsFor(role, teamId, hasSession).map((item) => {
           const active = pathname === item.href;
           return (
             <Link

@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { canManageMembers } from '@/lib/domain/member-admin';
+import { canManageMembers, canViewMembers } from '@/lib/domain/member-admin';
 
 describe('canManageMembers', () => {
   it('대표·실장만 참이다', () => {
@@ -21,5 +21,24 @@ describe('canManageMembers', () => {
 
   it('부원은 거짓이다', () => {
     expect(canManageMembers('member')).toBe(false);
+  });
+});
+
+/**
+ * 보는 것과 바꾸는 것이 갈린 자리. 팀장은 조직도를 보되 직책을 바꾸지 못한다 —
+ * 근거는 DB다 (`member_directory()`는 lead를 받고 `set_role`은 admin만 받는다).
+ */
+describe('canViewMembers', () => {
+  it('대표·실장은 본다', () => {
+    expect(canViewMembers('admin')).toBe(true);
+  });
+
+  it('팀장도 본다 — 여기서 `canManageMembers`와 갈린다', () => {
+    expect(canViewMembers('lead')).toBe(true);
+    expect(canManageMembers('lead')).toBe(false);
+  });
+
+  it('부원은 못 본다', () => {
+    expect(canViewMembers('member')).toBe(false);
   });
 });
