@@ -236,6 +236,11 @@ export function createMemoryTaskStore(seed?: {
       const merged: Task = clone(existing);
       if (patch.status !== undefined) merged.status = patch.status;
       if (patch.progress !== undefined) merged.progress = patch.progress;
+      // 담당자 둘은 라우트가 **짝으로** 넘긴다. 여기서 이름을 지어내지 않는다
+      if (patch.ownerMemberId !== undefined) merged.ownerMemberId = patch.ownerMemberId;
+      if (patch.ownerNameRaw !== undefined) merged.ownerNameRaw = patch.ownerNameRaw;
+      // 배열은 **사본으로** 넣는다. 호출자가 들고 있는 배열을 저장소가 참조하면 밖에서 바뀐다
+      if (patch.coOwnerNames !== undefined) merged.coOwnerNames = [...patch.coOwnerNames];
 
       // `lastProgressAt`은 손대지 않는다 — 사람이 화면에서 고친 것은 업로드가 아니다.
       //

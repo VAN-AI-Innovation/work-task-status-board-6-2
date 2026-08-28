@@ -702,15 +702,32 @@ describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
    * **이 테스트가 완료 기준 7의 실체다.** 세 역할이 같은 순서를 그리면 `?as=`는 배지만 바꾸는
    * 장식이 되고 `H7` 헤지가 성립하지 않는다.
    */
-  it('맨 위에 오는 것이 역할마다 다르다', async () => {
+  /**
+   * 첫 줄은 세 역할이 같다 — 업무 표다 (`TASKS_FIRST`). **차이는 그 다음 줄부터** 남고
+   * 완료 기준 7이 재는 것은 거기 있다.
+   */
+  it('세 역할 모두 업무 표가 맨 위다', async () => {
     await seed();
 
-    const first = async (as: string): Promise<string> =>
-      sectionKeys(await Home(props({ as })))[0];
+    for (const as of ['admin', 'lead', 'member']) {
+      expect(sectionKeys(await Home(props({ as })))[0]).toBe('tasks');
+    }
+  });
 
-    expect(await first('admin')).toBe('kpi');
-    expect(await first('lead')).toBe('alerts');
-    expect(await first('member')).toBe('tasks');
+  it('업무 표 아래는 역할이 정한 순서 그대로다', async () => {
+    await seed();
+
+    const second = async (as: string): Promise<string> =>
+      sectionKeys(await Home(props({ as })))[1];
+
+    // 대표는 전체 그림부터, 나머지 둘은 지금 문제(알림)부터다
+    expect(await second('admin')).toBe('kpi');
+    expect(await second('lead')).toBe('alerts');
+    expect(await second('member')).toBe('alerts');
+
+    // 그 알림 행 안에서 갈린다 — 부원만 축약 KPI가 함께 선다 (`COMPACT_KPI_KEYS`)
+    expect(sectionKeys(await Home(props({ as: 'member' })))).toContain('kpi_compact');
+    expect(sectionKeys(await Home(props({ as: 'lead' })))).not.toContain('kpi_compact');
   });
 
   it('그린 순서가 `layoutFor`가 정한 그대로다 — 화면이 표를 다시 짜지 않는다', async () => {
@@ -932,11 +949,40 @@ describe('/ — 수정 폼 (`UC-16`)', () => {
 
   it('범위 안의 업무에는 수정 폼이 뜬다 — 판정은 화면이 아니라 `taskInScope`가 한다', async () => {
     await seed();
-    session = { status: 'ok', viewer: viewer() };
+    session = { status: 'ok', viewer: viewer({ role: 'lead', teamId: 'edit' }) };
     const id = await idOf('edit');
 
     const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
     expect(panel?.props?.canEdit).toBe(true);
+  });
+
+  /**
+   * 범위는 넓은데 폼은 없다. **권한이 아니라 화면 규칙이다** — 진행률을 손수 적는 것은 그
+   * 업무를 들고 있는 사람의 일이고, 전사를 보는 자리에 그 폼이 있으면 남의 업무 숫자를
+   * 대신 적게 된다 (`lib/domain/task-authoring.ts`).
+   */
+  it('대표·실장에게는 진행률 폼 대신 담당자 지정 칸이 뜬다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer() };
+    const id = await idOf('edit');
+
+    const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
+    expect(panel?.props?.canEdit).toBe(false);
+    expect(panel?.props?.canAssign).toBe(true);
+  });
+
+  it('담당자 후보는 그 업무의 팀 사람만이다 — 좁히는 것은 `assignableMembers`다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer() };
+    const id = await idOf('edit');
+
+    const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
+    const candidates = (panel?.props?.ownerCandidates ?? []) as { id: string; name: string }[];
+
+    // 브라우저로 나가는 것은 `{id, name}` 둘뿐이다 — `authUserId`를 싣지 않는다 (`S6`)
+    for (const candidate of candidates) {
+      expect(Object.keys(candidate).sort()).toEqual(['id', 'name']);
+    }
   });
 
   it('상태 목록을 화면이 다시 적지 않는다 — `STATUS_SEMANTIC_MAP`에서 온다 (`ADR-009`)', async () => {

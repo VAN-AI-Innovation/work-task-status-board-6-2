@@ -55,6 +55,7 @@ import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
 import { scopeTasks } from '@/lib/domain/viewer-scope';
 import { groupAlerts } from '@/lib/view/alert-groups';
 import { buildStatusBreakdown, toStatusSeries } from '@/lib/view/chart-series';
+import { withoutTeamTiles } from '@/lib/view/kpi-groups';
 import {
   applyDisplayFilter,
   buildHref,
@@ -142,6 +143,13 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   const goalStats = summarizeGoals(await view.repo.listGoalMetrics({ teamKeys: [teamKey] }));
   const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
 
+  /*
+   * **패널이 열려 있을 때만 명부를 읽는다.** 담당자 후보 말고는 이 화면이 명부를 쓰지 않는데,
+   * 늘 읽으면 표만 보고 나가는 대부분의 방문에 조회가 하나 더 붙는다 (`/members`가 고른
+   * 사람이 있을 때만 업무를 읽는 것과 같은 판단이다).
+   */
+  const members = query.task === null ? [] : await view.repo.listMembers();
+
   /** `/`와 같다 — `member`가 자기 업무를 고르지 않은 상태. 이름을 대신 채워 넣지 않는다 */
   const needsOwnerHint = read.role === 'member' && query.owner === null;
 
@@ -152,7 +160,12 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   const renderSection = (key: SectionKey): ReactNode => {
     switch (key) {
       case 'kpi':
-        return <KpiStrip tiles={buildKpiStrip(read.tasks, read.ctx)} />;
+        /*
+         * **팀별 진행 셋을 뺀다** (`withoutTeamTiles`). 경로가 이미 팀을 좁혔으므로 이 화면의
+         * 「촬영·기획팀 진행」은 늘 0이고, 늘 0인 칸은 정보가 아니라 읽는 사람이 매번 지나쳐야
+         * 하는 상자다. 남은 일곱 칸은 대시보드와 **같은 묶음**으로 선다.
+         */
+        return <KpiStrip tiles={withoutTeamTiles(buildKpiStrip(read.tasks, read.ctx))} />;
 
       case 'kpi_compact':
         // 10칸을 다시 세지 않고 `buildKpiStrip`의 결과에서 골라 쓴다 (`ADR-006`)
@@ -228,6 +241,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
                 query={query}
                 pathname={pathname}
                 editableIds={editableIds}
+                members={members}
                 statusOptions={STATUS_OPTIONS}
               />
             </div>

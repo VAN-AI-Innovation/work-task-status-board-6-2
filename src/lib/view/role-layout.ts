@@ -13,6 +13,13 @@
  *
  * T8에서 진짜 인증이 붙었고 바뀐 것은 「누가 admin인가」뿐이다 — 이 표는 그대로 섰다.
  *
+ * ## 화면이 빼는 것은 이 표가 아니다
+ *
+ * 로그인한 부원의 대시보드에서 전사 비교 둘(`teams`·`completion`)이 빠지는데, 그 판단은
+ * 이 표가 아니라 **화면 옵션**(`dashboardLayoutFor`)이 진다. 근거는 그것이 역할의 성질이
+ * 아니라 **그 화면에서 그 숫자가 참인가**의 문제이기 때문이다 — 자세한 것은 그 함수의
+ * 머리말에 있다.
+ *
  * ## 역할을 여기서 판정하지 않는다
  *
  * 인자로 받는 `role`은 `resolveViewerRole`이 판정한 결과다 (`S4`·`ADR-013`). 이 파일이
@@ -181,6 +188,15 @@ export interface LayoutRow {
 export interface ScreenLayout {
   /** 이 화면이 그릴 수 있는 섹션. 없으면 전부 */
   only?: readonly SectionKey[];
+  /**
+   * **맨 위로 끌어올릴 섹션.** 여기 적힌 순서대로 앞에 서고 나머지는 원래 순서를 지킨다.
+   *
+   * 역할 배열(`SECTION_ORDER`)을 고치지 않고 화면 옵션으로 두는 것이 요점이다 — 「업무 표가
+   * 맨 위」는 **화면의 성질**이지 역할의 성질이 아니고, 역할 배열을 뒤집으면 셋 다 첫 줄이
+   * 같아져 완료 기준 7이 재는 차이가 사라진다. 이 옵션은 첫 줄만 가져갈 뿐 그 아래 순서는
+   * 여전히 역할마다 다르다.
+   */
+  first?: readonly SectionKey[];
   /** 이 화면에서의 폭. 적지 않은 섹션은 `SECTION_SPAN` 그대로 */
   spans?: Partial<Record<SectionKey, number>>;
   /** 한 행에 나란히 세울 칸들 */
@@ -192,6 +208,22 @@ const toKeys = (spec: CellSpec): SectionKey[] =>
 
 const widthOf = (row: LayoutRow): number =>
   row.cells.reduce((acc, cell) => acc + cell.span, 0);
+
+/**
+ * **업무 표가 맨 위다 — 두 화면 모두.**
+ *
+ * 요약을 위에 두면 「지금 무엇을 해야 하나」가 늘 스크롤 아래에 있다. 이 화면들을 여는
+ * 사람은 대부분 업무 한 건을 찾으러 오고(`?task=`로 패널을 여는 것이 이 제품의 주된 동작이다),
+ * 요약은 그 표를 읽다가 고개를 드는 자리에 있으면 된다. 부원은 원래부터 그랬고
+ * (`SECTION_ORDER.member`), 이제 세 역할이 같은 자리에서 업무를 본다.
+ *
+ * **두 화면에 같은 값을 준다.** 한쪽만 올리면 같은 사람이 대시보드와 팀 화면을 오갈 때
+ * 업무 표가 위아래로 뛴다 — `SUMMARY_ROW`를 공유하는 것과 같은 이유다.
+ *
+ * 첫 줄만 가져갈 뿐 **그 아래 순서는 역할마다 그대로 다르다** (`lead`는 알림, `admin`은
+ * KPI가 먼저다). 완료 기준 7이 재는 차이는 거기 남아 있다.
+ */
+const TASKS_FIRST: readonly SectionKey[] = ['tasks'];
 
 /**
  * **두 화면이 공유하는 요약 행.** 「지금 문제(알림)」 옆에 「전체 그림(축약 KPI + 상태 분포)」을
@@ -224,6 +256,7 @@ const SUMMARY_ROW = {
  */
 export const TEAM_PAGE_LAYOUT: ScreenLayout = {
   only: ['kpi', 'kpi_compact', 'charts', 'goals', 'alerts', 'tasks'],
+  first: TASKS_FIRST,
   ...SUMMARY_ROW,
   /*
    * 목표 대비 성과만 대시보드와 폭이 다르다. **접히는 카드가 팀 화면에는 이것 하나뿐**이라
@@ -244,10 +277,38 @@ export const TEAM_PAGE_LAYOUT: ScreenLayout = {
  * 여기 넣지 않는다: 5열 그리드를 6칸에 밀어 넣으면 라벨이 두 줄로 접힌다.
  */
 export const DASHBOARD_LAYOUT: ScreenLayout = {
+  first: TASKS_FIRST,
   spans: SUMMARY_ROW.spans,
   // 전사 요약표 짝은 대시보드에만 있다 — 팀 화면에는 그 두 섹션 자체가 없다(`only`)
   groups: [['teams', 'completion'], ...SUMMARY_ROW.groups],
 };
+
+/**
+ * **로그인한 부원의 대시보드에서 전사 비교 둘을 뺀다** (`teams`·`completion`).
+ *
+ * 이것은 권한이 아니라 **거짓말을 지우는 것이다.** 부원의 목록은 `viewer-scope.ts`가 이미
+ * 자기 업무만 남겨서, 팀별 현황표와 팀별 완료율은 「우리 팀 몇 건, 남의 팀 0건」이라는 표가
+ * 된다. 0은 화면에서 「없다」로 읽히므로 그 표는 남의 팀에 대해 **틀린 사실**을 말한다.
+ * 같은 화면의 `alerts`·`charts`는 그대로 둔다 — 그쪽은 모수가 자기 업무라서 숫자가 참이다.
+ *
+ * `SECTION_ORDER`를 고치지 않고 여기서 거르는 이유가 둘이다.
+ *
+ * - **세션이 없으면 좁히지 않는다.** 로그인 전 역할은 `member`가 기본값이라
+ *   (`resolveViewerRole`), 역할 표에서 빼면 `.env` 없이 클론한 심사자의 대시보드에서 두
+ *   섹션이 사라진다 (`team-visibility.ts`·`staff-tools.ts`와 같은 규칙 · `PRD.md` 성공 기준 1).
+ * - 「무엇이 참인가」는 **화면마다 다르다.** 팀 화면에는 애초에 그 두 섹션이 없고, 다음에
+ *   생길 화면에서 또 다를 수 있다. 역할 표는 순서만 진다.
+ */
+const MEMBER_HIDDEN_ON_DASHBOARD: readonly SectionKey[] = ['teams', 'completion'];
+
+export function dashboardLayoutFor(role: ViewerRole, hasSession: boolean): ScreenLayout {
+  if (!hasSession || role !== 'member') return DASHBOARD_LAYOUT;
+
+  return {
+    ...DASHBOARD_LAYOUT,
+    only: sectionsFor(role).filter((key) => !MEMBER_HIDDEN_ON_DASHBOARD.includes(key)),
+  };
+}
 
 /**
  * 화면이 실제로 그릴 행 목록. 역할별 순서(`sectionsFor`)를 zone 단위로 묶고, 화면이 정한
@@ -257,10 +318,23 @@ export const DASHBOARD_LAYOUT: ScreenLayout = {
  * 화면이 의도한 조합이 깨지므로 그 행은 열어 두지 않는다.
  */
 export function layoutFor(role: ViewerRole, screen: ScreenLayout = {}): LayoutRow[] {
-  const sections =
+  const allowed =
     screen.only === undefined
       ? sectionsFor(role)
       : sectionsFor(role).filter((key) => screen.only?.includes(key));
+
+  /*
+   * `first`는 순서만 바꾼다 — 목록에 없는 섹션을 **더하지 않고**(`only`가 이미 걸렀다)
+   * 있는 섹션을 빼지도 않는다. 그래서 아래 배치 규칙은 이 줄을 몰라도 된다.
+   */
+  const first = screen.first ?? [];
+  const sections: readonly SectionKey[] =
+    first.length === 0
+      ? allowed
+      : [
+          ...first.filter((key) => allowed.includes(key)),
+          ...allowed.filter((key) => !first.includes(key)),
+        ];
 
   // 첫 등장 순서. `Set`이 삽입 순서를 지키므로 여기서 정렬하지 않는다
   const zones = [...new Set(sections.map((key) => SECTION_ZONE[key]))];

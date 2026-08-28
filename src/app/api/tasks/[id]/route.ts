@@ -8,7 +8,9 @@ import { toTaskResponse } from '@/lib/api/task-response';
 import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { deriveTaskFlags } from '@/lib/domain/task-derive';
+import { assignableMembers, canAssignOwner } from '@/lib/domain/task-authoring';
 import { taskInScope } from '@/lib/domain/viewer-scope';
+import type { TaskPatch } from '@/types/auth';
 
 /**
  * 업무 하나 + 단계 타임라인. 사이드 패널(`UC-15`)이 `?task=id`로 여는 것과 같은 대상이다.
@@ -58,8 +60,28 @@ export async function GET(
 }
 
 /**
- * 업무 하나의 **상태·진행률** 수정 (`UC-16` · T8 완료 기준 2). 허용 필드가 둘뿐인 근거는
+ * 업무 하나의 **상태·진행률·담당자** 수정 (`UC-16` · T8 완료 기준 2). 허용 필드가 셋인 근거는
  * `task-patch-schema.ts`에 있다.
+ *
+ * ## 담당자만 역할을 한 번 더 본다
+ *
+ * 상태·진행률은 **보는 만큼 고친다**(`viewer-scope.ts` 머리말)로 충분하다 — 자기 업무의
+ * 진행을 적는 것은 그 업무를 들고 있는 사람의 일이다. 담당자는 다르다: 그것은 「일을 누구에게
+ * 맡기는가」라서 부원이 자기 업무를 남에게 넘기는 자리가 아니다. 그래서 `canAssignOwner`가
+ * 한 겹 더 서고, DB에서는 `tasks_update_scope`의 `with check`가 같은 자리를 막는다
+ * (`0008` 2절). 데모·폴백에는 RLS가 없어 앱 쪽이 유일한 층이다.
+ *
+ * **이름은 클라이언트가 정하지 않는다.** `ownerMemberId`·`coOwnerMemberIds`에서 명부의 이름을
+ * 찾아 함께 쓴다 — 하나만 바꾸면 「담당자는 A인데 이름은 B」인 행이 남고 그것은 데이터가 틀린
+ * 것으로 보인다.
+ *
+ * **주 담당과 공동 담당을 가른다.** 시트가 그 모양이고, `member`의 열람 범위가 주 담당
+ * 하나로 정해지기 때문이다 (`viewer-scope.ts` · RLS). 공동 담당에서 주 담당과 겹치는 id와
+ * 중복은 여기서 지운다 — 같은 사람이 두 칸에 뜨면 화면이 그를 두 번 세운다.
+ *
+ * ⚠ **`canEditProgress`는 여기서 부르지 않는다.** 그것은 패널이 폼을 그릴지 정하는 화면
+ * 규칙이지 권한이 아니다 (`task-authoring.ts` 머리말) — 여기서 쓰면 「화면에서 뺀 것」과
+ * 「막은 것」이 같은 값을 갖게 되고, 둘 중 하나가 바뀔 때 다른 하나가 조용히 딸려 온다.
  *
  * **이 핸들러는 규칙을 만들지 않는다.** 방어는 이미 두 층이다 — `viewer-scope.ts`(앱)와
  * RLS·컬럼 GRANT(DB, `0003_auth_rls.sql`). 여기는 그 둘을 부르는 문이고, 읽기·쓰기 모두
@@ -125,9 +147,58 @@ export async function PATCH(
      */
     if (!taskInScope(task, viewer)) return errorResponse('FORBIDDEN');
 
+    /*
+     * 5-2. 담당자를 손대는 요청만 역할을 한 번 더 본다 (파일 머리말). **이름을 여기서 붙인다** —
+     *      후보를 `assignableMembers`로 좁히므로 팀 밖 구성원은 `undefined`가 되어 403이다.
+     *      「없는 id」와 「팀 밖 id」를 갈라 답하지 않는 것은 이 라우트의 규율 그대로다 (`S6`).
+     */
+    const { ownerMemberId, coOwnerMemberIds, ...rest } = patch;
+    let effective: TaskPatch = rest;
+
+    if (ownerMemberId !== undefined || coOwnerMemberIds !== undefined) {
+      if (!canAssignOwner(viewer.role)) return errorResponse('FORBIDDEN');
+
+      // 명부는 **한 번만** 읽는다 — 주 담당과 공동 담당이 같은 목록에서 나와야 한다
+      const roster = assignableMembers(await view.repo.listMembers(), task.teamId);
+      const nameOf = (id: string): string | undefined =>
+        roster.find((member) => member.id === id)?.name;
+
+      if (ownerMemberId !== undefined) {
+        if (ownerMemberId === null) {
+          effective = { ...effective, ownerMemberId: null, ownerNameRaw: null };
+        } else {
+          const name = nameOf(ownerMemberId);
+          if (name === undefined) return errorResponse('FORBIDDEN');
+          effective = { ...effective, ownerMemberId, ownerNameRaw: name };
+        }
+      }
+
+      if (coOwnerMemberIds !== undefined) {
+        /*
+         * 주 담당과 겹치는 id와 중복을 지운다. **거부하지 않고 지우는 이유**는 이것이
+         * 「보낸 쪽이 틀렸다」가 아니라 같은 뜻의 두 표현이기 때문이다 — 화면에서 주 담당을
+         * 바꾸면 그 사람이 공동 담당 목록에도 남아 있는 상태가 자연스럽게 생긴다.
+         */
+        const primary = ownerMemberId !== undefined ? ownerMemberId : task.ownerMemberId;
+        const seen = new Set<string>();
+        const names: string[] = [];
+
+        for (const id of coOwnerMemberIds) {
+          if (id === primary || seen.has(id)) continue;
+          const name = nameOf(id);
+          // 팀 밖·없는 구성원. 「없다」와 「팀이 다르다」를 갈라 답하지 않는다 (`S6`)
+          if (name === undefined) return errorResponse('FORBIDDEN');
+          seen.add(id);
+          names.push(name);
+        }
+
+        effective = { ...effective, coOwnerNames: names };
+      }
+    }
+
     // 6. 시계는 라우트가 읽어 넘긴다 — `lib` 안에서 시간을 읽지 않는다 (CLAUDE.md CRITICAL)
     const now = new Date();
-    const updated = await view.repo.updateTask(id, patch, now.toISOString());
+    const updated = await view.repo.updateTask(id, effective, now.toISOString());
     // DB가 막았다. 여기까지 왔는데 0행이면 정책이 앱보다 좁은 것이고, 그 답도 403이다
     if (updated === null) return errorResponse('FORBIDDEN');
 

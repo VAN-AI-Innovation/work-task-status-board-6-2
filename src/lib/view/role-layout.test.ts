@@ -14,6 +14,7 @@ import { buildSemanticIndex } from '@/lib/domain/task-semantic';
 import {
   COMPACT_KPI_KEYS,
   DASHBOARD_LAYOUT,
+  dashboardLayoutFor,
   FIXED_HEIGHT,
   DETAIL_LABELS,
   layoutFor,
@@ -364,13 +365,113 @@ describe('layoutFor — 화면별 옵션', () => {
     }
   });
 
-  it('걸러 낸 뒤에도 맨 위에 오는 섹션이 역할마다 다르다', () => {
-    const first = (role: ViewerRole): SectionKey | undefined =>
-      layoutFor(role, TEAM_PAGE_LAYOUT)[0]?.cells[0]?.keys[0];
+  /**
+   * `first`가 들어온 뒤 바뀐 자리다. 첫 줄은 세 역할이 같고(업무 표), **차이는 그 다음
+   * 줄부터** 남는다 — 완료 기준 7이 재는 것은 여전히 성립한다.
+   */
+  it('세 역할 모두 업무 표가 맨 위다', () => {
+    for (const role of ROLES) {
+      expect(layoutFor(role, TEAM_PAGE_LAYOUT)[0]?.cells[0]?.keys[0]).toBe('tasks');
+    }
+  });
 
-    expect(first('admin')).toBe('kpi');
-    expect(first('lead')).toBe('alerts');
-    expect(first('member')).toBe('tasks');
+  it('업무 표 아래의 순서는 역할마다 여전히 다르다', () => {
+    const second = (role: ViewerRole): SectionKey | undefined =>
+      layoutFor(role, TEAM_PAGE_LAYOUT)[1]?.cells[0]?.keys[0];
+
+    expect(second('admin')).toBe('kpi');
+    expect(second('lead')).toBe('alerts');
+    expect(second('member')).toBe('alerts');
+  });
+});
+
+/**
+ * `first`는 **순서만** 바꾼다. 더하지도 빼지도 않는다는 것이 여기서 지키는 전부이고,
+ * 그래야 배치 규칙(zone·폭·짝)이 이 옵션을 몰라도 된다.
+ */
+describe('layoutFor — first', () => {
+  it('적은 섹션이 맨 앞에 선다', () => {
+    for (const role of ROLES) {
+      const rows = layoutFor(role, { first: ['alerts'] });
+
+      expect(rows[0]?.cells[0]?.keys[0]).toBe('alerts');
+    }
+  });
+
+  it('섹션을 더하지도 빼지도 않는다', () => {
+    for (const role of ROLES) {
+      const keysOf = (screen: Parameters<typeof layoutFor>[1]): SectionKey[] =>
+        layoutFor(role, screen).flatMap((row) => row.cells.flatMap((cell) => cell.keys)).sort();
+
+      expect(keysOf({ first: ['tasks'] })).toEqual(keysOf({}));
+    }
+  });
+
+  it('그 화면에 없는 섹션을 적어도 끌어오지 않는다', () => {
+    const rows = layoutFor('admin', { only: ['kpi', 'tasks'], first: ['briefing', 'tasks'] });
+    const keys = rows.flatMap((row) => row.cells.flatMap((cell) => cell.keys));
+
+    expect(keys).toEqual(['tasks', 'kpi']);
+  });
+
+  it('앞으로 끌어올린 뒤에도 남은 순서는 그대로다', () => {
+    const rest = layoutFor('admin', { first: ['tasks'] })
+      .flatMap((row) => row.cells.flatMap((cell) => cell.keys))
+      .filter((key) => key !== 'tasks');
+
+    expect(rest[0]).toBe('kpi');
+  });
+
+  /** 두 화면이 같은 값을 쓴다 — 한쪽만 올리면 화면을 옮길 때 업무 표가 위아래로 뛴다 */
+  it('대시보드와 팀 화면 모두 업무 표를 맨 위로 올린다', () => {
+    for (const role of ROLES) {
+      expect(layoutFor(role, DASHBOARD_LAYOUT)[0]?.cells[0]?.keys[0]).toBe('tasks');
+      expect(layoutFor(role, TEAM_PAGE_LAYOUT)[0]?.cells[0]?.keys[0]).toBe('tasks');
+    }
+    expect(DASHBOARD_LAYOUT.first).toEqual(TEAM_PAGE_LAYOUT.first);
+  });
+});
+
+/**
+ * 「부원의 대시보드에서 전사 비교를 뺀다」의 검증면. 재는 것은 **셋 다 갈래가 있다**는
+ * 것이다 — 부원+세션에서만 빠지고, 데모에서는 그대로이며, 다른 역할은 손대지 않는다.
+ */
+describe('dashboardLayoutFor', () => {
+  const placed = (role: ViewerRole, hasSession: boolean): SectionKey[] =>
+    layoutFor(role, dashboardLayoutFor(role, hasSession)).flatMap((row) =>
+      row.cells.flatMap((cell) => cell.keys)
+    );
+
+  it('로그인한 부원에게서 팀별 현황·완료율이 빠진다', () => {
+    expect(placed('member', true)).not.toContain('teams');
+    expect(placed('member', true)).not.toContain('completion');
+  });
+
+  it('부원의 나머지 섹션은 그대로다 — 뺀 것은 그 둘뿐이다', () => {
+    const expected = SECTION_ORDER.member.filter(
+      (key) => key !== 'teams' && key !== 'completion'
+    );
+
+    expect(placed('member', true).sort()).toEqual([...expected].sort());
+  });
+
+  it('세션이 없으면 좁히지 않는다 — 데모에서는 역할 기본값이 `member`다', () => {
+    expect(placed('member', false)).toContain('teams');
+    expect(placed('member', false)).toContain('completion');
+  });
+
+  it('대표·팀장은 로그인해도 그대로다 — 전사 비교의 모수가 맞는 자리다', () => {
+    for (const role of ['admin', 'lead'] as const) {
+      expect(placed(role, true)).toContain('teams');
+      expect(placed(role, true)).toContain('completion');
+      expect(dashboardLayoutFor(role, true)).toBe(DASHBOARD_LAYOUT);
+    }
+  });
+
+  it('걸러도 업무 표는 여전히 맨 위다 — 화면 옵션 둘이 함께 산다', () => {
+    expect(layoutFor('member', dashboardLayoutFor('member', true))[0]?.cells[0]?.keys[0]).toBe(
+      'tasks'
+    );
   });
 });
 

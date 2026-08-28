@@ -340,7 +340,8 @@ describe('/teams/[teamSlug] — 로그인 상태 (T8 완료 기준 1·6)', () =>
         ?.canEdit
     ).toBe(false);
 
-    session = { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) };
+    // 팀장은 자기 팀 업무를 고친다. 대표·실장에게는 이 폼이 뜨지 않는다 (`canEditProgress`)
+    session = { status: 'ok', viewer: viewer({ role: 'lead', teamId: 'edit' }) };
     expect(
       findComponent(openSlot(await TeamPage(props('edit', { task: id }))), 'TaskPanel')?.props
         ?.canEdit
@@ -443,12 +444,21 @@ describe('/teams/[teamSlug] — 역할별 진입 화면 (완료 기준 7)', () =
     }
   });
 
-  it('맨 위에 오는 것이 역할마다 다르다', async () => {
+  /** `/`와 같다 — 첫 줄은 셋 다 업무 표이고 차이는 그 아래에 남는다 (`TASKS_FIRST`) */
+  it('세 역할 모두 업무 표가 맨 위다', async () => {
     await seed();
 
-    expect(sectionKeys(await TeamPage(props('edit', { as: 'admin' })))[0]).toBe('kpi');
-    expect(sectionKeys(await TeamPage(props('edit', { as: 'lead' })))[0]).toBe('alerts');
-    expect(sectionKeys(await TeamPage(props('edit', { as: 'member' })))[0]).toBe('tasks');
+    for (const as of ['admin', 'lead', 'member']) {
+      expect(sectionKeys(await TeamPage(props('edit', { as })))[0]).toBe('tasks');
+    }
+  });
+
+  it('업무 표 아래의 순서는 역할마다 다르다', async () => {
+    await seed();
+
+    expect(sectionKeys(await TeamPage(props('edit', { as: 'admin' })))[1]).toBe('kpi');
+    expect(sectionKeys(await TeamPage(props('edit', { as: 'lead' })))[1]).toBe('alerts');
+    expect(sectionKeys(await TeamPage(props('edit', { as: 'member' })))[1]).toBe('alerts');
   });
 
   /** `/`가 지기로 한 섹션은 여기에 없다 — 행 하나짜리 표와 승인 대기함은 전사 화면의 것이다 */

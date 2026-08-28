@@ -3,6 +3,9 @@ export const runtime = 'nodejs';
 
 import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { assignmentExportSchema, safeDownloadFilename } from '@/lib/api/assignment-schema';
+import { currentSessionClient } from '@/lib/auth/request-viewer';
+import { resolveSession } from '@/lib/auth/viewer-session';
+import { canUseDocExtract } from '@/lib/domain/staff-tools';
 import { buildAssignmentWorkbook } from '@/lib/xlsx/assignment-writer';
 
 /**
@@ -33,7 +36,26 @@ function contentDisposition(filename: string): string {
   return `attachment; filename="${FALLBACK_FILENAME}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
+/**
+ * 이 라우트의 **유일한 역할 검사**. 세션이 `ok`일 때만 재고, 그때 부원이면 거부한다.
+ *
+ * `resolveViewerRole`을 쓰지 않는 이유는 저장소를 안 부르기 때문이다 — 그 함수는 `?as=`를
+ * 프로덕션에서 무시하려고 `StorageMode`를 받는데, 이 라우트에는 열 저장소가 없다
+ * (`ADR-022`·결정 C). 대신 **세션만** 본다: 세션이 있으면 `?as=`는 어차피 무시되고
+ * (`ADR-026` — 세션이 이긴다), 세션이 없으면 데모라 좁히지 않는다
+ * (`staff-tools.ts`「세션이 없으면 좁히지 않는다」).
+ */
+async function blockedForMember(): Promise<boolean> {
+  const client = await currentSessionClient();
+  if (client === null) return false;
+
+  const session = await resolveSession(client);
+  return session.status === 'ok' && !canUseDocExtract(session.viewer.role, true);
+}
+
 export async function POST(request: Request): Promise<Response> {
+  if (await blockedForMember()) return errorResponse('FORBIDDEN');
+
   // 본문이 JSON이 아닌 것은 **보낸 쪽의 잘못**이다. 아래 `catch`에 맡기면 `toApiErrorCode`가
   // 모르는 예외로 보고 503을 내는데, 이 라우트에는 불러올 저장소 자체가 없다
   let body: unknown;

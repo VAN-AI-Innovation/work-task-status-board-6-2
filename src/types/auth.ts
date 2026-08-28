@@ -36,14 +36,34 @@ export interface SessionAccount {
 }
 
 /**
- * `PATCH /api/tasks/[id]`가 받는 전부. **두 필드다** (`UC-16` 「내 업무 상태·진행률 수정」).
- * `note`·`dueAt`·`ownerNameRaw`를 열지 않는다 — 시트가 진실의 원천이라 재업로드가 덮어쓸
- * 필드를 화면에서 고치게 하면 사용자는 자기 수정이 사라지는 것을 본다 (`ADR-008`).
+ * `PATCH /api/tasks/[id]`가 저장소에 넘기는 전부. `note`·`dueAt`을 열지 않는다 — 시트가
+ * 진실의 원천이라 재업로드가 덮어쓸 필드를 화면에서 고치게 하면 사용자는 자기 수정이
+ * 사라지는 것을 본다 (`ADR-008`).
+ *
+ * 넷 중 **클라이언트가 보낼 수 있는 것은 셋**이다 (`task-patch-schema.ts`). `ownerNameRaw`는
+ * 라우트가 `ownerMemberId`에서 **유도해** 채운다 — 둘을 따로 받으면 「담당자는 A인데 이름은
+ * B」인 행이 만들어지고, 그것은 데이터가 틀린 것으로 보인다.
  */
 export interface TaskPatch {
   status?: string;
   /** 0~100 정수 또는 null(값을 지운다) */
   progress?: number | null;
+  /**
+   * 담당자로 세울 `members.id`. `null`은 「담당자를 비운다」다.
+   *
+   * 이것을 바꿀 수 있는 역할은 `canAssignOwner`가 정하고, DB에서는
+   * `tasks_update_scope`의 `with check`가 같은 자리를 막는다 (`0008` 2절).
+   */
+  ownerMemberId?: string | null;
+  /** 표와 패널이 읽는 담당자 이름. **라우트만 채운다** (위 주석) */
+  ownerNameRaw?: string | null;
+  /**
+   * 공동 담당자 이름들. 시트의 「공동 담당」 칸과 같은 자리다.
+   *
+   * `ownerNameRaw`와 마찬가지로 **라우트만 채운다** — 클라이언트는 `coOwnerMemberIds`(명부 id
+   * 배열)를 보내고 라우트가 이름으로 옮긴다. 빈 배열은 「공동 담당을 비운다」다.
+   */
+  coOwnerNames?: string[];
 }
 
 /**

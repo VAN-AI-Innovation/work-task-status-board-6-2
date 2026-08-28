@@ -101,7 +101,7 @@ import { emptyReason } from '@/lib/view/empty-reason';
 import { toGoalRows } from '@/lib/view/goal-view';
 import {
   COMPACT_KPI_KEYS,
-  DASHBOARD_LAYOUT,
+  dashboardLayoutFor,
   layoutFor,
   type SectionKey,
 } from '@/lib/view/role-layout';
@@ -218,6 +218,13 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     events: await loadPeriodEvents(view.repo, period),
     ctx: read.ctx,
   });
+
+  /*
+   * **패널이 열려 있을 때만 명부를 읽는다.** 담당자 후보 말고는 이 화면이 명부를 쓰지 않는데,
+   * 늘 읽으면 표만 보고 나가는 대부분의 방문에 조회가 하나 더 붙는다 (`/members`가 고른
+   * 사람이 있을 때만 업무를 읽는 것과 같은 판단이다).
+   */
+  const members = query.task === null ? [] : await view.repo.listMembers();
 
   /** `member`가 자기 업무를 고르지 않은 상태. 이름을 대신 채워 넣지 않는다 (`UC-14`) */
   const needsOwnerHint = read.role === 'member' && query.owner === null;
@@ -366,6 +373,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
                 query={query}
                 pathname={PATHNAME}
                 editableIds={editableIds}
+                members={members}
                 statusOptions={STATUS_OPTIONS}
               />
             </div>
@@ -426,7 +434,11 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       ) : (
         <div className="mt-4">
           <SectionGrid
-            rows={layoutFor(read.role, DASHBOARD_LAYOUT)}
+            /*
+             * 배치도 「무엇을 그릴지」도 `lib`이 정한다. 로그인한 부원에게서 전사 비교 둘이
+             * 빠지는 것이 여기 실려 온다 — 화면이 역할을 다시 읽지 않는다 (`ADR-006`).
+             */
+            rows={layoutFor(read.role, dashboardLayoutFor(read.role, read.viewer !== null))}
             render={renderSection}
             hint={detailHint}
           />

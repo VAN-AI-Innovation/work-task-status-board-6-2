@@ -23,6 +23,11 @@ import Link from 'next/link';
 import { TaskPanel } from '@/components/tasks/task-panel';
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
 import {
+  assignableMembers,
+  canAssignOwner,
+  canEditProgress,
+} from '@/lib/domain/task-authoring';
+import {
   buildHref,
   countActiveFilters,
   FILTER_RESET_PATCH,
@@ -30,6 +35,7 @@ import {
 } from '@/lib/view/dashboard-query';
 import { toExtraCells } from '@/lib/view/extras-render';
 import type { TaskResponse } from '@/types/api';
+import type { MemberRecord } from '@/types/auth';
 import type { TaskStage } from '@/types/task';
 
 export function TaskPanelSlot({
@@ -39,6 +45,7 @@ export function TaskPanelSlot({
   query,
   pathname,
   editableIds,
+  members,
   statusOptions,
 }: {
   /** **화면에 실제로 보이는 목록.** 칩으로 가린 업무의 패널이 열리면 표와 어긋난다 */
@@ -53,6 +60,12 @@ export function TaskPanelSlot({
    * 폼이 아예 뜨지 않는다.
    */
   editableIds: ReadonlySet<string>;
+  /**
+   * 시트 명부 전량. 담당자 후보를 **여기서 좁힌다** — 페이지가 팀별로 미리 나눠 보내면
+   * 어느 팀 것인지 아는 곳이 둘이 된다. 브라우저로 나가는 것은 좁힌 뒤의 `{id, name}`
+   * 뿐이다 (`authUserId`를 클라이언트 번들에 싣지 않는다 — `S6`).
+   */
+  members: readonly MemberRecord[];
   /** 상태 드롭다운 목록. 문자열은 `STATUS_SEMANTIC_MAP` 한 곳에서 온다 (`ADR-009`) */
   statusOptions: readonly string[];
 }) {
@@ -97,8 +110,19 @@ export function TaskPanelSlot({
       // 변환은 서버에서 끝낸다 — 패널은 마스킹도 스킴 검사도 다시 하지 않는다 (`S6`·`S7`)
       cells={toExtraCells(task.extras, role)}
       closeHref={closeHref}
-      // 판정 결과를 **찾아보기만** 한다. 숨김은 방어가 아니고 거부는 `PATCH`가 한다
-      canEdit={editableIds.has(task.id)}
+      /*
+       * 판정 결과를 **찾아보기만** 한다. 숨김은 방어가 아니고 거부는 `PATCH`가 한다.
+       *
+       * 범위(`editableIds`)에 역할 한 겹이 더 걸린다 — 대표·실장에게는 진행률 폼을 그리지
+       * 않는다. 그것은 권한이 아니라 화면 규칙이며 근거는 `task-authoring.ts`에 있다.
+       */
+      canEdit={editableIds.has(task.id) && canEditProgress(role)}
+      canAssign={canAssignOwner(role)}
+      // 브라우저로 나가는 것은 이 둘뿐이다 (`MemberRecord`의 `authUserId`를 싣지 않는다)
+      ownerCandidates={assignableMembers(members, task.teamId).map((member) => ({
+        id: member.id,
+        name: member.name,
+      }))}
       statusOptions={statusOptions}
     />
   );

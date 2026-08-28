@@ -7,6 +7,7 @@ import { loadPeriodEvents, parseReportQuery } from '@/lib/api/report-context';
 import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { resolveReportPeriod } from '@/lib/domain/report-period';
+import { canReadWeeklyReport } from '@/lib/domain/staff-tools';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 
 /**
@@ -37,6 +38,12 @@ export async function GET(request: Request): Promise<Response> {
       as: url.searchParams.get('as'),
       filter: {},
     });
+
+    /*
+     * 부원에게는 이 도구가 없다 (`staff-tools.ts`). **화면의 404가 아니라 여기가 진짜 문이다** —
+     * 주소를 직접 쳐도 이 줄에 걸린다. 세션이 없으면 좁히지 않는다(데모).
+     */
+    if (!canReadWeeklyReport(read.role, read.viewer !== null)) return errorResponse('FORBIDDEN');
 
     const period = resolveReportPeriod(read.ctx.today, parseReportQuery(url.searchParams));
 

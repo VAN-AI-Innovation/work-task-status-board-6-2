@@ -260,6 +260,10 @@ export function toTaskPatchRow(
   const row: Partial<TaskWriteRow> & { updated_at: string } = { updated_at: options.updatedAt };
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.progress !== undefined) row.progress = patch.progress;
+  // 두 칸은 `0008`이 authenticated에게 연 것이다. 정책(`tasks_update_scope`)은 그대로다
+  if (patch.ownerMemberId !== undefined) row.owner_member_id = patch.ownerMemberId;
+  if (patch.ownerNameRaw !== undefined) row.owner_name_raw = patch.ownerNameRaw;
+  if (patch.coOwnerNames !== undefined) row.co_owner_names = [...patch.coOwnerNames];
   return row;
 }
 

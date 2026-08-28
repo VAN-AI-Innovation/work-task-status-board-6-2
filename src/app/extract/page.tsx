@@ -7,7 +7,7 @@
  * `PageShell`에 넘긴다.
  */
 
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 import { DocExtractPanel } from '@/components/extract/doc-extract-panel';
 import { PageShell } from '@/components/shell/page-shell';
@@ -16,6 +16,7 @@ import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
+import { canUseDocExtract } from '@/lib/domain/staff-tools';
 import { parseDashboardQuery } from '@/lib/view/dashboard-query';
 import { describeSync } from '@/lib/view/sync-freshness';
 
@@ -43,6 +44,14 @@ export default async function ExtractPage() {
     { nodeEnv: process.env.NODE_ENV, mode },
     view.session
   );
+
+  /*
+   * **부원에게는 이 화면이 없는 것처럼 보인다** (`staff-tools.ts`). 403이 아니라 404인
+   * 이유는 `/team/requests`·`/members`와 같다 — 403 화면은 「리더 전용 기능이 존재한다」를
+   * 알려 준다. 그리고 이것은 방어가 아니다: 주소를 직접 쳐도 배정표를 만드는 두 라우트가
+   * 같은 함수로 403을 낸다.
+   */
+  if (!canUseDocExtract(role, view.session.status === 'ok')) notFound();
 
   return (
     <PageShell
