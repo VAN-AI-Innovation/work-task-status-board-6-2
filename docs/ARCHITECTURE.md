@@ -426,6 +426,7 @@ public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행�
 | `submit_report(week, body, note)` | 팀 주간 보고 제출·재제출. 팀은 `my_team()`이 정한다 (`0010`) | ✅ |
 | `review_report(team, week, decision, note)` | 보고 승인·반려. **admin 전용**, 반려에는 사유 필수 (`0010`) | ✅ |
 | `list_reports(week)` | 그 주의 보고들. admin은 전 팀, lead는 자기 팀 (`0010`) | ✅ |
+| `my_member_name()` | 「나」의 시트 명부 이름. **공동 담당 판정이 이름으로 이뤄진다** (`0013` · `ADR-041`) | ✅ |
 | `approve_join(target, member_id, new_member_name)` | `status='active'` + `members` 연결을 **한 트랜잭션에서** | ✅ |
 | `reject_join(target)` | `status='rejected'`. `members` 연결은 건드리지 않는다 | ✅ |
 | `request_join(team)` | 재요청. **대상은 언제나 `auth.uid()`** — 인자로 남을 지목할 수 없다 | ✅ |
@@ -455,13 +456,14 @@ public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행�
 **적용본은 `supabase/migrations/0003_auth_rls.sql`이다.** 아래는 그 파일에 실제로 들어간
 정책 **11개**이며, 대상 롤은 전부 `authenticated`다 — `anon` 정책은 하나도 없다.
 `0004`가 `task_events`에 하나를 더해 **총 12개**이고, **`0005`(T11)는 정책을 0개 더한다** —
-상태 축은 정책이 아니라 위 판정 함수 셋이 진다 (`ADR-030`).
+상태 축은 정책이 아니라 위 판정 함수 셋이 진다 (`ADR-030`). `0012`·`0013`이 `tasks`·목표 지표
+정책을 **갈아 끼우고** `tasks`에 `insert`·`delete` 둘을 더해 **총 14개**다.
 
 | 테이블 | select | update | insert·delete |
 |---|---|---|---|
-| `tasks` | admin 전체 / lead `team_id = my_team()` / member `owner_member_id = my_member_id()` | 같은 범위 (`using` = `with check`) | 없음 (`service_role`만) |
-| `task_stages` | 부모 `tasks`가 보이면 보인다 | — | 없음 |
-| `goal_metrics` · `team_period_goals` | admin 전체 / lead·member `team_id = my_team()` | — | 없음 |
+| `tasks` | **admin·lead 전체** / member 담당 건 + 공동 담당 건 | admin 전체 / lead `team_id = my_team()` / member 열람과 같은 범위 (`using` = `with check`) | admin 전체 / lead 자기 팀 (`0013`) |
+| `task_stages` | 부모 `tasks`가 보이면 보인다 | — | 없음 (부모 삭제의 cascade는 RLS를 타지 않는다) |
+| `goal_metrics` · `team_period_goals` | **admin·lead 전체** / member `team_id = my_team()` | — | 없음 |
 | `teams` · `departments` · `members` · `enum_options` · `sla_rules` | 로그인한 전원 (참조 데이터) | — | 없음 |
 | `profiles` | 본인 행만 | 없음 | 없음 |
 | `uploads` · `task_events` · `doc_extractions` | **정책 없음 — 한 행도 안 보인다** | 없음 | 없음 |
@@ -472,6 +474,12 @@ public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행�
   시트·문서 본문이 통째로 들어 있고(`S6`) 화면에는 그것을 읽는 자리가 없다. 필요해지면
   그때 정책을 붙인다 — 지금 열어 두면 쓰지도 않는 경로로 원본 행이 나간다.
   (`task_events` 조회는 `T9`의 `listEvents`가 여는 자리이고, 그 경로도 서버 쪽이다.)
+- **`0012`·`0013`이 위 표를 두 곳에서 뒤집었다** (`ADR-040`·`ADR-041`·`ADR-042`).
+  `lead`의 **열람**이 전사가 됐고(수정은 그대로 자기 팀이다 — 화면이 그 둘을 각각 묻는다),
+  `member`의 열람·수정에 **공동 담당**이 들어왔으며(`co_owner_names`에 내 명부 이름이 있고
+  팀이 같으면), `tasks`에 `insert`·`delete` 정책이 처음 생겼다. 앱 쪽 대응물은
+  `viewer-scope.ts`의 `taskInScope` / `taskEditable` 두 함수와 `task-authoring.ts`의
+  `canCreateTask`·`canDeleteTask`·`creatableTeams`다 — **표와 글자 그대로 대응해야 한다.**
 - **`member`에게 `owner_member_id is null`인 행은 보이지 않는다** — 시트 담당자가
   `members`에 안 붙은 경우(`unknown_owner`)다. `null`을 「내 것」으로 치면 담당자 미상 업무가
   전원에게 보이고, 그것은 범위 구분이 아니다.
