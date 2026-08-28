@@ -422,7 +422,10 @@ public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행�
 | 함수 | 하는 일 | `authenticated` 실행 권한 |
 |---|---|---|
 | `pending_requests()` | 대기·거절 요청 목록. admin 전체 / lead 자기 팀 | ✅ |
-| `member_directory()` | 전 팀 명부(`profiles` ⟗ `members` full outer join). **admin 전용** | ✅ |
+| `member_directory()` | 전 팀 명부(`profiles` ⟗ `members` full outer join). **admin·lead**, 이메일 포함(`0008`) | ✅ |
+| `submit_report(week, body, note)` | 팀 주간 보고 제출·재제출. 팀은 `my_team()`이 정한다 (`0010`) | ✅ |
+| `review_report(team, week, decision, note)` | 보고 승인·반려. **admin 전용**, 반려에는 사유 필수 (`0010`) | ✅ |
+| `list_reports(week)` | 그 주의 보고들. admin은 전 팀, lead는 자기 팀 (`0010`) | ✅ |
 | `approve_join(target, member_id, new_member_name)` | `status='active'` + `members` 연결을 **한 트랜잭션에서** | ✅ |
 | `reject_join(target)` | `status='rejected'`. `members` 연결은 건드리지 않는다 | ✅ |
 | `request_join(team)` | 재요청. **대상은 언제나 `auth.uid()`** — 인자로 남을 지목할 수 없다 | ✅ |
