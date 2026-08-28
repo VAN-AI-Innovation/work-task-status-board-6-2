@@ -1,9 +1,9 @@
 /**
- * 재는 것은 셋이다 — **후보가 좁혀지는가** · **팀 이름이 표에서만 오는가** ·
+ * 재는 것은 셋이다 — **명부 연결이 저절로 정해지는가** · **팀 이름이 표에서만 오는가** ·
  * **요청 시각이 KST인가.**
  *
- * 후보 규칙이 이 파일의 본체다. 이미 다른 계정에 붙은 명부 행을 후보에 남기면 리더가
- * 눌러 본 **뒤에야** 실패를 안다 (`approve_join`의 `member already linked`).
+ * 연결 규칙이 이 파일의 본체다. 리더가 고르던 `<select>`를 없앴으므로, 잘못 정하면 리더는
+ * 고칠 자리 없이 실패(`approve_join`의 `member already linked` · unique 위반)만 본다.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -28,44 +28,80 @@ function member(overrides: Partial<MemberRecord> = {}): MemberRecord {
   return { id: 'm-1', teamId: 'edit', name: '편집1', authUserId: null, ...overrides };
 }
 
-describe('toJoinRequestRows — 후보', () => {
-  it('요청자의 팀에서 계정이 붙지 않은 명부 행만 후보다', () => {
+describe('toJoinRequestRows — 명부 연결', () => {
+  it('같은 팀에 같은 이름의 빈 명부 행이 있으면 그 행에 잇는다', () => {
     const [row] = toJoinRequestRows(
-      [request()],
-      [
-        member({ id: 'm-1', name: '편집1' }),
-        // 이미 남에게 붙었다 — 승인하면 `member already linked`로 튕긴다
-        member({ id: 'm-2', name: '편집2', authUserId: 'user-9' }),
-        // 다른 팀 — `member not in target team`이다
-        member({ id: 'm-3', teamId: 'shoot', name: '촬영1' }),
-      ]
+      [request({ displayName: '편집1' })],
+      [member({ id: 'm-1', name: '편집1' })]
     );
 
-    expect(row.candidates).toEqual([{ id: 'm-1', name: '편집1' }]);
+    expect(row.link).toEqual({ kind: 'existing', memberId: 'm-1', memberName: '편집1' });
   });
 
-  it('후보를 이름순으로 세운다 — 명부 순서는 저장소가 정할 일이 아니다', () => {
+  it('이름 앞뒤 공백은 무시하고 맞춘다 — 시트 값에 공백이 흔하다', () => {
     const [row] = toJoinRequestRows(
-      [request()],
-      [member({ id: 'm-2', name: '하늘' }), member({ id: 'm-1', name: '가람' })]
+      [request({ displayName: ' 편집1 ' })],
+      [member({ id: 'm-1', name: '편집1  ' })]
     );
 
-    expect(row.candidates.map((candidate) => candidate.name)).toEqual(['가람', '하늘']);
+    expect(row.link).toMatchObject({ kind: 'existing', memberId: 'm-1' });
   });
 
-  it('팀을 모르면 후보가 없다 — 승인 자체가 안 되는 상태다', () => {
+  it('이미 다른 계정에 붙은 행에는 잇지 않는다 — `member already linked`가 된다', () => {
+    const [row] = toJoinRequestRows(
+      [request({ displayName: '편집2' })],
+      [member({ id: 'm-2', name: '편집2', authUserId: 'user-9' })]
+    );
+
+    expect(row.link).toEqual({ kind: 'new', name: '편집2' });
+  });
+
+  it('다른 팀의 같은 이름에는 잇지 않는다 — `member not in target team`이 된다', () => {
+    const [row] = toJoinRequestRows(
+      [request({ displayName: '촬영1' })],
+      [member({ id: 'm-3', teamId: 'shoot', name: '촬영1' })]
+    );
+
+    expect(row.link).toEqual({ kind: 'new', name: '촬영1' });
+  });
+
+  it('맞는 이름이 없으면 가입 이름으로 명부 행을 새로 만든다', () => {
+    const [row] = toJoinRequestRows([request({ displayName: '새내기' })], [member()]);
+
+    expect(row.link).toEqual({ kind: 'new', name: '새내기' });
+  });
+
+  it('팀을 모르면 연결이 없다 — 승인 자체가 안 되는 상태다', () => {
     const [row] = toJoinRequestRows([request({ teamId: null })], [member()]);
 
-    expect(row.candidates).toEqual([]);
+    expect(row.link).toBeNull();
     expect(row.teamName).toBeNull();
   });
 
-  it('반려된 요청에는 후보를 싣지 않는다 — 누를 수 있는 버튼이 없다', () => {
+  it('반려된 요청에는 연결이 없다 — 누를 수 있는 버튼이 없다', () => {
     // `approve_join`은 `status = 'pending'`인 대상만 받는다 (`0005` 4-4)
     const [row] = toJoinRequestRows([request({ status: 'rejected' })], [member()]);
 
-    expect(row.candidates).toEqual([]);
+    expect(row.link).toBeNull();
     expect(row.status).toBe('rejected');
+  });
+
+  it('가입 이름이 없으면 연결이 없다 — 명부에 적을 이름을 지어내지 않는다', () => {
+    const [row] = toJoinRequestRows([request({ displayName: null })], []);
+
+    expect(row.link).toBeNull();
+  });
+
+  it('가입 이름이 공백뿐이어도 연결이 없다', () => {
+    const [row] = toJoinRequestRows([request({ displayName: '   ' })], []);
+
+    expect(row.link).toBeNull();
+  });
+
+  it('40자를 넘는 이름은 잘라서 넘긴다 — `members.name`이 40자다 (`0005` 1절)', () => {
+    const [row] = toJoinRequestRows([request({ displayName: 'ㄱ'.repeat(41) })], []);
+
+    expect(row.link).toEqual({ kind: 'new', name: 'ㄱ'.repeat(40) });
   });
 });
 

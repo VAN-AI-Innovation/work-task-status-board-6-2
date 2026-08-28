@@ -1,6 +1,9 @@
 /**
- * 전사 멤버 화면 (T11 · `/members`). 조직 전체를 팀 트리로 보고 **팀장을 세우거나 내리는**
- * 자리다.
+ * 전사 멤버 화면 (T11 · `/members`). 조직 전체를 팀 트리로 보고, **팀장을 세우거나 내리고**,
+ * **합류 요청을 받아들이는** 자리다.
+ *
+ * 요청 목록은 원래 `/team/requests`라는 별도 화면이었다. 합친 이유는 아래 「합류 요청도
+ * 이 화면이 진다」 주석에 있다.
  *
  * ## 자기 API를 부르지 않는다
  *
@@ -29,6 +32,8 @@ import { notFound, redirect } from 'next/navigation';
 import { MemberPanel } from '@/components/members/member-panel';
 import { MemberTreeView, keyOf } from '@/components/members/member-tree-view';
 import { PageShell } from '@/components/shell/page-shell';
+import { JoinRequestList } from '@/components/team/join-request-list';
+import { toJoinRequestsResponse } from '@/lib/api/join-request-schema';
 import { toMemberDirectoryResponse } from '@/lib/api/member-role-schema';
 import { buildReadContext } from '@/lib/api/read-context';
 import { resolveViewerRole } from '@/lib/api/viewer-role';
@@ -36,10 +41,12 @@ import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentSessionClient, currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
+import { canReviewJoinRequests } from '@/lib/domain/join-review';
 import { canManageMembers, canViewMembers } from '@/lib/domain/member-admin';
 import { buildMemberTree, type MemberNode } from '@/lib/domain/member-tree';
 import { openTasksOf, summarizeMemberWorkload } from '@/lib/domain/member-workload';
 import { parseDashboardQuery, toURLSearchParams } from '@/lib/view/dashboard-query';
+import { toJoinRequestRows } from '@/lib/view/join-request-rows';
 import { describeSync } from '@/lib/view/sync-freshness';
 
 /** 명부도 저장소 연결도 빌드 시각이 아니라 요청 시각의 사실이다 */
@@ -85,6 +92,28 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
     if (error) throw new Error('member_directory failed');
     members = toMemberDirectoryResponse(data).members;
   }
+
+  /*
+   * **합류 요청도 이 화면이 진다** — 예전에는 `/team/requests`라는 별도 화면이었다.
+   * 두 화면이 같은 것을 다뤘다: 조직도는 「지금 우리 조직이 이렇다」이고 요청 목록은
+   * 「여기에 들어오려는 사람이 있다」다. 승인하면 그 사람이 곧바로 위 트리에 나타나므로,
+   * 나눠 두면 리더가 승인한 결과를 보려고 화면을 옮겨야 했다.
+   *
+   * 문턱이 같아서 합칠 수 있었다 — `canViewMembers`와 `canReviewJoinRequests`가 둘 다
+   * 대표·팀장이다. 그래도 판정은 **각자 부른다**: 한쪽이 넓어지는 날 다른 쪽이 조용히
+   * 따라가면 안 된다.
+   */
+  const reviewable = canReviewJoinRequests(role);
+  let requests = toJoinRequestsResponse(null).requests;
+  if (reviewable && client !== null) {
+    const { data, error } = await client.rpc('pending_requests');
+    if (error) throw new Error('pending_requests failed');
+    requests = toJoinRequestsResponse(data).requests;
+  }
+  /* 명부 연결을 이름으로 정하는 데 시트 명부가 필요하다 (`join-request-rows.ts`) */
+  const requestRows = reviewable
+    ? toJoinRequestRows(requests, await view.repo.listMembers())
+    : [];
 
   const tree = buildMemberTree(members);
 
@@ -181,6 +210,24 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
           openable={openable}
         />
       </div>
+
+      {reviewable && (
+        /*
+         * **트리 아래다.** 요청은 조직도에 「더해질」 사람들이라, 지금 조직을 본 다음에
+         * 읽는 것이 순서다. 0건이어도 제목 줄은 남는다 — 목록이 비어 있는 것과 이 기능이
+         * 없는 것이 화면에서 같아 보이면 안 된다 (알림 패널의 0건 묶음과 같은 규칙).
+         */
+        <section className="mt-10">
+          <h2 className="text-brand text-sm font-semibold">팀원 요청</h2>
+          <p className="text-ink-body mt-1 text-sm">
+            승인하면 곧바로 현황판을 볼 수 있고 위 조직도에 나타납니다. 시트 명부 연결은 가입
+            이름으로 자동으로 맞춰집니다.
+          </p>
+          <div className="mt-4">
+            <JoinRequestList rows={requestRows} />
+          </div>
+        </section>
+      )}
 
       {selected !== null && (
         <MemberPanel

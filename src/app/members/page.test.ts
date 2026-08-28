@@ -22,6 +22,8 @@ import type { Viewer } from '@/types/auth';
 let session: SessionOutcome;
 /** `member_directory()`가 돌려줄 것. `null`이면 rpc가 실패한 갈래다 */
 let rpcRows: unknown[] | null;
+/** `pending_requests()`가 돌려줄 것. 이 화면이 합류 요청도 함께 그린다 */
+let requestRows: unknown[];
 let rpcCalls: string[];
 
 const handle: StorageHandle = {
@@ -39,6 +41,7 @@ vi.mock('@/lib/auth/request-viewer', () => ({
   currentSessionClient: async () => ({
     rpc: async (name: string) => {
       rpcCalls.push(name);
+      if (name === 'pending_requests') return { data: requestRows, error: null };
       return rpcRows === null
         ? { data: null, error: { message: 'boom' } }
         : { data: rpcRows, error: null };
@@ -117,6 +120,7 @@ const ROWS = [
 beforeEach(() => {
   session = viewer('admin');
   rpcRows = ROWS;
+  requestRows = [];
   rpcCalls = [];
 });
 
@@ -221,5 +225,67 @@ describe('/members — 트리', () => {
     rpcRows = null;
 
     await expect(MembersPage(props())).rejects.toThrow();
+  });
+});
+
+/**
+ * 합류 요청이 **이 화면 안에** 있다. 예전에는 `/team/requests`라는 별도 화면이었고,
+ * 그 화면의 테스트가 재던 것 중 여기 남는 것은 「누가 보는가」와 「행을 그대로 넘기는가」
+ * 둘이다 — 카드 안의 동작은 `join-request-rows.test.ts`와 승인·거절 라우트가 진다.
+ */
+describe('/members — 합류 요청', () => {
+  const REQUEST = {
+    user_id: '99999999-9999-4999-8999-999999999999',
+    display_name: '새내기',
+    email: 'newbie@van.test',
+    team_id: 'edit',
+    status: 'pending',
+    created_at: '2026-08-25T15:10:00Z',
+  };
+
+  it('요청 목록이 조직도와 같은 화면에 선다', async () => {
+    requestRows = [REQUEST];
+
+    const tree = await MembersPage(props());
+    expect(findComponent(tree, 'MemberTreeView')).not.toBeNull();
+    expect(findComponent(tree, 'JoinRequestList')).not.toBeNull();
+  });
+
+  it('요청이 0건이어도 목록 자리는 남는다 — 없는 것과 비어 있는 것은 다르다', async () => {
+    const list = findComponent(await MembersPage(props()), 'JoinRequestList');
+
+    expect(list).not.toBeNull();
+    expect(list?.props?.rows).toEqual([]);
+  });
+
+  it('행을 그대로 넘긴다 — 화면이 거르지 않는다', async () => {
+    requestRows = [REQUEST];
+
+    const list = findComponent(await MembersPage(props()), 'JoinRequestList');
+    expect(list?.props?.rows).toEqual([
+      expect.objectContaining({
+        userId: REQUEST.user_id,
+        displayName: '새내기',
+        teamName: '편집팀',
+        status: 'pending',
+      }),
+    ]);
+  });
+
+  it('팀장도 본다 — 조직도와 같은 문턱이다', async () => {
+    session = viewer('lead');
+    requestRows = [REQUEST];
+
+    expect(findComponent(await MembersPage(props()), 'JoinRequestList')).not.toBeNull();
+    expect(rpcCalls).toContain('pending_requests');
+  });
+
+  it('부원은 404라 요청을 부르지도 않는다', async () => {
+    session = viewer('member');
+
+    await expect(MembersPage(props())).rejects.toMatchObject({
+      digest: 'NEXT_HTTP_ERROR_FALLBACK;404',
+    });
+    expect(rpcCalls).not.toContain('pending_requests');
   });
 });

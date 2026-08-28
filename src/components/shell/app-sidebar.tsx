@@ -10,11 +10,12 @@
  * 통과다). 여닫는 토글을 두지 않는다: `UI_GUIDE.md`가 허용한 애니메이션은 사이드 패널
  * 슬라이딩과 스켈레톤 페이드 둘뿐이고, 접힘 상태를 기억시키면 폭 규칙이 두 곳이 된다.
  *
- * ## 역할에 따라 항목이 둘 갈린다 (T11)
+ * ## 역할에 따라 항목이 갈린다 (T11)
  *
- * 「팀원 요청」은 `canReviewJoinRequests(role)`이, 「멤버」는 `canManageMembers(role)`이 참일
- * 때만 선다 — 앞은 팀장까지, 뒤는 대표·실장뿐이다. ⚠ **이것은 권한이 아니다.**
- * 실제 방어는 `/team/requests`가 `notFound()`를 내는 것과 그 아래 DB 함수들이고, 여기서
+ * 「멤버」는 `canViewMembers(role)`이, 「주간 보고」·「독스 → 배정표」는 `staff-tools.ts`의
+ * 두 함수가 참일 때만 선다 — 뒤의 둘은 **부원에게 없다.** 합류 요청은 항목이 아니라
+ * 「멤버」 화면 안에 있다. ⚠ **이것은 권한이 아니다.**
+ * 실제 방어는 그 화면들이 `notFound()`를 내는 것과 그 아래 DB 함수들이고, 여기서
  * 감추는 것은 **누를 수 없는 자리를 눈앞에 두지 않는** 편의다. 이 순서를 뒤집어 「사이드바에서
  * 뺐으니 됐다」고 하면 주소를 직접 친 사람에게 그대로 열린다 (`role-layout.ts` 머리말이
  * 같은 사고를 기록하고 있다).
@@ -29,8 +30,8 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
-import { canReviewJoinRequests } from '@/lib/domain/join-review';
 import { canViewMembers } from '@/lib/domain/member-admin';
+import { canReadWeeklyReport, canUseDocExtract } from '@/lib/domain/staff-tools';
 import { visibleTeamKeys } from '@/lib/domain/team-visibility';
 import { teamLabel, toTeamSlug } from '@/lib/view/team-slug';
 import type { TeamKey } from '@/types/task';
@@ -124,29 +125,6 @@ function ReportIcon() {
   );
 }
 
-/** 팀원 요청. 사람 하나에 표시 하나 — 「받아들일지 정하는 사람」이라는 뜻이다 */
-function JoinRequestIcon() {
-  return (
-    <svg
-      aria-hidden
-      viewBox="0 0 16 16"
-      width="16"
-      height="16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className="shrink-0"
-    >
-      <circle cx="6" cy="5" r="2.5" />
-      <path d="M2 13.5c0-2.2 1.8-4 4-4s4 1.8 4 4" />
-      <path d="M11 7.5h4" />
-      <path d="M13 5.5v4" />
-    </svg>
-  );
-}
-
 /** 멤버. 사람 셋이 겹쳐 선다 — 「조직 전체의 명부」라는 뜻이다 */
 function MembersIcon() {
   return (
@@ -209,29 +187,36 @@ interface NavItem {
  * ⚠ 감추는 것은 방어가 아니다. 진짜 문은 `viewer-scope.ts`와 RLS다 (`role-layout.ts` 머리말).
  */
 function navItemsFor(role: ViewerRole | null, teamId: TeamKey | null, hasSession: boolean): NavItem[] {
+  const effective = role ?? 'member';
+
   const items: NavItem[] = [
     { href: '/', label: '대시보드', icon: <DashboardIcon /> },
     // 대시보드 바로 아래다. 둘 다 **읽고 가져가는** 화면이고, 브리핑 카드를 눌러 넘어오는
-    // 곳이기도 하다 (`UC-08`). 데이터를 넣는 두 화면(업로드·추출)은 팀 탭 아래에 모여 있다
-    { href: '/report', label: '주간 보고', icon: <ReportIcon /> },
-    ...visibleTeamKeys(role ?? 'member', teamId, hasSession).map((teamKey) => ({
+    // 곳이기도 하다 (`UC-08`). 데이터를 넣는 두 화면(업로드·추출)은 팀 탭 아래에 모여 있다.
+    // 부원에게는 없다 — 회의에 들고 가는 문서다 (`canReadWeeklyReport`)
+    ...(canReadWeeklyReport(effective, hasSession)
+      ? [{ href: '/report', label: '주간 보고', icon: <ReportIcon /> }]
+      : []),
+    ...visibleTeamKeys(effective, teamId, hasSession).map((teamKey) => ({
       href: `/teams/${toTeamSlug(teamKey)}`,
       label: teamLabel(teamKey),
       icon: <TeamIcon />,
     })),
     { href: '/upload', label: '시트 업로드', icon: <UploadIcon /> },
     // 「시트 업로드」 바로 아래다. 둘 다 데이터를 넣는 화면이고, 이 순서가 곧 `UC-05`→`UC-06`
-    // 이다 — 배정표를 뽑아(`/extract`) 채운 뒤 시트로 다시 올리면 고리가 닫힌다
-    { href: '/extract', label: '독스 → 배정표', icon: <ExtractIcon /> },
+    // 이다 — 배정표를 뽑아(`/extract`) 채운 뒤 시트로 다시 올리면 고리가 닫힌다.
+    // 부원에게는 없다 — 남에게 일을 나눠 주려고 뽑는 표다 (`canUseDocExtract`)
+    ...(canUseDocExtract(effective, hasSession)
+      ? [{ href: '/extract', label: '독스 → 배정표', icon: <ExtractIcon /> }]
+      : []),
   ];
 
-  if (role !== null && canReviewJoinRequests(role)) {
-    items.push({ href: '/team/requests', label: '팀원 요청', icon: <JoinRequestIcon /> });
-  }
-
-  // 「팀원 요청」 바로 아래다. 둘 다 **사람을 다루는** 화면이고, 승인한 사람이 다음에
-  // 서는 자리가 여기다. 팀장에게도 선다 — 보는 것과 바꾸는 것은 다른 질문이다
-  // (`canViewMembers` · `0007`)
+  /*
+   * 「멤버」 하나다. 예전에는 「팀원 요청」이 그 위에 따로 섰는데, 그 화면을 조직도 아래로
+   * 옮겼다 — 승인한 사람이 곧바로 트리에 나타나므로 둘을 나눠 두면 결과를 보려고 화면을
+   * 옮겨야 했다 (`members/page.tsx`). 팀장에게도 선다: 보는 것과 바꾸는 것은 다른
+   * 질문이다 (`canViewMembers` · `0007`)
+   */
   if (role !== null && canViewMembers(role)) {
     items.push({ href: '/members', label: '멤버', icon: <MembersIcon /> });
   }
