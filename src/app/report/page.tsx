@@ -24,10 +24,10 @@
 
 import { notFound, redirect } from 'next/navigation';
 
+import { ReportComposer } from '@/components/report/report-composer';
 import { ReportDocument } from '@/components/report/report-document';
 import { ReportPeriodNav } from '@/components/report/report-period-nav';
 import { ReportReviewPanel, type ReviewRow } from '@/components/report/report-review-panel';
-import { ReportSubmitPanel } from '@/components/report/report-submit-panel';
 import { PageShell } from '@/components/shell/page-shell';
 import { EmptyState } from '@/components/tasks/empty-state';
 import { buildReadContext } from '@/lib/api/read-context';
@@ -128,6 +128,13 @@ export default async function ReportPage({ searchParams }: PageProps<'/report'>)
   const canReview = viewerRole !== null && canReviewReport(viewerRole);
   const document = canReview ? mergeTeamReports(period, submissions) : markdown;
 
+  /**
+   * 제출 칸을 여는가. **어드민은 여기서 빠진다** — 받는 사람이 올리는 자리를 겸하면 반려라는
+   * 절차가 성립하지 않는다 (`report-submission.ts`). 데모(로그인 없음)도 빠진다: 올릴 팀이
+   * 없고 부를 함수도 없다.
+   */
+  const canCompose = viewerRole !== null && !canReview && canSubmitReport(viewerRole);
+
   /** 미제출 팀도 줄로 남는다 — 이 화면의 첫 정보는 「누가 안 냈는가」다 */
   const reviewRows: ReviewRow[] = TEAM_KEYS.map((teamId) => {
     const found = submissions.find((item) => item.teamId === teamId);
@@ -179,25 +186,26 @@ export default async function ReportPage({ searchParams }: PageProps<'/report'>)
         </div>
       )}
 
-      {/*
-        팀장의 제출 칸. **업무가 0건이어도 뜬다** — 그 주에 올릴 것이 없다는 것도 보고이고,
-        특이사항은 업무 건수와 무관하게 적을 수 있다.
-      */}
-      {viewerRole !== null && !canReview && canSubmitReport(viewerRole) && (
-        <div className="mt-6">
-          <ReportSubmitPanel
-            weekStart={period.weekStart}
-            computed={markdown}
-            submittedBody={mine?.body ?? null}
-            submittedNote={mine?.note ?? ''}
-            status={mine?.status ?? null}
-            reviewNote={mine?.reviewNote ?? null}
-            submittedOn={mine?.submittedOn ?? null}
-          />
-        </div>
-      )}
-
-      {read.tasks.length === 0 && !canReview ? (
+      {canCompose ? (
+        /*
+         * 팀장의 제출 칸 **과 보고 본문이 한 덩어리다** (`ReportComposer`). 아래 문서가
+         * 그리는 것은 위 칸이 들고 있는 문자열이라, 한 줄을 고치면 문서도 그 자리에서
+         * 바뀐다 — 예전에는 둘이 갈려서 「올린 것」과 「PDF로 저장한 것」이 달랐다.
+         *
+         * **업무가 0건이어도 뜬다** — 그 주에 올릴 것이 없다는 것도 보고이고, 특이사항은
+         * 업무 건수와 무관하게 적을 수 있다. 그래서 아래 빈 화면 갈래보다 앞에 선다.
+         */
+        <ReportComposer
+          weekStart={period.weekStart}
+          computed={markdown}
+          submittedBody={mine?.body ?? null}
+          submittedNote={mine?.note ?? ''}
+          status={mine?.status ?? null}
+          reviewNote={mine?.reviewNote ?? null}
+          submittedOn={mine?.submittedOn ?? null}
+          filename={`weekly-${period.weekStart}.md`}
+        />
+      ) : read.tasks.length === 0 && !canReview ? (
         /*
          * 업무가 0건이면 보고서에 담을 것이 없다. **주를 바꿔도 달라지지 않는다** —
          * 업무 목록은 기간으로 자르지 않기 때문이다(기간을 타는 것은 마감 섹션과 변경

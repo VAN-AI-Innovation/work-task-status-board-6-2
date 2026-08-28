@@ -24,6 +24,13 @@
  * 돌아간다 — 재보고 버튼을 따로 두지 않는 것은 **하는 일이 같기 때문이다**(`submit_report`
  * 하나가 둘을 다 한다). 버튼이 둘이면 사용자는 어느 쪽을 눌러야 하는지 매번 고른다.
  *
+ * ## 본문 상태를 이 컴포넌트가 들고 있지 않다
+ *
+ * `body`·`note`는 위의 `ReportComposer`가 들고 내려준다. 아래 「보고 본문」 문서가 **같은
+ * 문자열**을 그려야 하기 때문이다 — 예전에는 이 패널이 상태를 혼자 들고 있어서, 팀장이
+ * 여기서 한 줄을 고쳐도 아래 문서는 계산본 그대로였다. 같은 화면에 같은 이름의 문서가 둘
+ * 있고 내용이 다른 것은 「어느 쪽이 올라가는가」를 눌러 봐야 아는 상태다.
+ *
  * **낙관적 업데이트를 하지 않는다.** 서버 응답을 받은 뒤에야 `router.refresh()`한다
  * (`task-edit-form.tsx`와 같은 규칙).
  */
@@ -43,8 +50,10 @@ const FIELD =
 export function ReportSubmitPanel({
   weekStart,
   computed,
-  submittedBody,
-  submittedNote,
+  body,
+  note,
+  onBodyChange,
+  onNoteChange,
   status,
   reviewNote,
   submittedOn,
@@ -53,9 +62,11 @@ export function ReportSubmitPanel({
   weekStart: string;
   /** 지금 데이터로 계산한 본문. 「되돌리기」가 이 값으로 돌아간다 */
   computed: string;
-  /** 이미 올린 본문. 없으면 `null`이고 그때는 계산본으로 시작한다 */
-  submittedBody: string | null;
-  submittedNote: string;
+  /** 지금 화면이 들고 있는 본문. **소유자는 `ReportComposer`다** (머리말) */
+  body: string;
+  note: string;
+  onBodyChange: (next: string) => void;
+  onNoteChange: (next: string) => void;
   status: ReportStatus | null;
   reviewNote: string | null;
   submittedOn: string | null;
@@ -64,13 +75,6 @@ export function ReportSubmitPanel({
   const [pending, startTransition] = useTransition();
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-
-  /*
-   * 이미 올린 것이 있으면 **그것을** 연다. 계산본으로 열면 팀장이 지난번에 고쳐 넣은 문장이
-   * 화면에서 사라지고, 그 상태로 다시 보내면 조용히 지워진다.
-   */
-  const [body, setBody] = useState(submittedBody ?? computed);
-  const [note, setNote] = useState(submittedNote);
 
   const stage = submissionStage(status);
   const busy = sending || pending;
@@ -132,7 +136,7 @@ export function ReportSubmitPanel({
         <textarea
           id="report-note"
           value={note}
-          onChange={(event) => setNote(event.target.value)}
+          onChange={(event) => onNoteChange(event.target.value)}
           disabled={busy}
           rows={4}
           placeholder="예) 촬영 장비 대여가 하루 밀려 촬영 일정이 이번 주로 넘어갔습니다."
@@ -147,7 +151,7 @@ export function ReportSubmitPanel({
           </label>
           <button
             type="button"
-            onClick={() => setBody(computed)}
+            onClick={() => onBodyChange(computed)}
             disabled={busy || body === computed}
             className={`text-xs underline-offset-4 ${
               busy || body === computed
@@ -162,7 +166,7 @@ export function ReportSubmitPanel({
         <textarea
           id="report-body"
           value={body}
-          onChange={(event) => setBody(event.target.value)}
+          onChange={(event) => onBodyChange(event.target.value)}
           disabled={busy}
           rows={12}
           className={`${FIELD} mt-2 font-mono text-xs`}

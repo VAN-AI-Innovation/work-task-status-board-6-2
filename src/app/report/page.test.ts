@@ -175,6 +175,7 @@ describe('/report', () => {
       role: 'member',
       teamId: 'edit',
       memberId: 'm1',
+      memberName: null,
     };
     session = { status: 'ok', viewer };
     await seed();
@@ -191,6 +192,7 @@ describe('/report', () => {
       role: 'lead',
       teamId: 'edit',
       memberId: 'm1',
+      memberName: null,
     };
     session = { status: 'ok', viewer };
     await seed();
@@ -227,6 +229,7 @@ describe('/report — 제출과 검토', () => {
     role: 'lead',
     teamId: 'edit',
     memberId: 'm1',
+    memberName: null,
   };
   const admin: Viewer = {
     userId: 'u2',
@@ -234,6 +237,7 @@ describe('/report — 제출과 검토', () => {
     role: 'admin',
     teamId: null,
     memberId: null,
+    memberName: null,
   };
 
   const submittedRow = {
@@ -247,25 +251,30 @@ describe('/report — 제출과 검토', () => {
     reviewed_at: null,
   };
 
+  /*
+   * 팀장의 제출 칸은 이제 `ReportComposer` 안에 있다 — 그 컴포넌트가 본문 상태를 들고
+   * 제출 패널과 보고 본문을 함께 그린다. 서버 트리에서 보이는 것은 바깥의 `ReportComposer`
+   * 하나뿐이다 (안쪽은 클라이언트에서 마운트된다).
+   */
   it('팀장에게는 제출 칸이, 어드민에게는 검토 칸이 뜬다', async () => {
     await seed();
 
     session = { status: 'ok', viewer: lead };
     const leadTree = await ReportPage(props({ week: '2026-08-24' }));
-    expect(findComponent(leadTree, 'ReportSubmitPanel')).not.toBeNull();
+    expect(findComponent(leadTree, 'ReportComposer')).not.toBeNull();
     expect(findComponent(leadTree, 'ReportReviewPanel')).toBeNull();
 
     session = { status: 'ok', viewer: admin };
     const adminTree = await ReportPage(props({ week: '2026-08-24' }));
     expect(findComponent(adminTree, 'ReportReviewPanel')).not.toBeNull();
-    expect(findComponent(adminTree, 'ReportSubmitPanel')).toBeNull();
+    expect(findComponent(adminTree, 'ReportComposer')).toBeNull();
   });
 
   it('로그인 전(데모)에는 둘 다 없다 — 부를 함수가 없다', async () => {
     await seed();
 
     const tree = await ReportPage(props());
-    expect(findComponent(tree, 'ReportSubmitPanel')).toBeNull();
+    expect(findComponent(tree, 'ReportComposer')).toBeNull();
     expect(findComponent(tree, 'ReportReviewPanel')).toBeNull();
   });
 
@@ -287,7 +296,7 @@ describe('/report — 제출과 검토', () => {
     session = { status: 'ok', viewer: lead };
     reportRows = [submittedRow];
 
-    const panel = findComponent(await ReportPage(props({ week: '2026-08-24' })), 'ReportSubmitPanel');
+    const panel = findComponent(await ReportPage(props({ week: '2026-08-24' })), 'ReportComposer');
 
     expect(panel?.props?.submittedBody).toBe(submittedRow.body);
     expect(panel?.props?.submittedNote).toBe('장비 대여가 하루 밀렸습니다');
@@ -306,15 +315,24 @@ describe('/report — 제출과 검토', () => {
     expect(doc?.props?.filename).toBe('weekly-2026-08-24-all.md');
   });
 
-  it('팀장의 본문은 계산본 그대로다 — 병합은 어드민의 것이다', async () => {
+  /*
+   * **팀장에게는 문서가 따로 서지 않는다.** 제출 칸이 들고 있는 본문을 `ReportComposer`가
+   * 그대로 아래에 그리므로, 한 줄을 고치면 문서도 그 자리에서 바뀐다 — 예전에는 둘이
+   * 갈려서 「올린 것」과 「PDF로 저장한 것」이 달랐다.
+   */
+  it('팀장 화면에는 별도 문서가 없다 — 제출 칸과 한 문자열이다', async () => {
     await seed();
     session = { status: 'ok', viewer: lead };
     reportRows = [submittedRow];
 
-    const doc = findComponent(await ReportPage(props({ week: '2026-08-24' })), 'ReportDocument');
+    const tree = await ReportPage(props({ week: '2026-08-24' }));
+    expect(findComponent(tree, 'ReportDocument')).toBeNull();
 
-    expect(String(doc?.props?.markdown)).toContain('# 주간 업무 보고 —');
-    expect(String(doc?.props?.markdown)).not.toContain('(전사)');
+    const composer = findComponent(tree, 'ReportComposer');
+    // 계산본은 「되돌리기」의 목적지로 넘어간다. 병합 문서(전사)는 어드민의 것이다
+    expect(String(composer?.props?.computed)).toContain('# 주간 업무 보고 —');
+    expect(String(composer?.props?.computed)).not.toContain('(전사)');
+    expect(composer?.props?.filename).toBe('weekly-2026-08-24.md');
   });
 
   it('업무가 0건인 어드민도 검토 칸과 병합 문서를 본다 — 미제출을 봐야 한다', async () => {
