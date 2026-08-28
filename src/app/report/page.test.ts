@@ -24,8 +24,17 @@ vi.mock('@/lib/store/store-factory', () => ({
   getStorage: async () => handle,
 }));
 
+/**
+ * `list_reports()`는 `security definer` 함수라 저장소가 아니라 raw 클라이언트로 나간다
+ * (`ADR-024`). 여기서는 그 왕복을 세거나 결과를 갈아 끼우지 않고 **빈 목록**으로 둔다 —
+ * 이 파일이 재는 것은 보고 화면의 갈래(권한·기간·빈 상태)이고, 제출 흐름은 라우트 테스트와
+ * `report-merge` 테스트가 각각 진다.
+ */
+let reportRows: unknown[] = [];
+
 vi.mock('@/lib/auth/request-viewer', () => ({
   currentViewerContext: async () => ({ repo: handle.repo, session, base: handle }),
+  currentSessionClient: async () => ({ rpc: async () => ({ data: reportRows, error: null }) }),
 }));
 
 const ReportPage = (await import('./page')).default;
@@ -100,6 +109,7 @@ async function seed(): Promise<void> {
 beforeEach(() => {
   handle = emptyHandle();
   session = { status: 'anonymous' };
+  reportRows = [];
 });
 
 describe('/report', () => {
@@ -153,23 +163,12 @@ describe('/report', () => {
     expect(findComponent(tree, 'EmptyState')?.props?.kind).toBe('no-data');
   });
 
-  it('담당자로 이어지지 않은 부원에게는 다른 사유를 말한다', async () => {
-    const viewer: Viewer = {
-      userId: 'u1',
-      email: 'member@example.com',
-      role: 'member',
-      teamId: 'edit',
-      memberId: null,
-    };
-    session = { status: 'ok', viewer };
-    await seed();
-
-    // 「저장소가 비었다」가 아니다 — 시트를 올려도 이 사람의 화면은 달라지지 않는다
-    const tree = await ReportPage(props());
-    expect(findComponent(tree, 'EmptyState')?.props?.kind).toBe('unlinked-member');
-  });
-
-  it('역할로 막지 않는다 — 부원도 자기 범위의 보고서를 받는다', async () => {
+  /**
+   * T9 결정 N(「역할로 막지 않는다」)을 뒤집은 자리다. 근거는 범위가 아니라 **쓰임**이다 —
+   * 주간 보고는 회의에 들고 가는 문서이고 부원에게는 그 자리가 없다 (`staff-tools.ts`).
+   * 403이 아니라 404인 것은 `/members`·`/team/requests`와 같은 판단이다.
+   */
+  it('부원에게는 이 화면이 없다', async () => {
     const viewer: Viewer = {
       userId: 'u1',
       email: 'member@example.com',
@@ -179,11 +178,33 @@ describe('/report', () => {
     };
     session = { status: 'ok', viewer };
     await seed();
-    // 시드에는 `memberId`가 붙은 업무가 없으므로 부원의 범위는 0건이다. 그래도 **403이나
-    // 리다이렉트가 아니라** 화면이 뜨고 사유를 말한다 (결정 N)
+
+    await expect(ReportPage(props())).rejects.toMatchObject({
+      digest: 'NEXT_HTTP_ERROR_FALLBACK;404',
+    });
+  });
+
+  it('팀장은 자기 범위의 보고서를 받는다 — 범위는 데이터가 자른다', async () => {
+    const viewer: Viewer = {
+      userId: 'u1',
+      email: 'lead@example.com',
+      role: 'lead',
+      teamId: 'edit',
+      memberId: 'm1',
+    };
+    session = { status: 'ok', viewer };
+    await seed();
+
     const tree = await ReportPage(props());
     expect(findComponent(tree, 'PageShell')).not.toBeNull();
     expect(textOf(tree)).toContain('주간 보고');
+  });
+
+  /** 데모(세션 없음)에서는 좁히지 않는다 — `.env` 없이 클론한 심사자가 이 화면을 본다 */
+  it('로그인 전에는 막지 않는다', async () => {
+    await seed();
+
+    expect(findComponent(await ReportPage(props()), 'PageShell')).not.toBeNull();
   });
 
   it('기간 줄과 본문이 같은 화면에 함께 선다', async () => {
@@ -191,6 +212,116 @@ describe('/report', () => {
 
     const tree = await ReportPage(props());
     expect(findComponent(tree, 'ReportPeriodNav')).not.toBeNull();
+    expect(findComponent(tree, 'ReportDocument')).not.toBeNull();
+  });
+});
+
+/**
+ * 보고 흐름의 **배선**만 잰다 — 누구에게 어떤 패널이 서고, 어드민의 본문이 병합 문서인가.
+ * 병합 규칙 자체는 `report-merge.test.ts`가, 제출·검토의 계약은 두 라우트 테스트가 진다.
+ */
+describe('/report — 제출과 검토', () => {
+  const lead: Viewer = {
+    userId: 'u1',
+    email: 'lead@example.com',
+    role: 'lead',
+    teamId: 'edit',
+    memberId: 'm1',
+  };
+  const admin: Viewer = {
+    userId: 'u2',
+    email: 'admin@example.com',
+    role: 'admin',
+    teamId: null,
+    memberId: null,
+  };
+
+  const submittedRow = {
+    team_id: 'edit',
+    week_start: '2026-08-24',
+    body: '# 주간 업무 보고 — 2026-08-24 ~ 2026-08-30\n\n## 요약\n\n- 전체 활성 업무: 6건',
+    note: '장비 대여가 하루 밀렸습니다',
+    status: 'submitted',
+    review_note: null,
+    submitted_at: '2026-08-27T15:10:00Z',
+    reviewed_at: null,
+  };
+
+  it('팀장에게는 제출 칸이, 어드민에게는 검토 칸이 뜬다', async () => {
+    await seed();
+
+    session = { status: 'ok', viewer: lead };
+    const leadTree = await ReportPage(props({ week: '2026-08-24' }));
+    expect(findComponent(leadTree, 'ReportSubmitPanel')).not.toBeNull();
+    expect(findComponent(leadTree, 'ReportReviewPanel')).toBeNull();
+
+    session = { status: 'ok', viewer: admin };
+    const adminTree = await ReportPage(props({ week: '2026-08-24' }));
+    expect(findComponent(adminTree, 'ReportReviewPanel')).not.toBeNull();
+    expect(findComponent(adminTree, 'ReportSubmitPanel')).toBeNull();
+  });
+
+  it('로그인 전(데모)에는 둘 다 없다 — 부를 함수가 없다', async () => {
+    await seed();
+
+    const tree = await ReportPage(props());
+    expect(findComponent(tree, 'ReportSubmitPanel')).toBeNull();
+    expect(findComponent(tree, 'ReportReviewPanel')).toBeNull();
+  });
+
+  it('검토 칸에는 미제출 팀도 줄로 선다 — 첫 정보가 「누가 안 냈는가」다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: admin };
+    reportRows = [submittedRow];
+
+    const panel = findComponent(await ReportPage(props({ week: '2026-08-24' })), 'ReportReviewPanel');
+    const rows = panel?.props?.rows as { teamId: string; status: string | null }[];
+
+    expect(rows).toHaveLength(3);
+    expect(rows.find((row) => row.teamId === 'edit')?.status).toBe('submitted');
+    expect(rows.find((row) => row.teamId === 'shoot')?.status).toBeNull();
+  });
+
+  it('팀장이 이미 올린 본문·특이사항이 그대로 열린다 — 계산본으로 덮지 않는다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: lead };
+    reportRows = [submittedRow];
+
+    const panel = findComponent(await ReportPage(props({ week: '2026-08-24' })), 'ReportSubmitPanel');
+
+    expect(panel?.props?.submittedBody).toBe(submittedRow.body);
+    expect(panel?.props?.submittedNote).toBe('장비 대여가 하루 밀렸습니다');
+    expect(panel?.props?.status).toBe('submitted');
+  });
+
+  it('어드민의 본문은 병합 문서다 — 팀별 특이사항이 들어 있다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: admin };
+    reportRows = [submittedRow];
+
+    const doc = findComponent(await ReportPage(props({ week: '2026-08-24' })), 'ReportDocument');
+
+    expect(String(doc?.props?.markdown)).toContain('# 주간 업무 보고 (전사)');
+    expect(String(doc?.props?.markdown)).toContain('장비 대여가 하루 밀렸습니다');
+    expect(doc?.props?.filename).toBe('weekly-2026-08-24-all.md');
+  });
+
+  it('팀장의 본문은 계산본 그대로다 — 병합은 어드민의 것이다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: lead };
+    reportRows = [submittedRow];
+
+    const doc = findComponent(await ReportPage(props({ week: '2026-08-24' })), 'ReportDocument');
+
+    expect(String(doc?.props?.markdown)).toContain('# 주간 업무 보고 —');
+    expect(String(doc?.props?.markdown)).not.toContain('(전사)');
+  });
+
+  it('업무가 0건인 어드민도 검토 칸과 병합 문서를 본다 — 미제출을 봐야 한다', async () => {
+    session = { status: 'ok', viewer: admin };
+
+    const tree = await ReportPage(props({ week: '2026-08-24' }));
+    expect(findComponent(tree, 'ReportReviewPanel')).not.toBeNull();
     expect(findComponent(tree, 'ReportDocument')).not.toBeNull();
   });
 });

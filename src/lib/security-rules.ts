@@ -58,6 +58,16 @@ const GUARDED_ROUTE_DIRS = [
   'src/app/api/auth/',
   'src/app/api/team/',
   'src/app/api/members/',
+  /*
+   * 보고 제출·검토도 같은 성질이다 — `submit_report`·`review_report`의 자격 검사가
+   * `auth.uid()`에 기대므로 **사용자 JWT로만** 나가야 한다 (`ADR-024`).
+   *
+   * `src/app/api/report/`가 아니라 두 자리를 따로 적는다. 같은 부모 아래 `weekly/`가
+   * 있는데 그쪽은 `currentViewerContext()`로 저장소 성질(`meta`)까지 읽는 조회 라우트라
+   * 규칙의 대상이 아니다 — 넓게 적었다가 그 파일이 걸리면 규칙을 느슨하게 고치게 된다.
+   */
+  'src/app/api/report/submit/',
+  'src/app/api/report/review/',
 ] as const;
 
 /** 규칙 3이 보는 자리. 인증 라우트에는 자격증명이 지나간다 */

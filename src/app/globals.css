@@ -61,3 +61,40 @@ body {
     transform: translateX(0);
   }
 }
+
+/* 인쇄 — 주간 보고를 PDF로 뽑는 자리다 (`report-document.tsx`의 「PDF로 저장」).
+
+   PDF 라이브러리를 넣지 않는 이유는 브라우저의 「PDF로 저장」이 이미 그 일을 하기
+   때문이다. 대신 **화면 장치를 걷어내야** 문서가 된다: 사이드바·상단바·저장소 배너·
+   기간 이동 링크는 종이에서 아무 뜻이 없고, 첫 장의 3분의 1을 먹는다.
+
+   개별 요소를 하나씩 지목하지 않고 `aside`·`nav`·`header`를 통째로 접는다 — 다음에
+   화면 장치가 하나 늘어도 인쇄물에 새 얼룩이 생기지 않는다. 보고 본문은 `article`이라
+   이 규칙에 걸리지 않는다. */
+@media print {
+  aside,
+  nav,
+  header {
+    display: none !important;
+  }
+
+  /* 화면용 여백·배경·테두리를 걷는다. 종이에는 여백을 브라우저가 준다 */
+  body {
+    background: #fff;
+  }
+
+  main > div {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  /* 표가 페이지 경계에서 잘리지 않게 한다 — 잘린 표는 숫자를 못 읽는다 */
+  table {
+    break-inside: avoid;
+  }
+
+  h3,
+  h4 {
+    break-after: avoid;
+  }
+}

@@ -315,14 +315,18 @@ describe('저장소 스캔', () => {
     expect(report).toBe('');
   });
 
-  it('출처 검사가 걸린 POST 라우트가 여덟이다 — 규칙이 대상을 실제로 보고 있다', () => {
+  it('출처 검사가 걸린 POST 라우트가 열이다 — 규칙이 대상을 실제로 보고 있다', () => {
     const posts = scanTargets().filter(
       (file) =>
         file.path.endsWith('/route.ts') &&
         /export\s+(async\s+)?function\s+POST\b/.test(file.content) &&
-        ['src/app/api/auth/', 'src/app/api/team/', 'src/app/api/members/'].some((dir) =>
-          file.path.startsWith(dir)
-        )
+        [
+          'src/app/api/auth/',
+          'src/app/api/team/',
+          'src/app/api/members/',
+          'src/app/api/report/submit/',
+          'src/app/api/report/review/',
+        ].some((dir) => file.path.startsWith(dir))
     );
 
     expect(posts.map((file) => file.path).sort()).toEqual([
@@ -332,6 +336,8 @@ describe('저장소 스캔', () => {
       'src/app/api/auth/signup/route.ts',
       'src/app/api/members/remove/route.ts',
       'src/app/api/members/role/route.ts',
+      'src/app/api/report/review/route.ts',
+      'src/app/api/report/submit/route.ts',
       'src/app/api/team/requests/approve/route.ts',
       'src/app/api/team/requests/reject/route.ts',
     ]);
