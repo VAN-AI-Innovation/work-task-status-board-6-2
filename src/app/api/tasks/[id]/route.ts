@@ -8,8 +8,9 @@ import { toTaskResponse } from '@/lib/api/task-response';
 import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { deriveTaskFlags } from '@/lib/domain/task-derive';
-import { assignableMembers, canAssignOwner } from '@/lib/domain/task-authoring';
-import { taskInScope } from '@/lib/domain/viewer-scope';
+import { requestIsSameOrigin } from '@/lib/api/same-origin';
+import { assignableMembers, canAssignOwner, canDeleteTask } from '@/lib/domain/task-authoring';
+import { taskEditable } from '@/lib/domain/viewer-scope';
 import type { TaskPatch } from '@/types/auth';
 
 /**
@@ -79,7 +80,7 @@ export async function GET(
  * 하나로 정해지기 때문이다 (`viewer-scope.ts` · RLS). 공동 담당에서 주 담당과 겹치는 id와
  * 중복은 여기서 지운다 — 같은 사람이 두 칸에 뜨면 화면이 그를 두 번 세운다.
  *
- * ⚠ **`canEditProgress`는 여기서 부르지 않는다.** 그것은 패널이 폼을 그릴지 정하는 화면
+ * ⚠ **`canEditTaskDetails`는 여기서 부르지 않는다.** 그것은 패널이 폼을 그릴지 정하는 화면
  * 규칙이지 권한이 아니다 (`task-authoring.ts` 머리말) — 여기서 쓰면 「화면에서 뺀 것」과
  * 「막은 것」이 같은 값을 갖게 되고, 둘 중 하나가 바뀔 때 다른 하나가 조용히 딸려 온다.
  *
@@ -145,7 +146,7 @@ export async function PATCH(
      *    비는 것이 아니라 층이 하나 남는 것이다.** 데모·폴백에는 RLS가 없어 이 줄이 유일한
      *    층이고, 정책이 느슨해진 날에도 남는 것은 이쪽이다. 판정은 다시 쓰지 않고 부른다.
      */
-    if (!taskInScope(task, viewer)) return errorResponse('FORBIDDEN');
+    if (!taskEditable(task, viewer)) return errorResponse('FORBIDDEN');
 
     /*
      * 5-2. 담당자를 손대는 요청만 역할을 한 번 더 본다 (파일 머리말). **이름을 여기서 붙인다** —
@@ -212,6 +213,61 @@ export async function PATCH(
       task: toTaskResponse(updated, deriveTaskFlags(updated, read.ctx), read.role),
       meta: read.meta,
     });
+  } catch (error) {
+    return errorResponse(toApiErrorCode(error));
+  }
+}
+
+
+/**
+ * 업무 한 건 **삭제** (업무 패널 맨 아래 [업무 삭제]). **되돌릴 수 없고 단계·이력까지 함께
+ * 사라진다** (`task_stages`·`task_events`의 `on delete cascade`).
+ *
+ * ## 문이 둘이다 — 역할과 행 범위
+ *
+ * `canDeleteTask(role)`는 「이 역할에게 삭제라는 조작이 있는가」이고(부원에게는 없다),
+ * `taskEditable`은 「이 업무가 그 사람이 손댈 수 있는 것인가」다. 팀장이 전 팀을 **보게** 된
+ * 뒤로 이 둘이 확실히 다른 물음이 됐다 (`0012`) — 팀장에게 삭제는 있지만, 남의 팀 업무는
+ * 보이기만 하고 지울 수 없다. DB도 같은 자리를 막는다 (`tasks_delete_scope`, `0013` 4절).
+ *
+ * ## 없는 것과 못 지우는 것을 갈라 답하지 않는다
+ *
+ * `PATCH`와 같은 규율이다 — 둘 다 403이다. 「그 id는 있는데 당신 것이 아니다」라고 답하면
+ * 부원이 id를 훑어 전사 업무의 존재와 개수를 셀 수 있다 (`S6`).
+ *
+ * **응답에 본문이 없다** (204). 지워진 업무의 내용을 되돌려주는 것은 「지웠다」와 어긋나고,
+ * 화면은 어차피 목록을 다시 그린다.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+): Promise<Response> {
+  // 남의 페이지에 숨긴 폼이 로그인한 팀장의 쿠키로 업무를 지우는 것을 막는다
+  if (!requestIsSameOrigin(request)) return errorResponse('FORBIDDEN');
+
+  const url = new URL(request.url);
+
+  try {
+    const { id } = await params;
+    const view = await currentViewerContext();
+
+    // 순서가 곧 문구다 (`PATCH`의 1번과 같다)
+    const gate = gateForSession(view.session, url.pathname);
+    if (gate.kind === 'deny') return errorResponse('PENDING_APPROVAL');
+    if (view.session.status !== 'ok') return errorResponse('UNAUTHENTICATED');
+    const viewer = view.session.viewer;
+
+    if (view.base.readOnly) return errorResponse('STORAGE_READONLY');
+    if (!canDeleteTask(viewer.role)) return errorResponse('FORBIDDEN');
+
+    const task = await view.repo.getTask(id);
+    if (task === null) return errorResponse('FORBIDDEN');
+    if (!taskEditable(task, viewer)) return errorResponse('FORBIDDEN');
+
+    // DB가 막았다. 여기까지 왔는데 0행이면 정책이 앱보다 좁은 것이고, 그 답도 403이다
+    if (!(await view.repo.deleteTask(id))) return errorResponse('FORBIDDEN');
+
+    return new Response(null, { status: 204 });
   } catch (error) {
     return errorResponse(toApiErrorCode(error));
   }

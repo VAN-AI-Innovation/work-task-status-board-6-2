@@ -66,6 +66,7 @@ import { PageShell } from '@/components/shell/page-shell';
 import { SectionGrid } from '@/components/shell/section-grid';
 import { EmptyState } from '@/components/tasks/empty-state';
 import { FilterBar } from '@/components/tasks/filter-bar';
+import { TaskCreatePanel } from '@/components/tasks/task-create-panel';
 import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
 import { TaskTable } from '@/components/tasks/task-table';
 import { SeedButton } from '@/components/upload/seed-button';
@@ -78,8 +79,9 @@ import { toAccount } from '@/lib/auth/viewer-session';
 import { collectAlerts } from '@/lib/domain/alert-rules';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip, summarizeAllTeams } from '@/lib/domain/progress-stats';
+import { assignableMembers, creatableTeams } from '@/lib/domain/task-authoring';
 import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
-import { scopeTasks } from '@/lib/domain/viewer-scope';
+import { scopeEditableTasks } from '@/lib/domain/viewer-scope';
 import { resolveReportPeriod } from '@/lib/domain/report-period';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 import { approvalQueue, groupAlerts } from '@/lib/view/alert-groups';
@@ -166,15 +168,15 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   const reason = emptyReason(read.viewer, activeFilters);
 
   /*
-   * **고칠 수 있는 업무의 id.** `read.tasks`는 이미 범위가 걸린 목록이라 라이브에서는 이
-   * 계산이 대개 항등이지만, 그렇다고 「보이면 고칠 수 있다」를 화면이 가정하게 두지 않는다 —
-   * 열람과 수정이 갈리는 날 그 가정은 조용히 틀린다. 판정은 다시 쓰지 않고 부른다
-   * (`viewer-scope.ts`). 세션이 없으면 빈 집합이고, 그때 수정 폼은 뜨지 않는다.
+   * **고칠 수 있는 업무의 id.** 「보이면 고칠 수 있다」는 **더 이상 참이 아니다** — 팀장은
+   * 전 팀을 보지만 고치는 것은 자기 팀뿐이다 (`0012` · `viewer-scope.ts`의 표). 그 자리를
+   * 이 집합이 진다. 판정은 다시 쓰지 않고 부른다. 세션이 없으면 빈 집합이고, 그때 수정
+   * 폼도 담당자 지정도 뜨지 않는다.
    */
   const editableIds =
     read.viewer === null
       ? new Set<string>()
-      : new Set(scopeTasks(read.tasks, read.viewer).map((task) => task.id));
+      : new Set(scopeEditableTasks(read.tasks, read.viewer).map((task) => task.id));
 
   /*
    * 알림·승인 대기함이 보는 목록은 **표에 실제로 보이는 것**(`visible`)이다. 이름을 붙일 수
@@ -219,12 +221,35 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     ctx: read.ctx,
   });
 
-  /*
-   * **패널이 열려 있을 때만 명부를 읽는다.** 담당자 후보 말고는 이 화면이 명부를 쓰지 않는데,
-   * 늘 읽으면 표만 보고 나가는 대부분의 방문에 조회가 하나 더 붙는다 (`/members`가 고른
-   * 사람이 있을 때만 업무를 읽는 것과 같은 판단이다).
+  /**
+   * **만들 수 있는 팀.** 로그인하지 않았으면(데모) 빈 목록이라 버튼이 뜨지 않는다 —
+   * `POST /api/tasks`가 어차피 401을 내는데, 누르면 실패하는 버튼을 두지 않는다.
+   * 목록 자체는 `creatableTeams`가 정한다 (어드민 셋, 팀장 자기 팀 하나, 부원 없음).
    */
-  const members = query.task === null ? [] : await view.repo.listMembers();
+  const newTaskTeams =
+    read.viewer === null ? [] : creatableTeams(read.role, read.viewer.teamId);
+
+  /*
+   * **패널이 열려 있거나 만들 수 있을 때만 명부를 읽는다.** 담당자 후보 말고는 이 화면이
+   * 명부를 쓰지 않는데, 늘 읽으면 표만 보고 나가는 대부분의 방문에 조회가 하나 더 붙는다
+   * (`/members`가 고른 사람이 있을 때만 업무를 읽는 것과 같은 판단이다).
+   *
+   * 생성 버튼이 있는 사람에게는 늘 읽는다 — 후보 없이 뜨는 폼은 담당자를 못 고르고, 폼을
+   * 연 뒤에 명부를 가져오려면 이 화면에 없는 조회 라우트가 하나 필요해진다.
+   */
+  const members =
+    query.task === null && newTaskTeams.length === 0 ? [] : await view.repo.listMembers();
+
+  /**
+   * 생성 폼이 쓰는 **팀별** 후보. 좁히는 것은 `assignableMembers` 한 함수다 — 화면이 팀으로
+   * 거르면 그 규칙이 두 곳이 된다. 브라우저로 나가는 것은 `{id, name}`뿐이다 (`S6`).
+   */
+  const newTaskCandidates = Object.fromEntries(
+    newTaskTeams.map((teamKey) => [
+      teamKey,
+      assignableMembers(members, teamKey).map((member) => ({ id: member.id, name: member.name })),
+    ])
+  );
 
   /** `member`가 자기 업무를 고르지 않은 상태. 이름을 대신 채워 넣지 않는다 (`UC-14`) */
   const needsOwnerHint = read.role === 'member' && query.owner === null;
@@ -373,6 +398,7 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
                 query={query}
                 pathname={PATHNAME}
                 editableIds={editableIds}
+                hasSession={read.viewer !== null}
                 members={members}
                 statusOptions={STATUS_OPTIONS}
               />
@@ -403,7 +429,23 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       query={query}
       account={toAccount(view.session)}
     >
-      <h1 className="text-brand text-xl font-semibold">전사 업무 현황판</h1>
+      {/*
+        [＋ 업무 생성]을 **제목 줄에 둔다.** 업무 카드 안이 자연스러워 보이지만 그 자리에는
+        이미 필터가 겹쳐 있고(제목과 같은 격자 칸), 필터를 펼치면 카드 폭 전체를 덮어 버튼이
+        가려진다. 업무 표가 첫 섹션이라(`TASKS_FIRST`) 제목 줄이 바로 그 위다.
+
+        만들 수 있는 팀이 없으면 컴포넌트가 아무것도 그리지 않는다 — 빈 자리만 남는다.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-brand text-xl font-semibold">전사 업무 현황판</h1>
+        <TaskCreatePanel
+          teams={newTaskTeams}
+          candidatesByTeam={newTaskCandidates}
+          statusOptions={STATUS_OPTIONS}
+          pathname={PATHNAME}
+          query={query}
+        />
+      </div>
 
       {read.tasks.length === 0 && reason === 'unlinked-member' ? (
         /*

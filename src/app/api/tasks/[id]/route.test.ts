@@ -29,7 +29,7 @@ vi.mock('@/lib/auth/request-viewer', async (importOriginal) => {
   };
 });
 
-const { GET, PATCH } = await import('./route');
+const { DELETE, GET, PATCH } = await import('./route');
 
 const ORIGINAL_DRIVER = process.env.STORAGE_DRIVER;
 
@@ -164,6 +164,7 @@ function viewer(overrides: Partial<Viewer> = {}): Viewer {
     role: 'member',
     teamId: 'edit',
     memberId: 'member-1',
+    memberName: '담당자1',
     ...overrides,
   };
 }
@@ -334,7 +335,10 @@ describe('PATCH /api/tasks/[id] — 본문 검증', () => {
 
   it.each([
     ['모르는 키', { status: '완료', titel: '오타' }],
-    ['허용하지 않는 필드', { note: '메모' }],
+    // `note`는 이제 열려 있다 (`0013`). 여전히 닫힌 것은 시트 원본·감사 칸이다
+    ['허용하지 않는 필드', { extras: { 채널: '인스타' } }],
+    ['감사 칸', { sourceSheetTab: '01_편집팀' }],
+    ['팀 바꾸기', { teamId: 'shoot' }],
     ['빈 객체', {}],
     ['범위를 넘는 진행률', { progress: 101 }],
     ['정수가 아닌 진행률', { progress: 1.5 }],
@@ -465,5 +469,153 @@ describe('PATCH /api/tasks/[id] — 성공 응답', () => {
 
     expect(text).not.toContain('"raw"');
     expect(text).not.toContain('업무명');
+  });
+});
+
+/**
+ * 삭제는 **되돌릴 수 없다.** 그래서 문이 둘이고(역할·행 범위), 실패 갈래를 전부 403으로
+ * 접는다 — 「그 id는 있는데 당신 것이 아니다」는 부원에게 전사 업무의 개수를 알려 준다
+ * (`S6`).
+ */
+describe('DELETE /api/tasks/[id]', () => {
+  /** `stubContext`는 `deleteTask`를 재지 않는다 — 이 자리에서만 필요한 기록기다 */
+  function deleteContext(options: {
+    session: SessionOutcome;
+    found?: Task | null;
+    removed?: boolean;
+    readOnly?: boolean;
+  }): string[] {
+    const calls: string[] = [];
+    const base = handle(options.readOnly ?? false);
+    const memory = createMemoryTaskStore();
+
+    const repo: TaskRepository = {
+      ...memory,
+      getTask: async () => options.found ?? null,
+      deleteTask: async (id) => {
+        calls.push(id);
+        return options.removed ?? true;
+      },
+    };
+
+    viewerOverride = { repo, session: options.session, base };
+    return calls;
+  }
+
+  function remove(id: string): Promise<Response> {
+    return DELETE(new Request(`http://localhost/api/tasks/${id}`, { method: 'DELETE' }), {
+      params: Promise.resolve({ id }),
+    });
+  }
+
+  const OWN = makeTask({ id: TASK_ID, teamId: 'edit', ownerMemberId: 'member-1' });
+
+  it('팀장이 자기 팀 업무를 지우면 204이고 본문이 없다', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: OWN,
+    });
+
+    const res = await remove(TASK_ID);
+
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe('');
+    expect(calls).toEqual([TASK_ID]);
+  });
+
+  it('어드민은 남의 팀 업무도 지운다', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: makeTask({ id: TASK_ID, teamId: 'shoot', ownerMemberId: 'member-9' }),
+    });
+
+    expect((await remove(TASK_ID)).status).toBe(204);
+    expect(calls).toEqual([TASK_ID]);
+  });
+
+  it('부원은 자기 업무여도 못 지운다 → 403이고 쓰기가 나가지 않는다', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: OWN,
+    });
+
+    const res = await remove(TASK_ID);
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('FORBIDDEN');
+    expect(calls).toHaveLength(0);
+  });
+
+  /** 팀장이 전 팀을 **보게** 된 뒤로 「보이는데 못 지우는」 업무가 생겼다 (`0012`) */
+  it('팀장은 남의 팀 업무를 보더라도 지우지 못한다 → 403', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead', teamId: 'edit' }) },
+      found: makeTask({ id: TASK_ID, teamId: 'shoot', ownerMemberId: 'member-9' }),
+    });
+
+    expect((await remove(TASK_ID)).status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('없는 업무도 403이다 — 없는 것과 못 지우는 것을 갈라 답하지 않는다 (`S6`)', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: null,
+    });
+
+    expect((await remove(TASK_ID)).status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('DB가 0행을 지웠으면 403이다 — 화면이 지우지 못한 것을 지웠다고 말하지 않는다', async () => {
+    deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: OWN,
+      removed: false,
+    });
+
+    expect((await remove(TASK_ID)).status).toBe(403);
+  });
+
+  it('읽기 전용에서는 저장소를 건드리기 전에 503이다 (`ADR-005`)', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: OWN,
+      readOnly: true,
+    });
+
+    const res = await remove(TASK_ID);
+
+    expect(res.status).toBe(503);
+    expect(await errorCode(res)).toBe('STORAGE_READONLY');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('로그인하지 않았으면 401이다', async () => {
+    const calls = deleteContext({ session: { status: 'anonymous' }, found: OWN });
+
+    const res = await remove(TASK_ID);
+
+    expect(res.status).toBe(401);
+    expect(await errorCode(res)).toBe('UNAUTHENTICATED');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('출처가 다르면 403이다 — 남의 페이지의 요청으로 업무가 사라지지 않는다', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: OWN,
+    });
+
+    const res = await DELETE(
+      new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+        method: 'DELETE',
+        headers: { origin: 'https://evil.example', host: 'localhost' },
+      }),
+      { params: Promise.resolve({ id: TASK_ID }) }
+    );
+
+    expect(res.status).toBe(403);
+    expect(calls).toHaveLength(0);
   });
 });

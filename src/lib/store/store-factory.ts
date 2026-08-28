@@ -115,6 +115,13 @@ function toReadOnly(repo: TaskRepository): TaskRepository {
     async updateTask() {
       throw new StorageReadOnlyError();
     },
+    /** 같은 이유다 — 만들고 지우는 것도 쓰기다 (`POST`·`DELETE /api/tasks`) */
+    async createTask() {
+      throw new StorageReadOnlyError();
+    },
+    async deleteTask() {
+      throw new StorageReadOnlyError();
+    },
   };
 }
 

@@ -136,23 +136,31 @@ export async function resolveSession(client: SupabaseClient): Promise<SessionOut
   }
 
   let memberId: string | null = null;
+  /** 같은 행의 이름. 공동 담당 판정이 이름으로 이뤄진다 (`viewer-scope.ts`) */
+  let memberName: string | null = null;
   try {
-    // **`my_member_id()`와 같은 결정 규칙이어야 한다** — `order by id limit 1`
-    // (`0003_auth_rls.sql`). 다르면 화면과 DB가 서로 다른 구성원을 「나」로 본다.
+    // **`my_member_id()`·`my_member_name()`과 같은 결정 규칙이어야 한다** — `order by id
+    // limit 1` (`0003_auth_rls.sql`·`0013_task_authoring.sql`). 다르면 화면과 DB가 서로
+    // 다른 구성원을 「나」로 본다.
     const { data, error } = await client
       .from('members')
-      .select('id')
+      .select('id,name')
       .eq('auth_user_id', userId)
       .order('id')
       .limit(1)
       .maybeSingle();
     // 붙은 행이 없으면 `unknown_owner`다 (결정 D). `ok`이긴 하고, `member` 범위에서 빠진다.
-    if (!error && data) memberId = data.id as string;
+    if (!error && data) {
+      memberId = data.id as string;
+      // **둘을 짝으로 채운다.** 이름만 있고 id가 없는(또는 그 반대인) 「나」는 없다
+      memberName = (data.name as string | null) ?? null;
+    }
   } catch {
     memberId = null;
+    memberName = null;
   }
 
-  return { status: 'ok', viewer: { userId, email, role, teamId, memberId } };
+  return { status: 'ok', viewer: { userId, email, role, teamId, memberId, memberName } };
 }
 
 /**

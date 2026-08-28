@@ -23,6 +23,12 @@ export interface Viewer {
    * 「내 것」으로 치면 담당자 미상 업무가 전원에게 보인다.
    */
   memberId: string | null;
+  /**
+   * 위 `memberId`가 가리키는 `members.name`. **공동 담당 판정이 이름으로 이뤄지기 때문에**
+   * 함께 들고 다닌다 (`viewer-scope.ts`·`0013_task_authoring.sql` 1절) — `tasks.co_owner_names`가
+   * 이름 배열이라 id로는 맞춰 볼 것이 없다. `memberId`가 null이면 이 값도 null이다.
+   */
+  memberName: string | null;
 }
 
 /**
@@ -36,18 +42,35 @@ export interface SessionAccount {
 }
 
 /**
- * `PATCH /api/tasks/[id]`가 저장소에 넘기는 전부. `note`·`dueAt`을 열지 않는다 — 시트가
- * 진실의 원천이라 재업로드가 덮어쓸 필드를 화면에서 고치게 하면 사용자는 자기 수정이
- * 사라지는 것을 본다 (`ADR-008`).
+ * `PATCH /api/tasks/[id]`가 저장소에 넘기는 전부. 목록의 근거는 `task-patch-schema.ts`
+ * 머리말에 있다 — **`extras`·`raw`·`source_*`는 없다.** 그쪽은 시트 원본과 감사 기록이고,
+ * 열면 이 화면이 시트 편집기가 된다.
  *
- * 넷 중 **클라이언트가 보낼 수 있는 것은 셋**이다 (`task-patch-schema.ts`). `ownerNameRaw`는
- * 라우트가 `ownerMemberId`에서 **유도해** 채운다 — 둘을 따로 받으면 「담당자는 A인데 이름은
- * B」인 행이 만들어지고, 그것은 데이터가 틀린 것으로 보인다.
+ * `ownerNameRaw`·`coOwnerNames`는 **클라이언트가 보낼 수 없다** (`task-patch-schema.ts`).
+ * 라우트가 id에서 **유도해** 채운다 — 둘을 따로 받으면 「담당자는 A인데 이름은 B」인 행이
+ * 만들어지고, 그것은 데이터가 틀린 것으로 보인다.
+ *
+ * ⚠ 여기 있는 칸은 전부 **다음 시트 업로드가 덮어쓴다** (`ADR-001`). 그 사실을 감추지 않고
+ *   화면이 말한다 (`task-edit-form.tsx`).
  */
 export interface TaskPatch {
+  /** 업무명. **`null`을 받지 않는다** — 이름 없는 업무를 만들지 않는다 */
+  title?: string;
   status?: string;
   /** 0~100 정수 또는 null(값을 지운다) */
   progress?: number | null;
+  /** 아래 여섯은 전부 `null`이 「비운다」다 */
+  priority?: string | null;
+  riskStatus?: string | null;
+  approvalStatus?: string | null;
+  nextAction?: string | null;
+  nextActionOwner?: string | null;
+  delayReason?: string | null;
+  note?: string | null;
+  /** `YYYY-MM-DD` 또는 null. **문자열로만 다룬다** — `Date`는 하루를 어긋나게 한다 (`E4`) */
+  assignedAt?: string | null;
+  dueAt?: string | null;
+  nextActionDue?: string | null;
   /**
    * 담당자로 세울 `members.id`. `null`은 「담당자를 비운다」다.
    *
@@ -79,4 +102,31 @@ export interface MemberRecord {
   name: string;
   /** T8에서 채워진다. 아직 계정이 없는 구성원은 null */
   authUserId: string | null;
+}
+
+/**
+ * `POST /api/tasks`가 저장소에 넘기는 전부 (`createTask`). **`TaskPatch`와 갈라 두는 이유**는
+ * 필수 칸이 있기 때문이다 — 팀과 업무명 없이 만들어진 업무는 표에서 어느 줄인지 알 수 없다.
+ *
+ * 나머지 감사 칸(`sourceKey`·`sourceSheetTab`·`sourceRowIndex`·`extras`·`raw`)은 **저장소가
+ * 채운다** (`task-repository.ts`의 `manualSourceKey`). 클라이언트도 라우트도 그 값을 정하지
+ * 않는 것이 요점이다: 시트에서 온 행과 웹에서 만든 행을 가르는 것이 그 값들이고, 요청이
+ * 그것을 고를 수 있으면 웹에서 만든 업무가 시트 행인 척할 수 있다.
+ */
+export interface TaskCreate {
+  teamId: TeamKey;
+  title: string;
+  status: string | null;
+  progress: number | null;
+  priority: string | null;
+  assignedAt: string | null;
+  dueAt: string | null;
+  nextAction: string | null;
+  nextActionOwner: string | null;
+  nextActionDue: string | null;
+  note: string | null;
+  /** 라우트가 id에서 유도해 채운다 (`TaskPatch`와 같은 규칙) */
+  ownerMemberId: string | null;
+  ownerNameRaw: string | null;
+  coOwnerNames: string[];
 }

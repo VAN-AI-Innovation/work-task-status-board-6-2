@@ -1,12 +1,23 @@
 /**
- * `PATCH /api/tasks/[id]`의 문 앞 검증. **허용 필드는 `status`·`progress`·`ownerMemberId`·
- * `coOwnerMemberIds` 넷이다** (`PLAN.md`「T8 착수 시 확정」 결정 F에 담당자 지정을 더했다).
+ * `PATCH /api/tasks/[id]`의 문 앞 검증. **업무 패널의 「수정」 칸이 여는 필드 전부**가 여기
+ * 열거돼 있고, 같은 목록을 `task-create-schema.ts`가 재사용한다.
  *
- * 늘리지 않는 이유는 스코프가 아니라 데이터의 출처다 — 시트가 진실의 원천이고
+ * ## 왜 넷에서 늘었나
+ *
+ * 오래도록 `status`·`progress`(+담당자 두 칸)뿐이었고, 근거는 「시트가 진실의 원천이라
  * (`ADR-001`) 재업로드가 덮어쓸 필드를 화면에서 고치게 하면 사용자는 **자기 수정이 조용히
- * 사라지는 것**을 본다. 여는 칸을 이 셋으로 묶는 기준은 「사람이 오늘 바꾼 것」과 「다음
- * 업로드가 가져올 것」이 겹치는 자리인가이며, 담당자 재지정도 그 성질을 그대로 진다
- * (다음 업로드가 시트의 담당자로 되돌린다). 더 늘리려면 문서가 먼저다.
+ * 사라지는 것**을 본다」였다.
+ *
+ * 그 근거는 **여전히 참이지만 결론이 바뀌었다.** 회의 중에 마감을 하루 미루고 다음 조치를
+ * 고쳐 적는 일이 실제로 일어나는데, 그때마다 시트를 열어 고치고 다시 업로드하는 것은
+ * 「시트 업로드만으로 통합 조회」라는 이 제품의 약속과 어긋난다. 그래서 **덮어쓴다는 사실을
+ * 감추는 대신 화면이 말한다** (`task-edit-form.tsx`가 「다음 시트 업로드가 덮어씁니다」를
+ * 폼 안에 적는다).
+ *
+ * 그래도 여는 기준은 그대로다: 「사람이 오늘 바꾸는 것」과 「다음 업로드가 가져오는 것」이
+ * 겹치는 자리인가. 그래서 **`extras`·`raw`·`source_*`는 열지 않는다** — 그쪽은 시트 원본과
+ * 감사 기록이고, 열면 이 화면이 시트 편집기가 된다. DB의 컬럼 GRANT가 같은 목록을 진다
+ * (`0013_task_authoring.sql` 5절).
  *
  * ## 담당자는 **id만** 받는다
  *
@@ -33,6 +44,18 @@ import { z } from 'zod';
 
 /** 상태 원문의 상한. 시트 드롭다운 한 칸이라 이보다 길면 상태가 아니다 */
 export const TASK_STATUS_MAX_LENGTH = 100;
+
+/** 업무명. 시트의 한 칸이라 문장 하나 길이면 넉넉하다 */
+export const TASK_TITLE_MAX_LENGTH = 300;
+
+/** 우선순위·리스크·승인처럼 드롭다운 한 칸에서 오는 짧은 원문 */
+export const TASK_LABEL_MAX_LENGTH = 100;
+
+/** 다음 조치·지연 사유·비고처럼 사람이 문장으로 적는 칸 */
+export const TASK_TEXT_MAX_LENGTH = 2_000;
+
+/** `YYYY-MM-DD`. 저장소의 `date` 컬럼과 같은 모양이다 — 시각을 섞지 않는다 (`E4`) */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * 상태를 **enum으로 좁히지 않는다** (`ADR-009`). 시트의 진행 상태 값은 `설정` 탭에서 오고
@@ -61,6 +84,65 @@ const progressSchema = z.number().int().min(0).max(100).nullable();
 const ownerMemberIdSchema = z.uuid().nullable();
 
 /**
+ * **업무명은 비울 수 없다.** `null`을 받으면 이름 없는 업무가 생기고, 표에서 그 줄은
+ * 「—」 하나로 서서 무엇인지 알 수 없다. 지우는 것은 이제 삭제가 한다 (`DELETE`).
+ */
+const titleSchema = z.string().trim().min(1).max(TASK_TITLE_MAX_LENGTH);
+
+/**
+ * 드롭다운 한 칸의 원문. **`null`은 「비운다」**이고 키 없음은 「안 건드린다」다 —
+ * `progress`와 같은 규칙이다. 빈 문자열은 `null`로 접는다: 시트의 빈 셀이 그것이고,
+ * 「지웠다」와 「빈 문자열을 넣었다」를 가를 이유가 없다.
+ */
+const labelSchema = z
+  .string()
+  .trim()
+  .max(TASK_LABEL_MAX_LENGTH)
+  .nullable()
+  .transform((value) => (value === null || value === '' ? null : value));
+
+/** 사람이 문장으로 적는 칸. 위와 같은 규칙, 상한만 다르다 */
+const textSchema = z
+  .string()
+  .trim()
+  .max(TASK_TEXT_MAX_LENGTH)
+  .nullable()
+  .transform((value) => (value === null || value === '' ? null : value));
+
+/**
+ * 날짜 한 칸. **문자열로만 다룬다** — `Date`로 만들면 시간대가 끼어들어 하루가 어긋난다
+ * (`E4` · `supabase-task-store.ts`의 같은 주석). 빈 문자열은 `null`이다.
+ */
+const dateSchema = z
+  .string()
+  .trim()
+  .nullable()
+  .transform((value) => (value === null || value === '' ? null : value))
+  .refine((value) => value === null || ISO_DATE.test(value), {
+    message: 'YYYY-MM-DD 형식이어야 합니다.',
+  });
+
+/**
+ * **패치와 생성이 공유하는 필드 표.** 두 벌로 두면 한쪽만 늘어나는 날이 오고, 그때
+ * 「만들 때는 넣을 수 있는데 고칠 수는 없는 칸」이 생긴다.
+ */
+export const TASK_EDITABLE_FIELDS = {
+  title: titleSchema,
+  status: statusSchema,
+  progress: progressSchema,
+  priority: labelSchema,
+  riskStatus: labelSchema,
+  approvalStatus: labelSchema,
+  assignedAt: dateSchema,
+  dueAt: dateSchema,
+  nextAction: textSchema,
+  nextActionOwner: labelSchema,
+  nextActionDue: dateSchema,
+  delayReason: textSchema,
+  note: textSchema,
+} as const;
+
+/**
  * 공동 담당자의 `members.id` 목록. **빈 배열은 「공동 담당을 비운다」**이고 키 없음은
  * 「안 건드린다」다.
  *
@@ -83,8 +165,19 @@ const coOwnerMemberIdsSchema = z.array(z.uuid()).max(CO_OWNER_MAX);
  */
 export const taskPatchSchema = z
   .object({
-    status: statusSchema.optional(),
-    progress: progressSchema.optional(),
+    title: TASK_EDITABLE_FIELDS.title.optional(),
+    status: TASK_EDITABLE_FIELDS.status.optional(),
+    progress: TASK_EDITABLE_FIELDS.progress.optional(),
+    priority: TASK_EDITABLE_FIELDS.priority.optional(),
+    riskStatus: TASK_EDITABLE_FIELDS.riskStatus.optional(),
+    approvalStatus: TASK_EDITABLE_FIELDS.approvalStatus.optional(),
+    assignedAt: TASK_EDITABLE_FIELDS.assignedAt.optional(),
+    dueAt: TASK_EDITABLE_FIELDS.dueAt.optional(),
+    nextAction: TASK_EDITABLE_FIELDS.nextAction.optional(),
+    nextActionOwner: TASK_EDITABLE_FIELDS.nextActionOwner.optional(),
+    nextActionDue: TASK_EDITABLE_FIELDS.nextActionDue.optional(),
+    delayReason: TASK_EDITABLE_FIELDS.delayReason.optional(),
+    note: TASK_EDITABLE_FIELDS.note.optional(),
     ownerMemberId: ownerMemberIdSchema.optional(),
     coOwnerMemberIds: coOwnerMemberIdsSchema.optional(),
   })

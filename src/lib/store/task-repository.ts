@@ -10,7 +10,7 @@
  * 그 판단이 `lastProgressAt`을 움직이고, 그것이 「장기 미갱신」 알림의 근거가 된다.
  */
 
-import type { MemberRecord, TaskPatch } from '@/types/auth';
+import type { MemberRecord, TaskCreate, TaskPatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
 import type { Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
 
@@ -59,6 +59,44 @@ export type TaskUpsertInput = Omit<Task, 'id' | 'lastProgressAt'> & {
 };
 
 export type GoalMetricUpsertInput = Omit<GoalMetric, 'id'>;
+
+/**
+ * `createTask`가 받는 입력 — 웹에서 손으로 만드는 업무 한 건 (`POST /api/tasks`).
+ *
+ * **`sourceKey`를 인자로 받는다.** 저장소가 `crypto.randomUUID()`로 지어내지 않는 것은
+ * 「저장소는 시간을 읽지 않는다」와 같은 규율이다: 임의성이 안에 있으면 계약 테스트가 자기가
+ * 만든 행을 접두사로 알아볼 수 없고(`CONTRACT_KEY_PREFIX`), 그러면 원격 저장소에서 정리되지
+ * 않는 행이 남는다. 실제 값은 라우트가 `manualSourceKey()`로 만든다.
+ *
+ * 나머지 감사 칸은 **저장소가 채운다** (`MANUAL_SHEET_TAB`·`MANUAL_ROW_INDEX`, 그리고 빈
+ * `extras`·`raw`). 요청이 그것을 고를 수 있으면 웹에서 만든 업무가 시트 행인 척할 수 있다.
+ */
+export type TaskCreateInput = TaskCreate & { sourceKey: string };
+
+/**
+ * 웹에서 만든 업무의 자연키. **접두사가 있는 것이 요점이다** — 시트에서 온 행과 한눈에
+ * 갈리고, 무엇보다 다음 업로드의 `(team_id, source_key)` upsert와 **절대 부딪히지 않는다**
+ * (시트의 업무ID·`slug(업무명)::slug(담당자)` 어느 쪽도 이 모양이 아니다). 그래서 웹에서
+ * 만든 업무는 업로드에 덮이지도, 지운 뒤 되살아나지도 않는다.
+ *
+ * id를 **주입받는다** — 이 함수가 `crypto.randomUUID()`를 부르면 순수 함수가 아니게 되고,
+ * 그러면 라우트가 시계를 주입받는 규율(`CLAUDE.md` CRITICAL)과 어긋난다.
+ */
+export function manualSourceKey(id: string): string {
+  return `manual::${id}`;
+}
+
+/**
+ * 웹에서 만든 업무의 「시트 탭」. 업무 패널의 **출처** 칸이 이 값을 그대로 보여 주므로,
+ * 그 줄을 읽는 사람이 「시트에 없는 행」임을 안다.
+ */
+export const MANUAL_SHEET_TAB = '(웹에서 만든 업무)';
+
+/**
+ * 같은 자리의 행 번호. **0이다** — 시트에서 온 행은 1-based라(사람이 읽는 좌표) 0은 어느
+ * 행도 가리키지 않는다. 「없다」를 뜻하는 값으로 `null`을 쓸 수 없다: 컬럼이 `not null`이다.
+ */
+export const MANUAL_ROW_INDEX = 0;
 
 export interface UpsertResult {
   created: number;
@@ -132,6 +170,35 @@ export interface TaskRepository {
    * DB 쪽은 RLS가 진다. 저장소까지 세 곳이 되면 하나만 고쳐지는 날이 온다.
    */
   updateTask(id: string, patch: TaskPatch, updatedAt: string): Promise<Task | null>;
+
+  /**
+   * 업무 한 건을 **새로 만든다** (`POST /api/tasks`). 시트 업로드가 아니라 사람이 화면에서
+   * 만드는 경로다.
+   *
+   * `upsertTasks`를 재활용하지 않는 이유가 분명하다. 그쪽은 「시트 한 벌을 통째로 맞춘다」라
+   * 자연키가 겹치면 **기존 행을 덮고** 이벤트를 남기며 `lastProgressAt`을 움직인다. 여기서
+   * 필요한 것은 **없던 행 하나**이고, 겹칠 자연키도 없다 (`manualSourceKey`).
+   *
+   * `task_events`를 남기지 않는다 — 이벤트는 **업로드 diff의 산물**이다 (`updateTask`와 같은
+   * 규율). `lastProgressAt`은 만든 시각으로 둔다: 그때가 이 행의 값이 마지막으로 정해진
+   * 시각이고, 그러지 않으면 만들자마자 「장기 미갱신」으로 잡힌다.
+   *
+   * **권한 판정을 하지 않는다.** 「이 사람이 이 팀에 만들 수 있나」는 `creatableTeams`(앱)와
+   * `tasks_insert_scope`(DB)가 진다.
+   */
+  createTask(input: TaskCreateInput, createdAt: string): Promise<Task>;
+
+  /**
+   * 업무 한 건을 **지운다.** 단계·이력도 함께 사라진다 (supabase는 FK의 `on delete cascade`,
+   * memory는 같은 자리에서 배열을 지운다) — **두 구현이 같은 결과여야 하므로 계약이 잰다.**
+   *
+   * 없는 id면 `false`다. 범위 밖 행도 마찬가지다 — RLS가 걸린 클라이언트에서는 0행 삭제가
+   * 되고, 그것을 「지웠다」로 답하면 화면이 지우지 못한 것을 지웠다고 말한다.
+   *
+   * ⚠ **시트에서 온 업무를 지우면 다음 업로드가 되살린다** (`(team_id, source_key)` upsert).
+   *   그것이 `ADR-001`이고 버그가 아니다 — 시트에서도 지워야 사라진다.
+   */
+  deleteTask(id: string): Promise<boolean>;
 
   /**
    * 구성원 전량. 시트의 담당자 이름을 계정에 잇는 해석이 볼 표다.

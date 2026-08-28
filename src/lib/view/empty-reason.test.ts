@@ -16,6 +16,7 @@ function viewer(overrides: Partial<Viewer> = {}): Viewer {
     role: 'member',
     teamId: 'edit',
     memberId: 'member-1',
+    memberName: '담당자1',
     ...overrides,
   };
 }

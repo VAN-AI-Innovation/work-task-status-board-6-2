@@ -187,6 +187,7 @@ describe('resolveSession — 정상 갈래', () => {
         role: 'lead',
         teamId: 'edit',
         memberId: 'm-1',
+        memberName: null,
       },
     });
   });
@@ -428,6 +429,7 @@ describe('toAccount', () => {
           role: 'lead',
           teamId: 'edit',
           memberId: 'm-1',
+          memberName: null,
         },
       })
     ).toEqual({ email: 'lead@van.test', role: 'lead' });

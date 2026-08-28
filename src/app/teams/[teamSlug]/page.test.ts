@@ -173,6 +173,7 @@ function viewer(overrides: Partial<Viewer> = {}): Viewer {
     role: 'lead',
     teamId: 'edit',
     memberId: null,
+    memberName: '담당자1',
     ...overrides,
   };
 }
@@ -340,7 +341,7 @@ describe('/teams/[teamSlug] — 로그인 상태 (T8 완료 기준 1·6)', () =>
         ?.canEdit
     ).toBe(false);
 
-    // 팀장은 자기 팀 업무를 고친다. 대표·실장에게는 이 폼이 뜨지 않는다 (`canEditProgress`)
+    // 팀장은 자기 팀 업무를 고친다 (`canEditTaskDetails` · `taskEditable`)
     session = { status: 'ok', viewer: viewer({ role: 'lead', teamId: 'edit' }) };
     expect(
       findComponent(openSlot(await TeamPage(props('edit', { task: id }))), 'TaskPanel')?.props

@@ -15,10 +15,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   TASK_DIFF_FIELDS,
+  MANUAL_ROW_INDEX,
+  MANUAL_SHEET_TAB,
   matchesTaskFilter,
   type GoalMetricUpsertInput,
   type TaskEventFilter,
   type TaskFilter,
+  type TaskCreateInput,
   type TaskRepository,
   type TaskUpsertInput,
 } from '@/lib/store/task-repository';
@@ -172,6 +175,18 @@ export function scopeToContractRows(repo: TaskRepository): TaskRepository {
       return (await repo.listEvents(filter)).filter((event) => contractTaskIds.has(event.taskId));
     },
 
+    /**
+     * **계약 행만 지운다.** 껍데기가 이 자리를 비워 두면 계약이 남의 실업무 행을 id 하나로
+     * 지울 수 있게 된다 — `reset`이 접두사로 좁히는 것과 같은 이유다.
+     */
+    async deleteTask(id: string): Promise<boolean> {
+      const task = await repo.getTask(id);
+      if (task === null || !isContractTask(task)) return false;
+      return repo.deleteTask(id);
+    },
+
+    /** 쓰기는 손대지 않는다 — 계약이 넣는 `sourceKey`에 이미 접두사가 붙어 있다 */
+    createTask: (input, createdAt) => repo.createTask(input, createdAt),
     upsertTasks: (tasks, options) => repo.upsertTasks(tasks, options),
     listStages: (taskIds) => repo.listStages(taskIds),
     // 계약이 재지 않는다(구성원을 만드는 쓰기 메서드가 없다 — 두 구현의 각자 테스트가 잰다).
@@ -905,6 +920,105 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       expect(reread.changedFields.every((field) => TASK_DIFF_FIELDS.includes(field as never))).toBe(
         true,
       );
+    },
+  },
+  {
+    /**
+     * **업로드가 아니라 사람이 만드는 경로다** (`POST /api/tasks`). `upsertTasks`와 갈라 두는
+     * 이유가 이 케이스에 다 있다 — 감사 칸을 저장소가 채우고, 이벤트를 남기지 않는다.
+     */
+    name: '28. createTask는 준 값 그대로 한 건을 만들고 감사 칸을 저장소가 채운다',
+    async run(repo) {
+      const input: TaskCreateInput = {
+        sourceKey: `${CONTRACT_KEY_PREFIX}manual-a`,
+        teamId: 'edit',
+        title: '손으로 만든 업무',
+        status: '진행 중',
+        progress: 10,
+        priority: '높음',
+        assignedAt: '2099-07-20',
+        dueAt: '2099-07-31',
+        nextAction: '레퍼런스 수집',
+        nextActionOwner: '담당자1',
+        nextActionDue: '2099-07-25',
+        note: '비고',
+        ownerMemberId: null,
+        ownerNameRaw: '담당자1',
+        coOwnerNames: ['담당자2'],
+      };
+
+      const created = await repo.createTask(input, SECOND_UPLOAD_AT);
+
+      expect(created.id).toBeTruthy();
+      expect(created.teamId).toBe('edit');
+      expect(created.title).toBe('손으로 만든 업무');
+      expect(created.progress).toBe(10);
+      expect(created.dueAt).toBe('2099-07-31');
+      expect(created.ownerNameRaw).toBe('담당자1');
+      expect(created.coOwnerNames).toEqual(['담당자2']);
+
+      // 감사 칸은 요청이 정하지 않는다 — 시트에서 온 행인 척할 수 없어야 한다
+      expect(created.sourceSheetTab).toBe(MANUAL_SHEET_TAB);
+      expect(created.sourceRowIndex).toBe(MANUAL_ROW_INDEX);
+      expect(created.sourceUploadId).toBeNull();
+      expect(created.extras).toEqual({});
+      expect(created.raw).toEqual({});
+
+      // 실제로 저장됐고 목록에도 선다
+      expect(await repo.getTask(created.id)).toEqual(created);
+      expect(
+        (await repo.listTasks()).map((task) => task.sourceKey),
+      ).toContain(`${CONTRACT_KEY_PREFIX}manual-a`);
+
+      // **이벤트를 남기지 않는다** — 이력은 업로드 diff의 산물이다
+      expect(await repo.listEvents({ taskIds: [created.id] })).toEqual([]);
+    },
+  },
+  {
+    /**
+     * 삭제는 되돌릴 수 없고 **단계·이력까지 함께** 사라진다. supabase는 FK의 cascade가,
+     * memory는 같은 자리의 배열 필터가 그 일을 한다 — 두 구현이 같은 결과여야 한다.
+     */
+    name: '29. deleteTask는 단계·이력과 함께 지우고, 없는 id에는 false다',
+    async run(repo) {
+      await repo.upsertTasks(
+        [
+          {
+            ...SEED_A,
+            stages: [
+              {
+                seq: 0,
+                stageKey: 'concept',
+                stageLabel: '컨셉·레퍼런스',
+                plannedDate: '2099-07-21',
+                actualDate: null,
+                content: null,
+                confirmStatus: null,
+                slaDays: 2,
+              },
+            ],
+          },
+        ],
+        { occurredAt: FIRST_UPLOAD_AT },
+      );
+      const task = findBySourceKey(await repo.listTasks(), KEY_A);
+      await repo.recordEvents([
+        { taskId: task.id, uploadId: null, changedFields: ['progress'], occurredAt: SECOND_UPLOAD_AT },
+      ]);
+
+      expect((await repo.listStages([task.id])).length).toBeGreaterThan(0);
+      expect((await repo.listEvents({ taskIds: [task.id] })).length).toBeGreaterThan(0);
+
+      expect(await repo.deleteTask(task.id)).toBe(true);
+
+      expect(await repo.getTask(task.id)).toBeNull();
+      expect((await repo.listTasks()).map((row) => row.id)).not.toContain(task.id);
+      expect(await repo.listStages([task.id])).toEqual([]);
+      expect(await repo.listEvents({ taskIds: [task.id] })).toEqual([]);
+
+      // 없는 id는 오류가 아니라 `false`다. 두 번 눌러도 「지웠다」가 두 번 나오지 않는다
+      expect(await repo.deleteTask(task.id)).toBe(false);
+      expect(await repo.deleteTask(MISSING_TASK_ID)).toBe(false);
     },
   },
 ];

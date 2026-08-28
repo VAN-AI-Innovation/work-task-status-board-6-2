@@ -87,7 +87,14 @@ function props(searchParams: Record<string, string | string[]> = {}) {
 function viewer(role: Viewer['role'], teamId: Viewer['teamId'] = null): SessionOutcome {
   return {
     status: 'ok',
-    viewer: { userId: 'user-1', email: `${role}@van.test`, role, teamId, memberId: null },
+    viewer: {
+      userId: 'user-1',
+      email: `${role}@van.test`,
+      role,
+      teamId,
+      memberId: null,
+      memberName: null,
+    },
   };
 }
 

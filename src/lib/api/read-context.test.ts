@@ -100,6 +100,7 @@ const signedIn = (role: ViewerRole, over: Partial<{ teamId: Task['teamId'] | nul
     role,
     teamId: over.teamId === undefined ? 'edit' : over.teamId,
     memberId: over.memberId === undefined ? 'member-1' : over.memberId,
+    memberName: null,
   },
 });
 
@@ -260,13 +261,17 @@ describe('buildReadContext', () => {
     expect(context.viewer?.memberId).toBe('member-1');
   });
 
-  it('lead 세션이면 자기 팀만 남는다', async () => {
+  /*
+   * **팀장의 열람 범위는 전사다** (`0012_lead_org_read.sql` · `viewer-scope.ts`). 좁히는 것은
+   * 이제 수정 범위(`taskEditable`)뿐이고, 이 함수는 조회 문맥이라 그것을 걸지 않는다.
+   */
+  it('lead 세션도 전 팀을 본다 — 좁히는 것은 수정 범위뿐이다', async () => {
     const shoot = makeTask({ id: 'task-shoot', teamId: 'shoot', sourceKey: 'shoot-001' });
     const view = makeView([ON_TIME, shoot], [], signedIn('lead'));
 
     const context = await buildReadContext(view, NOW, { as: null, filter: {} });
 
-    expect(context.tasks.map((task) => task.id)).toEqual(['task-ok']);
+    expect(context.tasks.map((task) => task.id)).toEqual(['task-ok', 'task-shoot']);
   });
 
   it('admin 세션은 전부 본다', async () => {

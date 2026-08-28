@@ -83,6 +83,7 @@ const VIEWER: Viewer = {
   role: 'admin',
   teamId: null,
   memberId: null,
+  memberName: null,
 };
 
 beforeEach(() => {

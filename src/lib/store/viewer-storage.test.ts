@@ -120,6 +120,7 @@ describe('resolveViewerContext', () => {
         role: 'admin',
         teamId: null,
         memberId: 'member-1',
+        memberName: null,
       },
     });
   });

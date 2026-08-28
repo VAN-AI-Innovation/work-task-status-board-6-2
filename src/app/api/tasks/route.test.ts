@@ -29,7 +29,7 @@ vi.mock('@/lib/auth/request-viewer', async (importOriginal) => {
   };
 });
 
-const { GET } = await import('./route');
+const { GET, POST } = await import('./route');
 
 const ORIGINAL_DRIVER = process.env.STORAGE_DRIVER;
 
@@ -209,5 +209,233 @@ describe('GET /api/tasks — 승인 대기 (공격 #2)', () => {
     };
 
     expect((await get('?as=admin')).status).toBe(403);
+  });
+});
+
+/**
+ * **업무 생성**의 계약은 셋이다.
+ *
+ * 1. **어느 팀에 만들 수 있는지를 목록으로 본다** (`creatableTeams`) — 팀장은 자기 팀 하나,
+ *    어드민은 전 팀, 부원은 없다.
+ * 2. **감사 칸을 요청이 정하지 않는다** — `sourceKey`는 서버가 짓고, 시트 탭·행 번호는
+ *    저장소가 채운다. 웹에서 만든 업무가 시트 행인 척할 수 없어야 한다.
+ * 3. **이름은 id에서 유도한다** — 팀 밖 구성원은 403이다 (`PATCH`와 같은 규율).
+ */
+describe('POST /api/tasks', () => {
+  const MEMBER_EDIT = 'aaaaaaaa-0000-4000-8000-00000000000a';
+  const MEMBER_EDIT_2 = 'aaaaaaaa-0000-4000-8000-00000000000b';
+  const MEMBER_SHOOT = 'bbbbbbbb-0000-4000-8000-00000000000a';
+
+  interface CreatedCall {
+    input: import('@/lib/store/task-repository').TaskCreateInput;
+    createdAt: string;
+  }
+
+  /** 세션·명부를 손으로 짜 넣고 `createTask` 호출을 기록한다 */
+  function stub(options: {
+    role: 'admin' | 'lead' | 'member';
+    teamId: 'edit' | 'shoot' | 'marketing' | null;
+    readOnly?: boolean;
+  }): CreatedCall[] {
+    const calls: CreatedCall[] = [];
+
+    const repo = {
+      listMembers: async () => [
+        { id: MEMBER_EDIT, teamId: 'edit', name: '담당자1', authUserId: null },
+        { id: MEMBER_EDIT_2, teamId: 'edit', name: '담당자2', authUserId: null },
+        { id: MEMBER_SHOOT, teamId: 'shoot', name: '촬영이', authUserId: null },
+      ],
+      createTask: async (
+        input: import('@/lib/store/task-repository').TaskCreateInput,
+        createdAt: string
+      ) => {
+        calls.push({ input, createdAt });
+        // 응답 직렬화(`toTaskResponse`)가 `.strict()`라 **온전한 행**을 돌려줘야 한다
+        return {
+          id: 'created-1',
+          departmentId: null,
+          approvalStatus: null,
+          riskStatus: null,
+          delayReason: null,
+          extras: {},
+          raw: {},
+          lastProgressAt: createdAt,
+          sourceUploadId: null,
+          sourceSheetTab: '(웹에서 만든 업무)',
+          sourceRowIndex: 0,
+          ...input,
+        } as never;
+      },
+      listTasks: async () => [],
+      listStages: async () => [],
+      listGoalMetrics: async () => [],
+      getLastSyncedAt: async () => null,
+    } as never;
+
+    viewerOverride = {
+      repo,
+      session: {
+        status: 'ok',
+        viewer: {
+          userId: 'user-1',
+          email: 'x@example.com',
+          role: options.role,
+          teamId: options.teamId,
+          memberId: null,
+          memberName: null,
+        },
+      },
+      base: {
+        repo,
+        driver: 'memory',
+        mode: options.readOnly === true ? 'fallback' : 'live',
+        readOnly: options.readOnly === true,
+      },
+    } as never;
+
+    return calls;
+  }
+
+  function post(body: unknown): Promise<Response> {
+    return POST(
+      new Request('http://localhost/api/tasks', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+    );
+  }
+
+  async function code(res: Response): Promise<string> {
+    return ((await res.json()) as { error: { code: string } }).error.code;
+  }
+
+  it('팀장이 자기 팀에 만들면 201이고 자연키를 서버가 짓는다', async () => {
+    const calls = stub({ role: 'lead', teamId: 'edit' });
+
+    const res = await post({ teamId: 'edit', title: '새 업무', dueAt: '2026-09-01' });
+
+    expect(res.status).toBe(201);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].input.teamId).toBe('edit');
+    expect(calls[0].input.title).toBe('새 업무');
+    expect(calls[0].input.dueAt).toBe('2026-09-01');
+    // 시트에서 온 자연키와 절대 부딪히지 않는 모양이다 (`manualSourceKey`)
+    expect(calls[0].input.sourceKey).toMatch(/^manual::/);
+  });
+
+  it('안 준 칸은 null로 내려간다 — 화면이 기본값을 지어내지 않는다', async () => {
+    const calls = stub({ role: 'lead', teamId: 'edit' });
+
+    await post({ teamId: 'edit', title: '새 업무' });
+
+    expect(calls[0].input.status).toBeNull();
+    expect(calls[0].input.progress).toBeNull();
+    expect(calls[0].input.dueAt).toBeNull();
+    expect(calls[0].input.ownerMemberId).toBeNull();
+    expect(calls[0].input.coOwnerNames).toEqual([]);
+  });
+
+  it('팀장은 남의 팀에 만들지 못한다 → 403이고 쓰기가 나가지 않는다', async () => {
+    const calls = stub({ role: 'lead', teamId: 'edit' });
+
+    const res = await post({ teamId: 'shoot', title: '새 업무' });
+
+    expect(res.status).toBe(403);
+    expect(await code(res)).toBe('FORBIDDEN');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('어드민은 아무 팀에나 만든다', async () => {
+    const calls = stub({ role: 'admin', teamId: null });
+
+    expect((await post({ teamId: 'marketing', title: '새 업무' })).status).toBe(201);
+    expect(calls[0].input.teamId).toBe('marketing');
+  });
+
+  it('부원은 만들지 못한다 → 403', async () => {
+    const calls = stub({ role: 'member', teamId: 'edit' });
+
+    expect((await post({ teamId: 'edit', title: '새 업무' })).status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('팀을 모르는 팀장은 만들 곳이 없다 → 403', async () => {
+    const calls = stub({ role: 'lead', teamId: null });
+
+    expect((await post({ teamId: 'edit', title: '새 업무' })).status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('담당자 이름은 명부에서 유도한다 — 클라이언트가 정하지 않는다', async () => {
+    const calls = stub({ role: 'lead', teamId: 'edit' });
+
+    await post({
+      teamId: 'edit',
+      title: '새 업무',
+      ownerMemberId: MEMBER_EDIT,
+      coOwnerMemberIds: [MEMBER_EDIT_2, MEMBER_EDIT],
+    });
+
+    expect(calls[0].input.ownerNameRaw).toBe('담당자1');
+    // 주 담당과 겹치는 id는 **지운다** (거부하지 않는다 — 같은 뜻의 두 표현이다)
+    expect(calls[0].input.coOwnerNames).toEqual(['담당자2']);
+  });
+
+  it('팀 밖 구성원을 담당자로 넣으면 403이다 — 없는 id와 갈라 답하지 않는다', async () => {
+    const calls = stub({ role: 'lead', teamId: 'edit' });
+
+    expect(
+      (await post({ teamId: 'edit', title: '새 업무', ownerMemberId: MEMBER_SHOOT })).status
+    ).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('감사 칸을 실어 보내면 400이다 — 시트 행인 척할 수 없다', async () => {
+    const calls = stub({ role: 'admin', teamId: null });
+
+    for (const body of [
+      { teamId: 'edit', title: 'x', sourceKey: 'card-a' },
+      { teamId: 'edit', title: 'x', sourceSheetTab: '01_편집팀' },
+      { teamId: 'edit', title: 'x', extras: {} },
+    ]) {
+      const res = await post(body);
+      expect(res.status).toBe(400);
+      expect(await code(res)).toBe('VALIDATION_FAILED');
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it('업무명이 없으면 400이다', async () => {
+    const calls = stub({ role: 'admin', teamId: null });
+
+    expect((await post({ teamId: 'edit' })).status).toBe(400);
+    expect((await post({ teamId: 'edit', title: '   ' })).status).toBe(400);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('읽기 전용에서는 저장소를 건드리기 전에 503이다 (`ADR-005`)', async () => {
+    const calls = stub({ role: 'admin', teamId: null, readOnly: true });
+
+    const res = await post({ teamId: 'edit', title: '새 업무' });
+
+    expect(res.status).toBe(503);
+    expect(await code(res)).toBe('STORAGE_READONLY');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('출처가 다르면 403이다 — 남의 페이지가 업무를 밀어 넣지 못한다', async () => {
+    const calls = stub({ role: 'admin', teamId: null });
+
+    const res = await POST(
+      new Request('http://localhost/api/tasks', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', origin: 'https://evil.example', host: 'localhost' },
+        body: JSON.stringify({ teamId: 'edit', title: '새 업무' }),
+      })
+    );
+
+    expect(res.status).toBe(403);
+    expect(calls).toHaveLength(0);
   });
 });

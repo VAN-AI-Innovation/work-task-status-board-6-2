@@ -45,6 +45,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { CopyButton } from '@/components/tasks/copy-button';
 import { StatusBadge } from '@/components/tasks/status-badge';
 import { OwnerAssignForm, type OwnerCandidate } from '@/components/tasks/owner-assign-form';
+import { TaskDeleteButton } from '@/components/tasks/task-delete-button';
 import { TaskEditForm } from '@/components/tasks/task-edit-form';
 import { safeHref, type ExtraCell } from '@/lib/view/extras-render';
 import { EMPTY, formatDate, formatDday, formatPercent } from '@/lib/view/kpi-format';
@@ -131,6 +132,8 @@ export function TaskPanel({
   closeHref,
   canEdit,
   canAssign,
+  canDelete,
+  readOnly,
   ownerCandidates,
   statusOptions,
 }: {
@@ -150,6 +153,18 @@ export function TaskPanel({
    * (`lib/domain/task-authoring.ts`). 여기서도 판정하지 않는다.
    */
   canAssign: boolean;
+  /**
+   * 맨 아래 [업무 삭제]를 그릴 것인가. **`canEdit`과 또 다른 물음**이라 따로 받는다 —
+   * 부원은 자기 업무를 고치지만 지우지는 못한다 (`canDeleteTask`). 여기서도 판정하지 않고,
+   * 실제 거부는 `DELETE`가 한다.
+   */
+  canDelete: boolean;
+  /**
+   * 볼 수는 있는데 손댈 수 없는 업무인가. **팀장이 전 팀을 보게 된 뒤로 생긴 상태다**
+   * (`0012`) — 폼 셋이 통째로 사라진 화면은 고장과 구분되지 않으므로 한 줄로 사유를 적는다.
+   * 판정은 여기서 하지 않고 `task-panel-slot.tsx`가 넘긴다.
+   */
+  readOnly: boolean;
   /** 이 업무의 팀 구성원. 페이지가 `assignableMembers`로 좁혀 넘긴다 */
   ownerCandidates: readonly OwnerCandidate[];
   statusOptions: readonly string[];
@@ -261,6 +276,14 @@ export function TaskPanel({
             </dl>
           </section>
 
+          {readOnly && (
+            // 색을 주지 않는다 — 문제가 아니라 **사실**이다 (`UI_GUIDE.md`)
+            <p className="border-line bg-raise text-ink-muted rounded border px-3 py-2 text-xs">
+              다른 팀 업무라 읽기 전용입니다. 고치거나 지우는 것은 {teamLabel(task.teamId)}에서
+              합니다.
+            </p>
+          )}
+
           {canAssign && (
             <section>
               <h3 className="text-brand text-sm font-semibold">담당자 지정</h3>
@@ -278,12 +301,26 @@ export function TaskPanel({
           {canEdit && (
             <section>
               <h3 className="text-brand text-sm font-semibold">수정</h3>
-              {/* 열리는 필드는 둘뿐이다 (`UC-16`). 나머지는 시트가 진실의 원천이다 */}
+              {/*
+                열리는 필드 목록은 `task-patch-schema.ts`가 정한다 — 화면이 여기서 따로
+                고르면 서버가 받는 것과 갈라진다. 접혀 있다가 [수정하기]로 열린다.
+              */}
               <div className="mt-2">
                 <TaskEditForm
                   taskId={task.id}
-                  status={task.status}
-                  progress={task.progress}
+                  values={{
+                    title: task.title,
+                    status: task.status,
+                    progress: task.progress,
+                    priority: task.priority,
+                    assignedAt: task.assignedAt,
+                    dueAt: task.dueAt,
+                    nextAction: task.nextAction,
+                    nextActionOwner: task.nextActionOwner,
+                    nextActionDue: task.nextActionDue,
+                    delayReason: task.delayReason,
+                    note: task.note,
+                  }}
                   statusOptions={statusOptions}
                 />
               </div>
@@ -357,6 +394,16 @@ export function TaskPanel({
               <Row label="행" value={String(task.sourceRowIndex)} />
             </dl>
           </section>
+
+          {canDelete && (
+            /*
+             * **맨 아래다.** 이 패널을 여는 이유는 대부분 읽기이고, 되돌릴 수 없는 버튼이
+             * 스크롤 중간에 서면 스치는 자리에 놓이게 된다 (`task-delete-button.tsx`).
+             */
+            <section className="border-line border-t pt-4">
+              <TaskDeleteButton taskId={task.id} title={task.title} closeHref={closeHref} />
+            </section>
+          )}
         </div>
       </aside>
     </div>

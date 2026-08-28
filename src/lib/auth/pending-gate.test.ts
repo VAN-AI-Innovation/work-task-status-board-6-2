@@ -83,6 +83,7 @@ describe('gateForSession — 지나가는 상태', () => {
         role: 'member',
         teamId: 'edit',
         memberId: 'm-1',
+        memberName: null,
       },
     };
 

@@ -1,9 +1,9 @@
 /**
  * 이 스키마가 지는 계약은 셋이다.
  *
- * 1. **허용 필드는 셋뿐이다** (`PLAN.md`「T8 착수 시 확정」 결정 F에 담당자 한 칸을 더했다).
- *    시트가 진실의 원천이라 재업로드가 덮어쓸 필드를 화면에서 고치게 하면 사용자는 자기
- *    수정이 사라지는 것을 본다.
+ * 1. **허용 필드가 열거돼 있다** — 업무 패널이 여는 칸과 DB의 컬럼 GRANT(`0013` 5절)가
+ *    같은 목록이다. `extras`·`raw`·`source_*`는 열지 않는다: 열면 이 화면이 시트 편집기가
+ *    된다.
  * 2. **모르는 키는 던진다.** 조용히 버리면 `{"titel": "..."}` 오타가 200으로 돌아와
  *    「저장됐다」로 보인다.
  * 3. **`null`(값을 지운다)과 키 없음(안 건드린다)이 다르다.** 둘을 뭉개면 빈 셀과 0의
@@ -56,6 +56,44 @@ describe('taskPatchSchema — 통과하는 모양', () => {
     });
   });
 
+  it('업무 내용 칸들도 받는다 — 회의 중에 고쳐 적는 자리다', () => {
+    const result = parse({
+      title: '  [샘플] 릴스 B  ',
+      dueAt: '2026-09-01',
+      nextAction: '레퍼런스 재수집',
+      note: '비고',
+      priority: '높음',
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        title: '[샘플] 릴스 B',
+        dueAt: '2026-09-01',
+        nextAction: '레퍼런스 재수집',
+        note: '비고',
+        priority: '높음',
+      },
+    });
+  });
+
+  it('빈 문자열은 null로 접는다 — 시트의 빈 셀이 그것이다', () => {
+    const result = parse({ note: '', dueAt: '', priority: '   ' });
+
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.note).toBeNull();
+    expect(result.success && result.data.dueAt).toBeNull();
+    expect(result.success && result.data.priority).toBeNull();
+  });
+
+  it('null은 「비운다」이므로 통과한다 — 키 없음과 다르다', () => {
+    const result = parse({ dueAt: null, nextAction: null });
+
+    expect(result.success).toBe(true);
+    expect(result.success && 'dueAt' in result.data).toBe(true);
+    expect(result.success && result.data.dueAt).toBeNull();
+  });
+
   it('상태를 enum으로 좁히지 않는다 — 시트 값은 설정 탭에서 오고 늘어난다 (`ADR-009`)', () => {
     expect(parse({ status: '아직 등록되지 않은 단계' }).success).toBe(true);
   });
@@ -97,9 +135,28 @@ describe('taskPatchSchema — 통과하는 모양', () => {
 describe('taskPatchSchema — 거부하는 모양', () => {
   it('모르는 키는 던진다 (`.strict()`)', () => {
     expect(parse({ status: '완료', titel: '오타' }).success).toBe(false);
-    expect(parse({ note: '메모' }).success).toBe(false);
-    expect(parse({ dueAt: '2026-09-01' }).success).toBe(false);
     expect(parse({ extras: {} }).success).toBe(false);
+    expect(parse({ raw: {} }).success).toBe(false);
+    expect(parse({ sourceSheetTab: '01_편집팀' }).success).toBe(false);
+    expect(parse({ teamId: 'shoot' }).success).toBe(false);
+  });
+
+  /*
+   * **팀은 못 바꾼다.** 위 `.strict()` 줄이 그것을 막는데, 근거는 모양이 아니라 권한이다 —
+   * 팀장이 자기 팀 업무를 남의 팀으로 밀어내면 그 순간 자기가 만든 행을 자기가 못 고친다.
+   * DB도 같은 자리를 막는다 (`tasks_update_scope`의 `with check`).
+   */
+
+  it('업무명은 비울 수 없다 — 이름 없는 업무는 표에서 「—」 한 줄이다', () => {
+    expect(parse({ title: null }).success).toBe(false);
+    expect(parse({ title: '   ' }).success).toBe(false);
+    expect(parse({ title: 'ㄱ'.repeat(301) }).success).toBe(false);
+  });
+
+  it('날짜는 YYYY-MM-DD여야 한다 — 시각을 섞지 않는다', () => {
+    expect(parse({ dueAt: '2026-09-01T00:00:00Z' }).success).toBe(false);
+    expect(parse({ dueAt: '2026/09/01' }).success).toBe(false);
+    expect(parse({ assignedAt: '어제' }).success).toBe(false);
   });
 
   /**

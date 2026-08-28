@@ -25,7 +25,8 @@ import type { ViewerRole } from '@/lib/domain/extras-visibility';
 import {
   assignableMembers,
   canAssignOwner,
-  canEditProgress,
+  canDeleteTask,
+  canEditTaskDetails,
 } from '@/lib/domain/task-authoring';
 import {
   buildHref,
@@ -45,6 +46,7 @@ export function TaskPanelSlot({
   query,
   pathname,
   editableIds,
+  hasSession,
   members,
   statusOptions,
 }: {
@@ -60,6 +62,12 @@ export function TaskPanelSlot({
    * 폼이 아예 뜨지 않는다.
    */
   editableIds: ReadonlySet<string>;
+  /**
+   * 로그인한 세션이 있는가. **「고칠 수 없다」와 「로그인하지 않았다」를 가르는 데만 쓴다** —
+   * 데모에서는 `editableIds`가 늘 비어 있어서, 그것만 보면 모든 업무에 「다른 팀 업무입니다」가
+   * 붙는다 (`team-visibility.ts`·`staff-tools.ts`가 같은 이유로 이 인자를 받는다).
+   */
+  hasSession: boolean;
   /**
    * 시트 명부 전량. 담당자 후보를 **여기서 좁힌다** — 페이지가 팀별로 미리 나눠 보내면
    * 어느 팀 것인지 아는 곳이 둘이 된다. 브라우저로 나가는 것은 좁힌 뒤의 `{id, name}`
@@ -113,11 +121,25 @@ export function TaskPanelSlot({
       /*
        * 판정 결과를 **찾아보기만** 한다. 숨김은 방어가 아니고 거부는 `PATCH`가 한다.
        *
-       * 범위(`editableIds`)에 역할 한 겹이 더 걸린다 — 대표·실장에게는 진행률 폼을 그리지
-       * 않는다. 그것은 권한이 아니라 화면 규칙이며 근거는 `task-authoring.ts`에 있다.
+       * 범위(`editableIds`)에 역할 한 겹이 더 걸린다 — 그 겹의 근거는 `task-authoring.ts`에
+       * 있다. `editableIds`는 이제 「보이는 것」이 아니라 **「고칠 수 있는 것」**이다
+       * (`scopeEditableTasks`).
        */
-      canEdit={editableIds.has(task.id) && canEditProgress(role)}
-      canAssign={canAssignOwner(role)}
+      /*
+       * **셋 다 범위 + 역할이다.** 담당자 지정만 오래도록 역할 하나로 서 있었는데, 팀장이
+       * 전 팀을 **보게** 된 뒤로(`0012`) 그 자리에 「보이는데 못 고치는」 업무가 생겼다 —
+       * 그대로 두면 팀장이 남의 팀 업무에서 담당자 폼을 보고 저장을 눌러 403을 받는다.
+       */
+      canEdit={editableIds.has(task.id) && canEditTaskDetails(role)}
+      canAssign={editableIds.has(task.id) && canAssignOwner(role)}
+      canDelete={editableIds.has(task.id) && canDeleteTask(role)}
+      /*
+       * **감추기만 하면 「어디 갔지」가 된다.** 폼 셋이 통째로 사라진 화면은 고장과 구분되지
+       * 않으므로 한 줄로 사유를 적는다 (`UI_GUIDE.md`「접힌 것과 없는 것이 같아 보이면 안 된다」).
+       * 로그인하지 않았으면 적지 않는다 — 그때는 「내 팀이 아니다」가 아니라 「아직 로그인이
+       * 없다」이고, 데모 화면에 남의 팀 이야기를 띄울 이유가 없다.
+       */
+      readOnly={hasSession && !editableIds.has(task.id)}
       // 브라우저로 나가는 것은 이 둘뿐이다 (`MemberRecord`의 `authUserId`를 싣지 않는다)
       ownerCandidates={assignableMembers(members, task.teamId).map((member) => ({
         id: member.id,

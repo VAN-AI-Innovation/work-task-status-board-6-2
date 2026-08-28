@@ -52,7 +52,7 @@ import { collectAlerts } from '@/lib/domain/alert-rules';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip } from '@/lib/domain/progress-stats';
 import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
-import { scopeTasks } from '@/lib/domain/viewer-scope';
+import { scopeEditableTasks } from '@/lib/domain/viewer-scope';
 import { groupAlerts } from '@/lib/view/alert-groups';
 import { buildStatusBreakdown, toStatusSeries } from '@/lib/view/chart-series';
 import { withoutTeamTiles } from '@/lib/view/kpi-groups';
@@ -118,7 +118,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   const editableIds =
     read.viewer === null
       ? new Set<string>()
-      : new Set(scopeTasks(read.tasks, read.viewer).map((task) => task.id));
+      : new Set(scopeEditableTasks(read.tasks, read.viewer).map((task) => task.id));
 
   /* `/`와 같은 규칙이다 — 이름은 화면이 자기 목록에서 붙이고, 못 붙이는 항목은 빼낸다 (`S6`) */
   const titles = new Map(visible.map((task) => [task.id, task.title ?? task.sourceKey]));
@@ -241,6 +241,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
                 query={query}
                 pathname={pathname}
                 editableIds={editableIds}
+                hasSession={read.viewer !== null}
                 members={members}
                 statusOptions={STATUS_OPTIONS}
               />

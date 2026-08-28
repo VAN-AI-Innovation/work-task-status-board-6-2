@@ -20,9 +20,12 @@ import {
   diffTaskFields,
   goalMetricUpsertKey,
   taskUpsertKey,
+  MANUAL_ROW_INDEX,
+  MANUAL_SHEET_TAB,
   type GoalMetricUpsertInput,
   type GoalMetricUpsertResult,
   type TaskEventFilter,
+  type TaskCreateInput,
   type TaskFilter,
   type TaskRepository,
   type TaskUpsertInput,
@@ -258,8 +261,20 @@ export function toTaskPatchRow(
   options: { updatedAt: string },
 ): Partial<TaskWriteRow> & { updated_at: string } {
   const row: Partial<TaskWriteRow> & { updated_at: string } = { updated_at: options.updatedAt };
+  if (patch.title !== undefined) row.title = patch.title;
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.progress !== undefined) row.progress = patch.progress;
+  // 아래 아홉은 `0013`이 컬럼 GRANT로 연 칸들이다. 여기에만 더하고 정책은 손대지 않는다
+  if (patch.priority !== undefined) row.priority = patch.priority;
+  if (patch.riskStatus !== undefined) row.risk_status = patch.riskStatus;
+  if (patch.approvalStatus !== undefined) row.approval_status = patch.approvalStatus;
+  if (patch.assignedAt !== undefined) row.assigned_at = patch.assignedAt;
+  if (patch.dueAt !== undefined) row.due_at = patch.dueAt;
+  if (patch.nextAction !== undefined) row.next_action = patch.nextAction;
+  if (patch.nextActionOwner !== undefined) row.next_action_owner = patch.nextActionOwner;
+  if (patch.nextActionDue !== undefined) row.next_action_due = patch.nextActionDue;
+  if (patch.delayReason !== undefined) row.delay_reason = patch.delayReason;
+  if (patch.note !== undefined) row.note = patch.note;
   // 두 칸은 `0008`이 authenticated에게 연 것이다. 정책(`tasks_update_scope`)은 그대로다
   if (patch.ownerMemberId !== undefined) row.owner_member_id = patch.ownerMemberId;
   if (patch.ownerNameRaw !== undefined) row.owner_name_raw = patch.ownerNameRaw;
@@ -717,6 +732,65 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
       // 0행은 「없는 id」이지 오류가 아니다. RLS가 걸린 클라이언트에서는 「권한 밖」도 여기다.
       if (error) fail('tasks', 'update', error);
       return data ? toTask(data as unknown as TaskRow) : null;
+    },
+
+    /**
+     * 사람이 화면에서 만드는 업무 한 건 (`POST /api/tasks`). **`upsert`가 아니라 `insert`다** —
+     * 자연키가 겹칠 일이 없고(`manualSourceKey`), 겹친다면 그것은 사고이지 갱신이 아니다.
+     *
+     * 넣는 컬럼이 `0013` 5절의 `grant insert (...)` 목록과 **글자 그대로 같아야 한다.**
+     * 하나라도 목록 밖이면 PostgREST가 아니라 Postgres가 권한 오류를 내는데, 그 오류는
+     * 「행을 못 만든다」로 보여 원인을 찾기 어렵다.
+     */
+    async createTask(input: TaskCreateInput, createdAt: string): Promise<Task> {
+      const { data, error } = await client
+        .from('tasks')
+        .insert({
+          team_id: input.teamId,
+          source_key: input.sourceKey,
+          title: input.title,
+          owner_member_id: input.ownerMemberId,
+          owner_name_raw: input.ownerNameRaw,
+          co_owner_names: [...input.coOwnerNames],
+          status: input.status,
+          priority: input.priority,
+          progress: input.progress,
+          assigned_at: input.assignedAt,
+          due_at: input.dueAt,
+          next_action: input.nextAction,
+          next_action_owner: input.nextActionOwner,
+          next_action_due: input.nextActionDue,
+          note: input.note,
+          source_sheet_tab: MANUAL_SHEET_TAB,
+          source_row_index: MANUAL_ROW_INDEX,
+          updated_at: createdAt,
+        })
+        .select(TASK_COLUMNS)
+        .single();
+      if (error) fail('tasks', 'insert', error);
+      return toTask(data as unknown as TaskRow);
+    },
+
+    /**
+     * 단계·이력은 **FK가 지운다** (`on delete cascade`, `0001_init.sql`). 참조 무결성 동작은
+     * RLS를 타지 않으므로 그 두 테이블에 권한을 더할 필요가 없다 — 문은 `tasks_delete_scope`
+     * 하나다 (`0013` 4절).
+     *
+     * `select`를 붙여 **실제로 지워진 행을 확인한다.** 붙이지 않으면 정책이 0행을 지운 것과
+     * 한 행을 지운 것이 응답에서 같아지고, 화면이 지우지 못한 것을 지웠다고 말한다.
+     */
+    async deleteTask(id: string): Promise<boolean> {
+      // `getTask`·`updateTask`와 같은 이유로 모양부터 거른다 — uuid가 아니면 타입 오류다
+      if (!UUID_PATTERN.test(id)) return false;
+
+      const { data, error } = await client
+        .from('tasks')
+        .delete()
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+      if (error) fail('tasks', 'delete', error);
+      return data !== null;
     },
 
     async listMembers(): Promise<MemberRecord[]> {

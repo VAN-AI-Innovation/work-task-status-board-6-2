@@ -213,6 +213,7 @@ function viewer(overrides: Partial<Viewer> = {}): Viewer {
     role: 'admin',
     teamId: null,
     memberId: null,
+    memberName: '담당자1',
     ...overrides,
   };
 }
@@ -961,14 +962,20 @@ describe('/ — 수정 폼 (`UC-16`)', () => {
    * 업무를 들고 있는 사람의 일이고, 전사를 보는 자리에 그 폼이 있으면 남의 업무 숫자를
    * 대신 적게 된다 (`lib/domain/task-authoring.ts`).
    */
-  it('대표·실장에게는 진행률 폼 대신 담당자 지정 칸이 뜬다', async () => {
+  /*
+   * 예전에는 대표·실장에게 `canEdit`이 **거짓**이었다 (`canEditProgress`). 그 폼이 진행률 두
+   * 칸이 아니라 업무 내용을 고치는 자리가 되면서 뒤집혔다 — 근거는 `task-authoring.ts`에 있다.
+   * 삭제도 함께 열린다.
+   */
+  it('대표·실장에게는 수정·담당자 지정·삭제가 모두 뜬다', async () => {
     await seed();
     session = { status: 'ok', viewer: viewer() };
     const id = await idOf('edit');
 
     const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
-    expect(panel?.props?.canEdit).toBe(false);
+    expect(panel?.props?.canEdit).toBe(true);
     expect(panel?.props?.canAssign).toBe(true);
+    expect(panel?.props?.canDelete).toBe(true);
   });
 
   it('담당자 후보는 그 업무의 팀 사람만이다 — 좁히는 것은 `assignableMembers`다', async () => {

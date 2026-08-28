@@ -21,9 +21,17 @@
  *
  * ## 팀을 모르면 하나도 열지 않는다
  *
- * 로그인은 했는데 `teamId`가 null인 팀장·부원에게 전부를 열면 「모른다」가 「전부」가 된다.
+ * 로그인은 했는데 `teamId`가 null인 **부원**에게 전부를 열면 「모른다」가 「전부」가 된다.
  * 좁은 쪽으로 접는다 — `viewer-scope.ts`의 null 가드와 같은 판단이고, 그쪽도 같은 이유로
  * `viewer.teamId !== null`을 판정보다 **먼저** 세운다.
+ *
+ * ## 팀장은 전 팀 화면을 갖는다
+ *
+ * `0012_lead_org_read.sql`이 팀장의 **열람 범위**를 전사로 넓혔다 (`viewer-scope.ts`).
+ * 여기를 따라 넓히지 않으면 팀장의 대시보드에는 세 팀의 숫자가 다 뜨는데 사이드바에는 팀
+ * 메뉴가 하나뿐인 화면이 된다 — 그 화면은 「왜 이건 보이고 저건 못 여는가」를 설명하지
+ * 못한다. **좁히는 것은 여전히 `taskEditable`이 진다**: 남의 팀 화면을 열어도 고칠 수 있는
+ * 업무는 하나도 없다.
  */
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
@@ -38,7 +46,7 @@ export function visibleTeamKeys(
   hasSession: boolean
 ): readonly TeamKey[] {
   if (!hasSession) return TEAM_KEYS;
-  if (role === 'admin') return TEAM_KEYS;
+  if (role === 'admin' || role === 'lead') return TEAM_KEYS;
 
   return teamId === null ? [] : [teamId];
 }

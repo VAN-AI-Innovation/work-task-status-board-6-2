@@ -1,12 +1,16 @@
 /**
- * 업무 하나를 놓고 **누가 무엇을 고치는가.** 업무 패널(`UC-15`)이 여는 칸이 둘인데 그 둘의
- * 대상이 정반대라서 한 파일에서 판정한다.
+ * 업무를 놓고 **누가 무엇을 할 수 있는가.** 패널이 여는 칸과 화면이 내주는 버튼을 여기서
+ * 정한다.
  *
- * | | 담당자 지정 | 상태·진행률 |
- * |---|---|---|
- * | `admin` | ○ | ✕ |
- * | `lead` | ○ | ○ |
- * | `member` | ✕ | ○ |
+ * | | 담당자 지정 | 내용 수정 | 만들기 | 지우기 |
+ * |---|---|---|---|---|
+ * | `admin` | ○ | ○ | ○ (아무 팀) | ○ |
+ * | `lead` | ○ | ○ | ○ (자기 팀) | ○ |
+ * | `member` | ✕ | ○ | ✕ | ✕ |
+ *
+ * **어느 칸이든 행 범위가 먼저 선다** (`viewer-scope.ts`의 `taskEditable`). 이 파일은
+ * 「이 역할에게 그 조작이 존재하는가」만 답하고, 「이 업무가 그 사람 것인가」는 답하지 않는다 —
+ * 팀장이 전 팀을 **보게** 된 뒤로 그 둘이 확실히 다른 물음이 됐다 (`0012`).
  *
  * ## 담당자 지정 — 권한이다
  *
@@ -16,16 +20,28 @@
  * DB에서 그 자리에 거부된다 (`0008` 2절). 데모·폴백 모드에는 RLS가 없어 이 함수가 유일한
  * 층이므로, 화면에서 감추는 것으로 갈음하지 않는다.
  *
- * ## 상태·진행률 — 권한이 아니라 화면 규칙이다
+ * ## 내용 수정 — 권한이 아니라 화면 규칙이다
  *
- * `canEditProgress`가 대표·실장에게 거짓인 것은 **못 하게 막는 것이 아니다.** 서버는 여전히
- * 받는다 — RLS도 GRANT도 admin의 update를 허용하고, `PATCH`도 이 함수를 부르지 않는다.
- * 여기서 재는 것은 「그 칸을 패널에 그릴 것인가」뿐이다. 진행률을 손수 적는 것은 그 업무를
- * 들고 있는 사람의 일이고(`UC-16`), 전사를 보는 자리에 그 폼이 있으면 남의 업무 숫자를
- * 대신 적게 된다.
+ * `canEditTaskDetails`는 세 역할 모두 참이다. 서버가 재는 것은 이 값이 아니라 행 범위
+ * (`taskEditable`)와 RLS·컬럼 GRANT이고, `PATCH`도 이 함수를 부르지 않는다 — 여기서 재는
+ * 것은 「그 칸을 패널에 그릴 것인가」뿐이다.
  *
- * 그래서 이 함수를 **권한 검사로 옮겨 쓰지 않는다.** 옮기는 순간 「화면에서 뺀 것」과
- * 「막은 것」이 같은 값을 쓰게 되고, 둘 중 하나가 바뀔 때 다른 하나가 조용히 딸려 온다.
+ * ⚠ **예전 이름은 `canEditProgress`였고 대표·실장에게 거짓이었다.** 근거는 「전사를 보는
+ *   자리에 진행률 폼이 있으면 남의 업무 숫자를 대신 적게 된다」였다. 그 폼이 진행률 두 칸이
+ *   아니라 **업무 내용**(마감·다음 조치·비고·업무명)을 고치는 자리가 되면서 근거가 사라졌다 —
+ *   회의 중에 마감을 옮겨 적는 사람이 바로 대표·실장이다. 함수를 남겨 둔 것은 「화면에서
+ *   뺀 것」과 「막은 것」이 **여전히 다른 값이어야** 하기 때문이다: 이 값을 권한 검사로
+ *   옮겨 쓰지 않는다.
+ *
+ * ## 만들기·지우기 — 권한이다
+ *
+ * 둘 다 부원에게 닫혀 있고, 그 판정은 **세 층**이다: 이 파일(앱), 라우트가 부르는 같은 함수,
+ * 그리고 `tasks_insert_scope`·`tasks_delete_scope`(DB, `0013`). 업무를 만드는 것은 「일을
+ * 나눠 주는」 일이고 지우는 것은 되돌릴 수 없다 — 둘 다 팀을 끌고 가는 사람의 조작이다
+ * (`staff-tools.ts`와 같은 결).
+ *
+ * **만들 수 있는 팀은 역할마다 다르다** (`creatableTeams`). 팀장이 전 팀을 보게 됐어도
+ * 만드는 곳은 자기 팀이다 — 보는 것과 손대는 것을 가르는 `0012`의 규칙 그대로다.
  *
  * ## 고를 수 있는 담당자
  *
@@ -36,6 +52,7 @@
  */
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
+import { TEAM_KEYS } from '@/lib/domain/progress-stats';
 import type { MemberRecord } from '@/types/auth';
 import type { TeamKey } from '@/types/task';
 
@@ -50,15 +67,50 @@ export function canAssignOwner(role: ViewerRole): boolean {
   }
 }
 
-/** 상태·진행률 수정 칸을 **그릴 것인가.** 권한이 아니다 (머리말) */
-export function canEditProgress(role: ViewerRole): boolean {
+/** 내용 수정 칸을 **그릴 것인가.** 권한이 아니다 (머리말) */
+export function canEditTaskDetails(role: ViewerRole): boolean {
   switch (role) {
+    case 'admin':
     case 'lead':
     case 'member':
       return true;
+  }
+}
+
+/** 업무를 만들 수 있는가. **권한이다** (머리말 · `tasks_insert_scope`) */
+export function canCreateTask(role: ViewerRole): boolean {
+  switch (role) {
     case 'admin':
+    case 'lead':
+      return true;
+    case 'member':
       return false;
   }
+}
+
+/** 업무를 지울 수 있는가. **권한이다** (머리말 · `tasks_delete_scope`) */
+export function canDeleteTask(role: ViewerRole): boolean {
+  switch (role) {
+    case 'admin':
+    case 'lead':
+      return true;
+    case 'member':
+      return false;
+  }
+}
+
+/**
+ * **어느 팀에 만들 수 있는가.** 화면의 팀 드롭다운이 이 목록으로 서고, 라우트가 같은
+ * 함수로 거부한다 — 목록에 없는 팀을 실어 보내면 403이다.
+ *
+ * 팀을 모르는 팀장에게 전부를 열지 않는다. 「모른다」를 「전부」로 접지 않는 규율은
+ * `team-visibility.ts`·`viewer-scope.ts`와 같다.
+ */
+export function creatableTeams(role: ViewerRole, teamId: TeamKey | null): readonly TeamKey[] {
+  if (!canCreateTask(role)) return [];
+  if (role === 'admin') return TEAM_KEYS;
+
+  return teamId === null ? [] : [teamId];
 }
 
 /**

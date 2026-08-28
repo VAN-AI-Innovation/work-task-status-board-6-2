@@ -28,7 +28,14 @@ const waiting = (status: 'pending' | 'rejected'): SessionOutcome => ({
 
 const session = (role: ViewerRole): SessionOutcome => ({
   status: 'ok',
-  viewer: { userId: 'u1', email: 'u1@example.com', role, teamId: 'edit', memberId: 'm1' },
+  viewer: {
+    userId: 'u1',
+    email: 'u1@example.com',
+    role,
+    teamId: 'edit',
+    memberId: 'm1',
+    memberName: '담당자1',
+  },
 });
 
 describe('resolveViewerRole', () => {
