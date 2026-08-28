@@ -134,7 +134,7 @@ function ReviewItem({ row, weekStart }: { row: ReviewRow; weekStart: string }) {
               disabled={busy}
               className="border-late-line text-late hover:bg-late-bg rounded border px-3 py-1.5 text-xs"
             >
-              {rejecting === null ? '반려' : '반려 취소'}
+              {rejecting === null ? '반려' : '취소'}
             </button>
           </div>
         )}
@@ -174,7 +174,7 @@ function ReviewItem({ row, weekStart }: { row: ReviewRow; weekStart: string }) {
               busy || rejecting.trim() === '' ? 'cursor-not-allowed opacity-50' : 'hover:bg-late-bg'
             }`}
           >
-            돌려보내기
+            반려
           </button>
         </div>
       )}
