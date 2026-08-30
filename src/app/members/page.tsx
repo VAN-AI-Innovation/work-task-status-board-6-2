@@ -14,20 +14,21 @@
  * **`security definer` 함수**이기 때문이다. 접근 제어가 함수 안에 있고 그 검사는
  * `auth.uid()`에 기댄다 — 사용자 JWT로 나가야 성립한다 (`0005` 4-2 · `ADR-024`).
  *
- * ## 권한이 없으면 404다
+ * ## 세 역할이 다 연다. 갈리는 것은 패널이다
  *
- * `/team/requests`와 같은 판단이고 근거도 같다 — 403 화면은 「어드민 전용 기능이 존재한다」를
- * 알려 준다. **다만 문턱이 한 칸 높다**: 저쪽은 팀장도 열지만 여기는 대표·실장뿐이다
- * (`canManageMembers` 머리말).
+ * 조직도 자체에는 문턱이 없다 — 「우리 조직에 누가 있는가」도, 연락처인 이메일도 부원에게
+ * 필요한 사실이라 404를 내던 것을 그만뒀다 (`0016`·`0017`). 대신 **카드를 눌러 열리는 범위**가 역할마다
+ * 다르다: 어드민은 전사, 팀장은 자기 팀, 부원은 **자기 자신뿐**이다 (`canOpenMemberPanel`).
+ * 합류 요청 목록과 승격 버튼은 여전히 각자의 문턱을 따로 묻는다.
  *
  * ## 화면에 계산이 없다
  *
- * 역할 판정은 `canManageMembers`, 행 읽기는 `toMemberDirectoryResponse`, 묶고 세우는 것은
+ * 역할 판정은 `member-admin.ts`, 행 읽기는 `toMemberDirectoryResponse`, 묶고 세우는 것은
  * `buildMemberTree`가 진다 (`ADR-006`). 이 파일은 그 셋을 잇기만 한다 — **트리를 여기서
  * 다시 묶으면** 테스트가 보는 것과 화면이 그리는 것이 갈린다.
  */
 
-import { notFound, redirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 
 import { MemberPanel } from '@/components/members/member-panel';
 import { MemberTreeView, keyOf } from '@/components/members/member-tree-view';
@@ -42,7 +43,7 @@ import { currentSessionClient, currentViewerContext } from '@/lib/auth/request-v
 import { toAccount } from '@/lib/auth/viewer-session';
 import { kstToday } from '@/lib/domain/kst-today';
 import { canReviewJoinRequests } from '@/lib/domain/join-review';
-import { canManageMembers, canViewMembers } from '@/lib/domain/member-admin';
+import { canManageMembers, canOpenMemberPanel } from '@/lib/domain/member-admin';
 import { buildMemberTree, type MemberNode } from '@/lib/domain/member-tree';
 import { openTasksOf, summarizeMemberWorkload } from '@/lib/domain/member-workload';
 import { parseDashboardQuery, toURLSearchParams } from '@/lib/view/dashboard-query';
@@ -73,8 +74,7 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
     { nodeEnv: process.env.NODE_ENV, mode: view.base.mode },
     view.session
   );
-  if (!canViewMembers(role)) notFound();
-  /** 팀장은 보기만 한다 — 직책·팀·내보내기는 admin만이다 (`0005` 4-7 · `0006`) */
+  /** 팀장·부원은 보기만 한다 — 직책·팀·내보내기는 admin만이다 (`0005` 4-7 · `0006`) */
   const manageable = canManageMembers(role);
 
   const client = await currentSessionClient();
@@ -99,9 +99,8 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
    * 「여기에 들어오려는 사람이 있다」다. 승인하면 그 사람이 곧바로 위 트리에 나타나므로,
    * 나눠 두면 리더가 승인한 결과를 보려고 화면을 옮겨야 했다.
    *
-   * 문턱이 같아서 합칠 수 있었다 — `canViewMembers`와 `canReviewJoinRequests`가 둘 다
-   * 대표·팀장이다. 그래도 판정은 **각자 부른다**: 한쪽이 넓어지는 날 다른 쪽이 조용히
-   * 따라가면 안 된다.
+   * 다만 **문턱은 각자 묻는다.** 조직도는 부원도 보지만(`0016`) 요청은 대표·팀장뿐이다 —
+   * 한 화면에 있다고 한쪽 판정이 다른 쪽을 대신하면, 넓어지는 날 조용히 딸려 간다.
    */
   const reviewable = canReviewJoinRequests(role);
   let requests = toJoinRequestsResponse(null).requests;
@@ -130,15 +129,18 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
     ...tree.teams.flatMap((branch) => [...branch.leads, ...branch.members]),
   ];
   /*
-   * **누를 수 있는 카드**. 어드민은 전부, 팀장은 자기 팀만이다.
+   * **누를 수 있는 카드**. 어드민은 전부, 팀장은 자기 팀, 부원은 자기 자신뿐이다.
    *
-   * 판정 기준이 `teamId`인 것이 요점이다 — `member_directory()`가 남의 팀 사람의 이메일을
-   * null로 내려보내므로(`0007`), 팀장이 남의 팀 카드를 열어도 볼 것이 이름뿐이다. 여기서
-   * 막는 것은 그 헛걸음을 없애는 일이고, **진짜 문은 DB다.**
+   * 판정은 `canOpenMemberPanel`이 진다 — 화면이 세 갈래를 다시 쓰면 사이드바·패널과
+   * 갈린다 (`ADR-006`). 여기서 막는 것은 헛걸음을 없애는 일이고 **진짜 문은 DB다**:
+   * 업무는 팀 밖으로 나가지 않는다 (`0015`). 카드에 적히는 이메일은 연락처라
+   * 세 역할이 다 본다 — 패널이 막는 것은 **업무 진행**이다 (`0017`).
    */
-  const viewerTeamId = view.session.status === 'ok' ? view.session.viewer.teamId : null;
-  const openable = (node: MemberNode): boolean =>
-    manageable || (viewerTeamId !== null && node.teamId === viewerTeamId);
+  const me =
+    view.session.status === 'ok'
+      ? { userId: view.session.viewer.userId, teamId: view.session.viewer.teamId }
+      : { userId: null, teamId: null };
+  const openable = (node: MemberNode): boolean => canOpenMemberPanel(role, me, node);
 
   const found = everyone.find((node) => keyOf(node) === selectedKey) ?? null;
   // 주소를 직접 쳐도 열리지 않는다. 열 수 없는 카드의 패널은 **없는 것으로 둔다**
@@ -183,7 +185,9 @@ export default async function MembersPage({ searchParams }: PageProps<'/members'
       <p className="text-ink-body mt-1 text-sm">
         {manageable
           ? '조직 전체의 계정과 시트 명부입니다. 팀장 승격·해제는 여기서 합니다 — 대표·실장은 화면에서 만들지 않습니다.'
-          : '조직 전체의 구성입니다. 자세히 볼 수 있는 사람은 우리 팀뿐입니다.'}
+          : role === 'lead'
+            ? '조직 전체의 구성입니다. 자세히 볼 수 있는 사람은 우리 팀뿐입니다.'
+            : '조직 전체의 구성입니다. 자세히 볼 수 있는 것은 본인 카드뿐입니다.'}
       </p>
 
       {/*

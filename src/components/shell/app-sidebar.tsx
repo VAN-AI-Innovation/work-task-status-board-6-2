@@ -12,7 +12,7 @@
  *
  * ## 역할에 따라 항목이 갈린다 (T11)
  *
- * 「멤버」는 `canViewMembers(role)`이, 「주간 보고」·「독스 → 배정표」는 `staff-tools.ts`의
+ * 「멤버」는 로그인 여부가, 「주간 보고」·「독스 → 배정표」는 `staff-tools.ts`의
  * 두 함수가 참일 때만 선다 — 뒤의 둘은 **부원에게 없다.** 합류 요청은 항목이 아니라
  * 「멤버」 화면 안에 있다. ⚠ **이것은 권한이 아니다.**
  * 실제 방어는 그 화면들이 `notFound()`를 내는 것과 그 아래 DB 함수들이고, 여기서
@@ -30,7 +30,6 @@ import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
-import { canViewMembers } from '@/lib/domain/member-admin';
 import { canReadWeeklyReport, canSeeOrgDashboard, canUseDocExtract } from '@/lib/domain/staff-tools';
 import { visibleTeamKeys } from '@/lib/domain/team-visibility';
 import { teamLabel, toTeamSlug } from '@/lib/view/team-slug';
@@ -218,10 +217,13 @@ function navItemsFor(role: ViewerRole | null, teamId: TeamKey | null, hasSession
   /*
    * 「멤버」 하나다. 예전에는 「팀원 요청」이 그 위에 따로 섰는데, 그 화면을 조직도 아래로
    * 옮겼다 — 승인한 사람이 곧바로 트리에 나타나므로 둘을 나눠 두면 결과를 보려고 화면을
-   * 옮겨야 했다 (`members/page.tsx`). 팀장에게도 선다: 보는 것과 바꾸는 것은 다른
-   * 질문이다 (`canViewMembers` · `0007`)
+   * 옮겨야 했다 (`members/page.tsx`).
+   *
+   * **세 역할이 다 본다** (`0016`). 보는 것과 여는 것이 다른 질문이라서다: 부원도 조직도는
+   * 보되 상세 패널은 자기 것만 열린다 (`canOpenMemberPanel`). 로그인하지 않은 데모에는
+   * 그릴 조직이 없어 항목도 없다.
    */
-  if (role !== null && canViewMembers(role)) {
+  if (role !== null) {
     items.push({ href: '/members', label: '멤버', icon: <MembersIcon /> });
   }
 

@@ -1,7 +1,7 @@
 /**
- * 이 화면이 지는 판단은 넷이다 — **팀장·부원에게 없는 것처럼 보이는가** · **대기 계정이
- * 여기 들어오지 못하는가** · **트리를 순수 함수에서 받아 오는가**(화면이 다시 묶지 않는다) ·
- * **읽지 못한 것을 빈 트리로 접지 않는가.**
+ * 이 화면이 지는 판단은 넷이다 — **누구의 카드가 눌리는가**(부원은 자기 것뿐이다) ·
+ * **대기 계정이 여기 들어오지 못하는가** · **트리를 순수 함수에서 받아 오는가**(화면이
+ * 다시 묶지 않는다) · **읽지 못한 것을 빈 트리로 접지 않는가.**
  *
  * DOM 없이 서버 컴포넌트가 돌려준 엘리먼트 트리를 훑는다 (`src/app/team/requests/page.test.ts`와
  * 같은 방식이고 이유도 같다).
@@ -84,11 +84,16 @@ function props(searchParams: Record<string, string | string[]> = {}) {
   return { params: Promise.resolve({}), searchParams: Promise.resolve(searchParams) };
 }
 
-function viewer(role: Viewer['role'], teamId: Viewer['teamId'] = null): SessionOutcome {
+function viewer(
+  role: Viewer['role'],
+  teamId: Viewer['teamId'] = null,
+  /** 「자기 자신인가」를 재는 테스트는 이 값이 명부 행의 `user_id`와 같아야 한다 */
+  userId = 'user-1'
+): SessionOutcome {
   return {
     status: 'ok',
     viewer: {
-      userId: 'user-1',
+      userId,
       email: `${role}@van.test`,
       role,
       teamId,
@@ -132,39 +137,19 @@ beforeEach(() => {
 });
 
 describe('/members — 누가 여는가', () => {
-  it('부원에게는 없는 것처럼 보인다 — 403이 아니라 404다', async () => {
-    session = viewer('member');
-
-    await expect(MembersPage(props())).rejects.toMatchObject({
-      digest: 'NEXT_HTTP_ERROR_FALLBACK;404',
-    });
-  });
-
   /*
-   * 예전에는 팀장에게도 404였다. **지금은 열린다** — `member_directory()`가 `lead`를 받고
-   * (`0007`) 남의 팀 사람의 이메일만 null로 내려보내므로, 팀장은 조직도를 보되 남의 팀
-   * 개인정보는 못 본다. 바꾸는 것은 여전히 대표·실장뿐이다(`canManageMembers`).
+   * 예전에는 팀장에게도, 부원에게도 404였다. **지금은 셋 다 열린다** — 「우리 조직에 누가
+   * 있는가」는 부원에게도 필요한 사실이고, 막아야 할 것은 화면이 아니라 **패널과 이메일**이다
+   * (`0016` · 아래 「패널을 여는 범위」).
    */
-  it('팀장에게는 열린다 — 보는 것과 바꾸는 것이 다른 질문이다', async () => {
-    session = viewer('lead', 'edit');
+  it('세 역할이 다 연다', async () => {
+    for (const role of ['admin', 'lead', 'member'] as const) {
+      session = viewer(role, 'edit');
+      rpcCalls = [];
 
-    await expect(MembersPage(props())).resolves.toBeTruthy();
-    expect(rpcCalls).toContain('member_directory');
-  });
-
-  it('404를 내기 전에는 명부를 부르지도 않는다', async () => {
-    session = viewer('member');
-
-    await expect(MembersPage(props())).rejects.toThrow();
-    expect(rpcCalls).toEqual([]);
-  });
-
-  it('로그인한 부원은 `?as=admin`으로도 못 연다 — 세션이 이긴다', async () => {
-    session = viewer('member');
-
-    await expect(MembersPage(props({ as: 'admin' }))).rejects.toMatchObject({
-      digest: 'NEXT_HTTP_ERROR_FALLBACK;404',
-    });
+      await expect(MembersPage(props())).resolves.toBeTruthy();
+      expect(rpcCalls).toContain('member_directory');
+    }
   });
 
   it('승인을 기다리는 계정은 `/pending`으로 간다', async () => {
@@ -287,12 +272,46 @@ describe('/members — 합류 요청', () => {
     expect(rpcCalls).toContain('pending_requests');
   });
 
-  it('부원은 404라 요청을 부르지도 않는다', async () => {
-    session = viewer('member');
+  it('부원에게는 목록 자체가 없다 — 화면은 열리지만 요청을 부르지 않는다', async () => {
+    session = viewer('member', 'edit');
+    requestRows = [REQUEST];
 
-    await expect(MembersPage(props())).rejects.toMatchObject({
-      digest: 'NEXT_HTTP_ERROR_FALLBACK;404',
-    });
+    const tree = await MembersPage(props());
+    expect(findComponent(tree, 'MemberTreeView')).not.toBeNull();
+    expect(findComponent(tree, 'JoinRequestList')).toBeNull();
     expect(rpcCalls).not.toContain('pending_requests');
+  });
+});
+
+/**
+ * **부원이 늘어난 자리에서 좁아지는 것.** 조직도는 다 보되 상세 패널은 자기 것만 열린다.
+ *
+ * 판정 자체는 `member-admin.test.ts`가 잰다. 여기서 재는 것은 **화면이 그 판정을 쓰는가** —
+ * 주소를 직접 쳐도 남의 패널이 서지 않아야 한다.
+ */
+describe('/members — 패널을 여는 범위', () => {
+  const SELF = `${MEMBER_ID}:`;
+  const OTHER = `${LEAD_ID}:`;
+
+  function panelOf(tree: unknown) {
+    return findComponent(tree, 'MemberPanel');
+  }
+
+  it('부원은 자기 카드로 패널을 연다', async () => {
+    session = viewer('member', 'edit', MEMBER_ID);
+
+    expect(panelOf(await MembersPage(props({ member: SELF })))).not.toBeNull();
+  });
+
+  it('부원은 같은 팀 팀장의 패널도 못 연다 — 주소를 직접 쳐도 마찬가지다', async () => {
+    session = viewer('member', 'edit', MEMBER_ID);
+
+    expect(panelOf(await MembersPage(props({ member: OTHER })))).toBeNull();
+  });
+
+  it('팀장은 같은 팀 부원의 패널을 연다 — 문턱이 서로 다르다', async () => {
+    session = viewer('lead', 'edit', LEAD_ID);
+
+    expect(panelOf(await MembersPage(props({ member: SELF })))).not.toBeNull();
   });
 });
