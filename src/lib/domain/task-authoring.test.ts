@@ -12,6 +12,7 @@ import {
   canDeleteTask,
   canEditTaskDetails,
   creatableTeams,
+  lockedStageFields,
   lockedTaskFields,
 } from '@/lib/domain/task-authoring';
 import type { MemberRecord } from '@/types/auth';
@@ -153,5 +154,25 @@ describe('assignableMembers', () => {
 
   it('그 팀에 아무도 없으면 빈 배열이다', () => {
     expect(assignableMembers(roster, 'marketing')).toEqual([]);
+  });
+});
+
+/**
+ * 단계 한 줄에서 부원이 못 고치는 칸. **`MEMBER_LOCKED_FIELDS`와 같은 선을 긋는다** —
+ * 계획일은 조직이 정한 일정이고 실제일은 당사자가 한 일의 사실이다.
+ */
+describe('lockedStageFields', () => {
+  it('팀장·어드민은 빈 목록이다', () => {
+    expect(lockedStageFields('admin')).toEqual([]);
+    expect(lockedStageFields('lead')).toEqual([]);
+  });
+
+  it('부원은 계획일만 잠긴다 — 실제일·확인 상태·내용은 연다', () => {
+    expect(lockedStageFields('member')).toEqual(['plannedDate']);
+  });
+
+  it('업무 쪽 마감과 같은 선이다 — 자기 일정을 자기가 미루지 않는다', () => {
+    expect(lockedTaskFields('member')).toContain('dueAt');
+    expect(lockedStageFields('member')).toContain('plannedDate');
   });
 });

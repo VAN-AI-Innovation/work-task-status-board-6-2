@@ -10,7 +10,7 @@
  * 그 판단이 `lastProgressAt`을 움직이고, 그것이 「장기 미갱신」 알림의 근거가 된다.
  */
 
-import type { MemberRecord, TaskCreate, TaskPatch } from '@/types/auth';
+import type { MemberRecord, TaskCreate, TaskPatch, TaskStagePatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
 import type { EnumOptionEntry } from '@/types/sheet';
 import type { Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
@@ -171,6 +171,26 @@ export interface TaskRepository {
    * DB 쪽은 RLS가 진다. 저장소까지 세 곳이 되면 하나만 고쳐지는 날이 온다.
    */
   updateTask(id: string, patch: TaskPatch, updatedAt: string): Promise<Task | null>;
+
+  /**
+   * 단계 줄 여럿의 **부분 수정** (`PATCH /api/tasks/[id]`의 `stages`). 편집팀 탭의 단계
+   * 타임라인을 화면에서 그 자리에서 고치는 경로다.
+   *
+   * `taskId`를 함께 받는 것이 요점이다 — **그 업무의 단계만 바꾼다.** id만 받으면 남의 업무의
+   * 단계를 고치는 요청이 저장소까지 그대로 내려가고, 그때 막을 것은 RLS 하나뿐이다
+   * (데모·폴백에는 그것도 없다).
+   *
+   * 돌려주는 것은 **실제로 바뀐 줄**이다. 개수가 요청보다 적으면 그중에 이 업무의 것이 아닌
+   * id가 있거나 정책이 막은 것이고, 그 판단은 호출자가 한다 — `updateTask`가 0행을 `null`로
+   * 답하는 것과 같은 규율이다(못 바꾼 것을 바꿨다고 답하지 않는다).
+   *
+   * `updatedAt`을 받지 않는다: `task_stages`에는 감사 컬럼이 없다 (`0001_init.sql`).
+   * `task_events`도 남기지 않는다 — 이벤트는 **업로드 diff의 산물**이다 (`updateTask`와 같다).
+   *
+   * ⚠ **다음 업로드가 통째로 되돌린다.** 업로드는 단계를 지우고 다시 넣으므로(`upsertTasks`),
+   *   여기서 고친 값은 시트가 그 단계를 다시 실어 오는 순간 사라진다 (`ADR-001`).
+   */
+  updateStages(taskId: string, patches: readonly TaskStagePatch[]): Promise<TaskStage[]>;
 
   /**
    * 업무 한 건을 **새로 만든다** (`POST /api/tasks`). 시트 업로드가 아니라 사람이 화면에서

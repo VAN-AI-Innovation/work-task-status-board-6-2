@@ -30,7 +30,7 @@ import {
   type UpsertOptions,
   type UpsertResult,
 } from '@/lib/store/task-repository';
-import type { MemberRecord, TaskPatch } from '@/types/auth';
+import type { MemberRecord, TaskPatch, TaskStagePatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
 import type { EnumOptionEntry } from '@/types/sheet';
 import type { Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
@@ -319,8 +319,44 @@ export function createMemoryTaskStore(seed?: {
       };
 
       tasks.push(created);
+      /*
+       * 단계도 **같은 자리에서** 넣는다. 태스크만 만들고 단계를 호출자가 따로 넣게 두면
+       * 그 사이에 「단계 없는 업무」인 상태가 생기고, supabase 쪽은 그 둘이 다른 요청이라
+       * 실패하면 실제로 그 상태로 남는다 (`upsertTasks`가 둘을 함께 다루는 이유와 같다).
+       */
+      for (const stage of input.stages) {
+        stages.push({ ...clone(stage), id: crypto.randomUUID(), taskId: created.id });
+      }
       sortTasks();
       return clone(created);
+    },
+
+    /**
+     * 단계 줄의 부분 수정. **그 업무의 것만** 바꾸고, 바꾼 줄만 돌려준다 (인터페이스 머리말).
+     * 없는 id·남의 업무 id는 조용히 건너뛴다 — 개수 차이로 호출자가 알아본다.
+     */
+    async updateStages(taskId: string, patches: readonly TaskStagePatch[]): Promise<TaskStage[]> {
+      const changed: TaskStage[] = [];
+
+      for (const patch of patches) {
+        const index = stages.findIndex(
+          (stage) => stage.id === patch.id && stage.taskId === taskId,
+        );
+        if (index < 0) continue;
+
+        // 키 없음은 「안 건드린다」다 — `undefined`를 얹으면 있는 값이 지워진다.
+        // `id`는 바꾸는 대상이지 바뀌는 값이 아니라 여기서 건너뛴다
+        const next = { ...stages[index]! };
+        for (const [key, value] of Object.entries(patch)) {
+          if (key === 'id' || value === undefined) continue;
+          (next as Record<string, unknown>)[key] = value;
+        }
+
+        stages[index] = next;
+        changed.push(clone(next));
+      }
+
+      return changed;
     },
 
     /**

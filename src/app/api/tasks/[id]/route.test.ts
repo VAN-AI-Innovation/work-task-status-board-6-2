@@ -13,7 +13,7 @@ import type { TaskRepository } from '@/lib/store/task-repository';
 import { createMemoryUploadStore } from '@/lib/store/upload-record-store';
 import type { ViewerContext } from '@/lib/store/viewer-storage';
 import type { SessionOutcome } from '@/lib/auth/viewer-session';
-import type { TaskPatch, Viewer } from '@/types/auth';
+import type { TaskPatch, TaskStagePatch, Viewer } from '@/types/auth';
 import type { Task } from '@/types/task';
 
 /**
@@ -179,14 +179,23 @@ function handle(readOnly = false): StorageHandle {
   };
 }
 
-/** 세션·저장소를 손으로 짜 넣고 `updateTask` 호출을 기록한다 */
+/** `updateStages`에 실제로 실린 것. 단계 저장이 저장소까지 갔는지 재는 데 쓴다 */
+interface StageCall {
+  taskId: string;
+  patches: readonly TaskStagePatch[];
+}
+
+/** 세션·저장소를 손으로 짜 넣고 `updateTask`·`updateStages` 호출을 기록한다 */
 function stubContext(options: {
   session: SessionOutcome;
   /** `getTask`가 돌려줄 값. RLS가 거른 상태를 흉내 내려면 `null` */
   found?: Task | null;
   /** `updateTask`가 돌려줄 값. DB가 막은 상태를 흉내 내려면 `null` */
   updated?: Task | null;
+  /** `updateStages`가 **바꿨다고** 답할 줄 수. 정책이 막은 상태를 흉내 내려면 0 */
+  stagesChanged?: number;
   readOnly?: boolean;
+  stageCalls?: StageCall[];
 }): UpdateCall[] {
   const calls: UpdateCall[] = [];
   const base = handle(options.readOnly ?? false);
@@ -198,6 +207,23 @@ function stubContext(options: {
     updateTask: async (id, patch, updatedAt) => {
       calls.push({ id, patch, updatedAt });
       return options.updated ?? null;
+    },
+    updateStages: async (taskId, patches) => {
+      options.stageCalls?.push({ taskId, patches });
+      const changed = options.stagesChanged ?? patches.length;
+      // 내용은 재지 않는다 — 개수가 곧 「몇 줄이 실제로 바뀌었나」다 (라우트의 판정 기준)
+      return Array.from({ length: changed }, (_, index) => ({
+        id: patches[index]?.id ?? 'stage',
+        taskId,
+        seq: index,
+        stageKey: 'concept',
+        stageLabel: '단계',
+        plannedDate: null,
+        actualDate: null,
+        content: null,
+        confirmStatus: null,
+        slaDays: null,
+      }));
     },
   };
 
@@ -519,6 +545,142 @@ describe('PATCH /api/tasks/[id] — 성공 응답', () => {
 
     expect(text).not.toContain('"raw"');
     expect(text).not.toContain('업무명');
+  });
+});
+
+/**
+ * 단계 (`stages`). **업무 칸과 같은 요청에** 실린다 — 화면의 「저장」이 하나이기 때문이다
+ * (`task-patch-schema.ts` 머리말).
+ *
+ * 여기서 재는 것은 넷이다 — 저장소까지 그대로 가는가 · 업무 칸 없이도 되는가 ·
+ * **부원이 계획일을 못 옮기는가**(`lockedStageFields`) · **못 바꾼 줄을 성공으로 답하지
+ * 않는가.**
+ */
+describe('PATCH /api/tasks/[id] — 단계', () => {
+  const STAGE_A = 'bbbbbbbb-0000-4000-8000-000000000001';
+  const STAGE_B = 'bbbbbbbb-0000-4000-8000-000000000002';
+
+  it('단계만 보내도 200이고, 업무 칸은 건드리지 않는다', async () => {
+    const stageCalls: StageCall[] = [];
+    const calls = stubContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: makeTask(),
+      stageCalls,
+    });
+
+    const res = await patch(TASK_ID, {
+      stages: [{ id: STAGE_A, actualDate: '2026-08-30' }],
+    });
+
+    expect(res.status).toBe(200);
+    expect(stageCalls).toEqual([
+      { taskId: TASK_ID, patches: [{ id: STAGE_A, actualDate: '2026-08-30' }] },
+    ]);
+    // 빈 패치로 `updated_at`만 밀어 올리지 않는다
+    expect(calls).toEqual([]);
+  });
+
+  it('업무 칸과 함께 보내면 둘 다 간다 — 요청 하나가 곧 저장 하나다', async () => {
+    const stageCalls: StageCall[] = [];
+    const calls = stubContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: makeTask(),
+      updated: makeTask({ progress: 60 }),
+      stageCalls,
+    });
+
+    expect(
+      (await patch(TASK_ID, { progress: 60, stages: [{ id: STAGE_A, content: '초안' }] })).status
+    ).toBe(200);
+    expect(calls[0].patch).toEqual({ progress: 60 });
+    expect(stageCalls[0].patches).toEqual([{ id: STAGE_A, content: '초안' }]);
+  });
+
+  it('부원은 계획일을 옮기지 못한다 — 업무의 마감과 같은 선이다', async () => {
+    const stageCalls: StageCall[] = [];
+    stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      stageCalls,
+    });
+
+    const res = await patch(TASK_ID, { stages: [{ id: STAGE_A, plannedDate: '2026-09-01' }] });
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('FORBIDDEN');
+    // 문 앞에서 막는다 — 저장소까지 가지 않는다
+    expect(stageCalls).toEqual([]);
+  });
+
+  it('부원도 실제일·확인 상태·내용은 고친다', async () => {
+    const stageCalls: StageCall[] = [];
+    stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      stageCalls,
+    });
+
+    expect(
+      (
+        await patch(TASK_ID, {
+          stages: [{ id: STAGE_A, actualDate: '2026-08-30', confirmStatus: 'true', content: '완료' }],
+        })
+      ).status
+    ).toBe(200);
+    expect(stageCalls).toHaveLength(1);
+  });
+
+  it('한 줄이라도 잠긴 칸이 있으면 요청 전체를 막는다 — 일부 반영은 더 나쁘다', async () => {
+    const stageCalls: StageCall[] = [];
+    stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      stageCalls,
+    });
+
+    const res = await patch(TASK_ID, {
+      stages: [
+        { id: STAGE_A, content: '괜찮은 줄' },
+        { id: STAGE_B, plannedDate: '2026-09-01' },
+      ],
+    });
+
+    expect(res.status).toBe(403);
+    expect(stageCalls).toEqual([]);
+  });
+
+  /**
+   * **못 바꾼 것을 바꿨다고 답하지 않는다.** 저장소는 「이 업무의 단계가 아니다」와
+   * 「정책이 막았다」를 똑같이 0행으로 돌려주고, 둘 다 여기서는 403이다 (`S6`).
+   */
+  it('저장소가 바꾼 줄이 요청보다 적으면 403이다', async () => {
+    stubContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: makeTask(),
+      stagesChanged: 1,
+    });
+
+    const res = await patch(TASK_ID, {
+      stages: [
+        { id: STAGE_A, content: 'a' },
+        { id: STAGE_B, content: 'b' },
+      ],
+    });
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('FORBIDDEN');
+  });
+
+  it('보이지 않는 업무면 단계도 손대지 않는다 — 대상 확인이 먼저다', async () => {
+    const stageCalls: StageCall[] = [];
+    stubContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: null,
+      stageCalls,
+    });
+
+    expect((await patch(TASK_ID, { stages: [{ id: STAGE_A, content: 'x' }] })).status).toBe(403);
+    expect(stageCalls).toEqual([]);
   });
 });
 

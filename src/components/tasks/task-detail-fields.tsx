@@ -4,6 +4,17 @@
  * 업무 패널의 **기본 표와 팀 전용 표**. 읽을 때는 라벨-값 목록이고, [수정하기]를 누르면
  * **같은 표의 값 칸이 그 자리에서 입력칸으로 바뀐다.**
  *
+ * ## 표마다 자기 [수정하기]를 갖는다
+ *
+ * 예전에는 「기본」의 버튼 하나가 두 표를 함께 열었다. 그래서 팀 전용 칸 하나를 고치려는
+ * 사람이 **자기와 상관없는 열세 칸까지 입력칸으로 바뀐 화면**을 보게 됐고, 무엇보다 촬영팀은
+ * 그 칸이 쉰다섯이라 열자마자 화면이 통째로 폼이 됐다. 팀 전용 칸이 있는 팀에게는 그쪽이
+ * 매일 고치는 자리인데, 그 자리로 가는 입구가 다른 표의 제목 줄에 있었던 것이다.
+ *
+ * 지금은 표마다 버튼이 서고 **한 번에 한 표만 열린다.** 저장은 여전히 하나다 — 열린 표의
+ * 바뀐 칸만 실린다(아래 「원래 값과 비교해」). 편집팀의 단계 표도 같은 규칙을 따르지만 그쪽은
+ * 대상이 `task_stages`라 컴포넌트가 다르다 (`task-stage-fields.tsx`).
+ *
  * ## 왜 별도 폼이 아니라 표인가
  *
  * 예전에는 표 아래에 열두 칸짜리 폼이 따로 열렸다. 그래서 고치는 사람이 **위의 표와 아래의
@@ -73,6 +84,9 @@ type TextKey =
 
 type Draft = Record<TextKey, string>;
 
+/** 자기 [수정하기]를 가진 표. 한 번에 하나만 열린다 (머리말) */
+type Section = 'basic' | 'extras';
+
 /** 서버 값 → 폼 값. `0`은 빈칸이 아니다 — falsy 검사를 쓰면 진행률 0%가 화면에서 사라진다 */
 function toDraft(task: TaskResponse): Draft {
   return {
@@ -125,7 +139,8 @@ export function TaskDetailFields({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [editing, setEditing] = useState(false);
+  /** 지금 열린 표. `null`이면 둘 다 읽기다 — **동시에 둘을 열지 않는다** (머리말) */
+  const [editing, setEditing] = useState<Section | null>(null);
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -161,7 +176,7 @@ export function TaskDetailFields({
   const set = (key: TextKey, value: string): void =>
     setDraft((prev) => ({ ...prev, [key]: value }));
   /** 그 칸을 지금 고칠 수 있는가. 잠긴 칸은 수정 중에도 읽기다 */
-  const open = (key: TextKey): boolean => editing && !lockedFields.includes(key);
+  const open = (key: TextKey): boolean => editing === 'basic' && !lockedFields.includes(key);
 
   function cancel(): void {
     setDraft(original);
@@ -169,7 +184,7 @@ export function TaskDetailFields({
     setOwner(currentOwner);
     setCoOwners(currentCoOwners);
     setMessage(null);
-    setEditing(false);
+    setEditing(null);
   }
 
   async function save(): Promise<void> {
@@ -255,7 +270,7 @@ export function TaskDetailFields({
       }
 
       // 값을 여기서 갈아 끼우지 않는다 — 서버 컴포넌트가 다시 그린 것이 진실이다
-      setEditing(false);
+      setEditing(null);
       startTransition(() => router.refresh());
     } catch {
       setMessage(UNREACHABLE_MESSAGE);
@@ -280,40 +295,20 @@ export function TaskDetailFields({
       <section>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 className="text-brand text-sm font-semibold">기본</h3>
-          {canEdit &&
-            (editing ? (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void save()}
-                  disabled={busy}
-                  className={`bg-brand text-canvas rounded px-3 py-1 text-xs ${
-                    busy ? 'cursor-not-allowed opacity-50' : 'hover:bg-brand-strong'
-                  }`}
-                >
-                  {busy ? '저장 중…' : '저장'}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancel}
-                  disabled={busy}
-                  className="border-line text-ink hover:border-brand hover:text-brand rounded border px-3 py-1 text-xs"
-                >
-                  취소
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="border-line text-ink hover:border-brand hover:text-brand rounded border px-3 py-1 text-xs"
-              >
-                수정하기
-              </button>
-            ))}
+          {canEdit && (
+            <EditControls
+              open={editing === 'basic'}
+              /* 다른 표가 열려 있으면 이 버튼은 서지 않는다 — 두 폼이 같은 저장을 다툰다 */
+              hidden={editing === 'extras'}
+              busy={busy}
+              onOpen={() => setEditing('basic')}
+              onSave={() => void save()}
+              onCancel={cancel}
+            />
+          )}
         </div>
 
-        {editing && (
+        {editing === 'basic' && (
           <p className="text-ink-muted mt-1 text-xs">
             고친 값은 다음 시트 업로드가 시트의 값으로 되돌립니다.
             {lockedFields.length > 0 &&
@@ -323,10 +318,10 @@ export function TaskDetailFields({
 
         <dl className="mt-2">
           {/* 업무명은 읽을 때 패널 머리말이 크게 그린다 — 고칠 때만 줄로 선다 */}
-          {editing && <FieldRow label="업무명">{open('title') ? textCell('title') : <Text value={task.title} />}</FieldRow>}
+          {editing === 'basic' && <FieldRow label="업무명">{open('title') ? textCell('title') : <Text value={task.title} />}</FieldRow>}
 
           <FieldRow label="담당자">
-            {editing && canAssign ? (
+            {editing === 'basic' && canAssign ? (
               <select
                 value={owner}
                 onChange={(event) => setOwner(event.target.value)}
@@ -346,7 +341,7 @@ export function TaskDetailFields({
           </FieldRow>
 
           <FieldRow label="공동 담당">
-            {editing && canAssign ? (
+            {editing === 'basic' && canAssign ? (
               <div className="flex flex-wrap gap-x-3 gap-y-1">
                 {/* 주 담당은 목록에서 뺀다 — 한 사람이 두 칸에 설 수 없는 것은 규칙이지 상태가 아니다 */}
                 {ownerCandidates
@@ -381,7 +376,7 @@ export function TaskDetailFields({
             )}
           </FieldRow>
 
-          {editing && canAssign && orphanNames.length > 0 && (
+          {editing === 'basic' && canAssign && orphanNames.length > 0 && (
             <p className="text-warn py-1.5 text-xs">
               명부에서 찾지 못한 공동 담당 {orphanNames.length}명은 저장하면 사라집니다.
             </p>
@@ -481,65 +476,92 @@ export function TaskDetailFields({
           </FieldRow>
         </dl>
 
-        {message !== null && <p className="text-late mt-2 text-sm">{message}</p>}
+        {editing === 'basic' && message !== null && (
+          <p className="text-late mt-2 text-sm">{message}</p>
+        )}
       </section>
 
       <section>
-        <h3 className="text-brand text-sm font-semibold">
-          팀 전용 필드
-          <span className="text-ink-muted ml-2 text-xs font-normal tabular-nums">
-            {cells.length}칸
-          </span>
-        </h3>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-brand text-sm font-semibold">
+            팀 전용 필드
+            <span className="text-ink-muted ml-2 text-xs font-normal tabular-nums">
+              {cells.length}칸
+            </span>
+          </h3>
+          {/*
+           * **고칠 칸이 하나도 없으면 버튼도 없다.** 편집팀이 그 경우다(팀 전용 칸이 아니라
+           * 단계에 데이터가 있다) — 눌러 봐야 「고칠 수 있는 칸이 없습니다」만 나오는 버튼을
+           * 두지 않는다.
+           */}
+          {canEdit && extraFields.length > 0 && (
+            <EditControls
+              open={editing === 'extras'}
+              hidden={editing === 'basic'}
+              busy={busy}
+              onOpen={() => setEditing('extras')}
+              onSave={() => void save()}
+              onCancel={cancel}
+            />
+          )}
+        </div>
+
+        {editing === 'extras' && (
+          <p className="text-ink-muted mt-1 text-xs">
+            고친 값은 다음 시트 업로드가 시트의 값으로 되돌립니다. 연락처·계정이 든 칸과 링크
+            칸은 이 목록에 서지 않습니다.
+          </p>
+        )}
 
         {/*
          * 읽을 때는 **전량이다** — 개수를 자르면 70컬럼 팀의 데이터가 화면에서 사라진다.
          * 고칠 때는 고칠 수 있는 칸만 선다: 민감 키와 하이퍼링크 칸은 빠져 있고
          * (`extras-edit.ts`), 그 값들은 저장에도 영향받지 않는다.
          */}
-        {editing ? (
-          extraFields.length === 0 ? (
-            <p className="text-ink-muted mt-2 text-xs">고칠 수 있는 팀 전용 칸이 없습니다</p>
-          ) : (
-            <dl className="mt-2">
-              {extraFields.map((field) => (
-                <FieldRow key={field.key} label={field.key}>
-                  {field.options === null ? (
-                    <input
-                      type="text"
-                      value={extras[field.key] ?? ''}
-                      onChange={(event) =>
-                        setExtras((prev) => ({ ...prev, [field.key]: event.target.value }))
-                      }
-                      disabled={busy}
-                      className={FIELD}
-                    />
-                  ) : (
-                    <select
-                      value={extras[field.key] ?? ''}
-                      onChange={(event) =>
-                        setExtras((prev) => ({ ...prev, [field.key]: event.target.value }))
-                      }
-                      disabled={busy}
-                      className={FIELD}
-                    >
-                      <option value="">비움</option>
-                      {field.options.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                      {/* 시트에 있던 값이 목록에 없을 수 있다 */}
-                      {(extras[field.key] ?? '') !== '' &&
-                        !field.options.includes(extras[field.key]!) && (
-                          <option value={extras[field.key]}>{extras[field.key]} (시트 값)</option>
-                        )}
-                    </select>
-                  )}
-                </FieldRow>
-              ))}
-            </dl>
-          )
+        {editing === 'extras' ? (
+          <dl className="mt-2">
+            {extraFields.map((field) => (
+              <FieldRow key={field.key} label={field.key}>
+                {field.options === null ? (
+                  /*
+                   * 날짜·시각 칸은 **그 입력칸을 준다** (`extras-edit.ts`). 자유 입력으로 두면
+                   * 사람이 `7/28`이라고 적고, 그 값은 시트의 `YYYY-MM-DD`와 다른 모양으로
+                   * 저장돼 정렬도 비교도 되지 않는다.
+                   */
+                  <input
+                    type={field.kind}
+                    value={extras[field.key] ?? ''}
+                    onChange={(event) =>
+                      setExtras((prev) => ({ ...prev, [field.key]: event.target.value }))
+                    }
+                    disabled={busy}
+                    className={field.kind === 'text' ? FIELD : `${FIELD} tabular-nums`}
+                  />
+                ) : (
+                  <select
+                    value={extras[field.key] ?? ''}
+                    onChange={(event) =>
+                      setExtras((prev) => ({ ...prev, [field.key]: event.target.value }))
+                    }
+                    disabled={busy}
+                    className={FIELD}
+                  >
+                    <option value="">비움</option>
+                    {field.options.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                    {/* 시트에 있던 값이 목록에 없을 수 있다 */}
+                    {(extras[field.key] ?? '') !== '' &&
+                      !field.options.includes(extras[field.key]!) && (
+                        <option value={extras[field.key]}>{extras[field.key]} (시트 값)</option>
+                      )}
+                  </select>
+                )}
+              </FieldRow>
+            ))}
+          </dl>
         ) : cells.length === 0 ? (
           <p className="text-ink-muted mt-2 text-xs">팀 전용 필드가 없습니다</p>
         ) : (
@@ -565,8 +587,74 @@ export function TaskDetailFields({
             ))}
           </dl>
         )}
+
+        {/* 실패 문구는 **누른 버튼 옆에** 선다 — 두 표가 각자 저장하므로 자리도 각자다 */}
+        {editing === 'extras' && message !== null && (
+          <p className="text-late mt-2 text-sm">{message}</p>
+        )}
       </section>
     </>
+  );
+}
+
+/**
+ * 표 하나의 [수정하기] / [저장]·[취소]. **판단을 들고 있지 않다** — 열려 있는지도, 누를 수
+ * 있는지도 호출자가 정한다.
+ *
+ * `hidden`은 「다른 표가 열려 있다」다. `disabled`가 아니라 아예 그리지 않는 이유는, 눌러도
+ * 아무 일이 없는 버튼이 고장으로 읽히기 때문이다 — 지금 할 수 있는 일은 열린 표를 저장하거나
+ * 취소하는 것뿐이고, 그 두 버튼이 화면에 이미 서 있다.
+ */
+function EditControls({
+  open,
+  hidden,
+  busy,
+  onOpen,
+  onSave,
+  onCancel,
+}: {
+  open: boolean;
+  hidden: boolean;
+  busy: boolean;
+  onOpen: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+}): React.ReactNode {
+  if (open) {
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={busy}
+          className={`bg-brand text-canvas rounded px-3 py-1 text-xs ${
+            busy ? 'cursor-not-allowed opacity-50' : 'hover:bg-brand-strong'
+          }`}
+        >
+          {busy ? '저장 중…' : '저장'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="border-line text-ink hover:border-brand hover:text-brand rounded border px-3 py-1 text-xs"
+        >
+          취소
+        </button>
+      </div>
+    );
+  }
+
+  if (hidden) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="border-line text-ink hover:border-brand hover:text-brand rounded border px-3 py-1 text-xs"
+    >
+      수정하기
+    </button>
   );
 }
 

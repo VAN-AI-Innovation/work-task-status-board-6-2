@@ -47,9 +47,10 @@ import { StatusBadge } from '@/components/tasks/status-badge';
 import { ApprovalActions } from '@/components/alerts/approval-actions';
 import { TaskDetailFields, type OwnerCandidate } from '@/components/tasks/task-detail-fields';
 import { TaskDeleteButton } from '@/components/tasks/task-delete-button';
+import { TaskStageFields } from '@/components/tasks/task-stage-fields';
 import type { ExtraField } from '@/lib/view/extras-edit';
 import { safeHref, type ExtraCell } from '@/lib/view/extras-render';
-import { EMPTY, formatDate } from '@/lib/view/kpi-format';
+import { EMPTY } from '@/lib/view/kpi-format';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { TaskResponse } from '@/types/api';
 import type { TaskStage } from '@/types/task';
@@ -116,16 +117,6 @@ function Row({
   );
 }
 
-/**
- * 실제일이 계획일보다 늦은 단계만 **그 날짜 한 칸**이 앰버다. 행 전체를 칠하면 지연 빨강과
- * 함께 화면에 색이 두 뜻으로 존재하게 된다 (`UI_GUIDE.md`「눈에 띄는 것은 문제뿐이다」).
- */
-function isLate(stage: TaskStage): boolean {
-  return (
-    stage.plannedDate !== null && stage.actualDate !== null && stage.actualDate > stage.plannedDate
-  );
-}
-
 export function TaskPanel({
   task,
   stages,
@@ -140,6 +131,7 @@ export function TaskPanel({
   ownerCandidates,
   statusOptions,
   lockedFields,
+  lockedStageFields,
 }: {
   task: TaskResponse;
   stages: TaskStage[];
@@ -178,6 +170,11 @@ export function TaskPanel({
   statusOptions: readonly string[];
   /** 이 역할이 못 고치는 칸 (`lockedTaskFields`). 페이지가 계산해 넘긴다 */
   lockedFields: readonly string[];
+  /**
+   * 단계에서 못 고치는 칸 (`lockedStageFields`). **업무 쪽과 목록이 다르다** — 그쪽은
+   * 마감·우선순위 …이고 여기는 계획일 하나다. 같은 선을 다른 표에 그은 것이라 값도 따로 온다.
+   */
+  lockedStageFields: readonly string[];
 }) {
   const router = useRouter();
   const closeRef = useRef<HTMLAnchorElement>(null);
@@ -302,39 +299,13 @@ export function TaskPanel({
             </p>
           )}
 
-          <section>
-            <h3 className="text-brand text-sm font-semibold">단계</h3>
-            {stages.length === 0 ? (
-              <p className="text-ink-muted mt-2 text-xs">단계 정보가 없습니다</p>
-            ) : (
-              <ol className="mt-2 space-y-3">
-                {stages.map((stage) => (
-                  <li key={stage.id} className="border-line rounded border p-3">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="text-ink text-sm break-words">{stage.stageLabel}</span>
-                      <span className="text-ink-faint text-xs whitespace-nowrap tabular-nums">
-                        {stage.slaDays === null ? EMPTY : `SLA ${stage.slaDays}일`}
-                      </span>
-                    </div>
-                    <dl className="mt-2">
-                      <Row label="계획일" value={formatDate(stage.plannedDate)} />
-                      <div className="border-line/60 grid grid-cols-[256px_1fr] gap-3 border-b py-1.5 text-sm">
-                        <dt className="text-ink-muted text-xs">실제일</dt>
-                        {/* 계획보다 늦은 **날짜 한 칸**만 색을 갖는다 */}
-                        <dd
-                          className={`tabular-nums ${isLate(stage) ? 'text-warn' : 'text-ink-body'}`}
-                        >
-                          {formatDate(stage.actualDate)}
-                        </dd>
-                      </div>
-                      <Row label="확인 상태" value={text(stage.confirmStatus)} />
-                      <Row label="내용" value={text(stage.content)} />
-                    </dl>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
+          <TaskStageFields
+            taskId={task.id}
+            stages={stages}
+            /* 기본 표와 **같은 값**이다 — 한 업무를 고칠 수 있으면 그 단계도 고친다 */
+            canEdit={canEdit}
+            lockedFields={lockedStageFields}
+          />
 
           <section>
             <h3 className="text-brand text-sm font-semibold">출처</h3>

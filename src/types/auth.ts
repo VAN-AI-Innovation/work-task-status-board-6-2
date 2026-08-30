@@ -95,6 +95,25 @@ export interface TaskPatch {
 }
 
 /**
+ * 단계 한 줄의 수정 (`PATCH /api/tasks/[id]`의 `stages`). **`TaskPatch`와 나란한 자리이고
+ * 같은 규칙을 따른다** — 키 없음은 「안 건드린다」, `null`은 「비운다」다.
+ *
+ * 고칠 수 있는 칸이 넷뿐인 것이 요점이다. `seq`·`stageKey`·`stageLabel`·`slaDays`는 **시트가
+ * 정하는 구조**라 화면에서 손대지 않는다 — 단계의 이름과 순서를 사람이 바꾸면 그 업무의
+ * 타임라인이 시트의 것과 다른 물건이 되고, 다음 업로드가 통째로 되돌린다(단계는 교체다).
+ *
+ * `id`는 **바꾸는 대상**이지 바뀌는 값이 아니다.
+ */
+export interface TaskStagePatch {
+  /** `task_stages.id`. 그 업무의 단계가 아니면 라우트가 거부한다 */
+  id: string;
+  plannedDate?: string | null;
+  actualDate?: string | null;
+  confirmStatus?: string | null;
+  content?: string | null;
+}
+
+/**
  * `members` 한 행. **시트의 담당자 이름과 로그인 계정을 잇는 표다.**
  *
  * `types/task.ts`가 아니라 여기 있는 이유: 업무가 아니라 **신원**이고,
@@ -138,4 +157,24 @@ export interface TaskCreate {
   ownerMemberId: string | null;
   ownerNameRaw: string | null;
   coOwnerNames: string[];
+  /**
+   * 세울 단계 줄. **뼈대는 서버가 정한다** — 클라이언트는 `stageKey`와 값 넷만 보내고,
+   * 라우트가 `stageTemplateOf`에서 `stageLabel`·`seq`·`slaDays`를 채운다. 그러지 않으면
+   * 웹에서 만든 업무의 타임라인이 시트의 것과 다른 구조를 갖게 된다.
+   *
+   * 빈 배열이면 단계가 없는 업무다 — 촬영·마케팅팀이 그렇다.
+   */
+  stages: TaskStageSeed[];
+}
+
+/** 만들 때 넣는 단계 한 줄. `TaskStage`에서 저장소가 정하는 `id`·`taskId`만 뺀 모양이다 */
+export interface TaskStageSeed {
+  seq: number;
+  stageKey: string;
+  stageLabel: string;
+  slaDays: number | null;
+  plannedDate: string | null;
+  actualDate: string | null;
+  confirmStatus: string | null;
+  content: string | null;
 }

@@ -13,6 +13,7 @@ import {
   assignableMembers,
   canAssignOwner,
   canDeleteTask,
+  lockedStageFields,
   lockedTaskFields,
 } from '@/lib/domain/task-authoring';
 import { taskEditable } from '@/lib/domain/viewer-scope';
@@ -162,11 +163,23 @@ export async function PATCH(
     if (locked.length > 0) return errorResponse('FORBIDDEN');
 
     /*
+     * 5-0-1. **단계에도 같은 선이 있다.** 부원은 계획일을 못 옮긴다 (`lockedStageFields`) —
+     *        업무의 `dueAt`을 잠그는 근거 그대로다. 한 줄이라도 걸리면 요청 전체를 막는다:
+     *        일부만 반영하면 사용자가 무엇이 저장됐는지 화면에서 알 수 없다.
+     */
+    const lockedStage = lockedStageFields(viewer.role);
+    if (
+      patch.stages?.some((stage) => lockedStage.some((field) => field in stage)) === true
+    ) {
+      return errorResponse('FORBIDDEN');
+    }
+
+    /*
      * 5-2. 담당자를 손대는 요청만 역할을 한 번 더 본다 (파일 머리말). **이름을 여기서 붙인다** —
      *      후보를 `assignableMembers`로 좁히므로 팀 밖 구성원은 `undefined`가 되어 403이다.
      *      「없는 id」와 「팀 밖 id」를 갈라 답하지 않는 것은 이 라우트의 규율 그대로다 (`S6`).
      */
-    const { ownerMemberId, coOwnerMemberIds, extras, ...rest } = patch;
+    const { ownerMemberId, coOwnerMemberIds, extras, stages, ...rest } = patch;
     let effective: TaskPatch = rest;
 
     /*
@@ -220,7 +233,30 @@ export async function PATCH(
 
     // 6. 시계는 라우트가 읽어 넘긴다 — `lib` 안에서 시간을 읽지 않는다 (CLAUDE.md CRITICAL)
     const now = new Date();
-    const updated = await view.repo.updateTask(id, effective, now.toISOString());
+
+    /*
+     * 6-1. **단계를 먼저 쓴다.** 순서에 뜻이 있다 — 뒤엣것이 실패하면 앞엣것이 남으므로,
+     *      덜 되돌리기 어려운 쪽(단계 넉 칸)을 앞에 둔다. 트랜잭션이 없는 것은
+     *      `supabase-js`에 트랜잭션 API가 없어서이고, 그 사실을 이름으로 감추지 않는다
+     *      (`runAtomically`가 선택 메서드인 것과 같은 자리).
+     *
+     *      **개수로 판정한다.** 저장소는 「이 업무의 단계가 아니다」와 「정책이 막았다」를
+     *      똑같이 0행으로 돌려주고, 둘 다 여기서는 403이다 — 갈라 답하면 부원이 단계 id를
+     *      훑어 남의 업무의 존재를 셀 수 있다 (`S6`).
+     */
+    if (stages !== undefined) {
+      const changed = await view.repo.updateStages(id, stages);
+      if (changed.length !== stages.length) return errorResponse('FORBIDDEN');
+    }
+
+    /*
+     * 6-2. 업무 칸이 하나도 없는 요청(단계만 고친 저장)에는 `updateTask`를 부르지 않는다 —
+     *      빈 패치를 넘기면 저장소가 `updated_at`만 밀어 올린다.
+     */
+    const touchesTask = Object.keys(effective).length > 0;
+    const updated = touchesTask
+      ? await view.repo.updateTask(id, effective, now.toISOString())
+      : await view.repo.getTask(id);
     // DB가 막았다. 여기까지 왔는데 0행이면 정책이 앱보다 좁은 것이고, 그 답도 403이다
     if (updated === null) return errorResponse('FORBIDDEN');
 

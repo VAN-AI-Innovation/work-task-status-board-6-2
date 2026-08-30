@@ -185,6 +185,16 @@ export function scopeToContractRows(repo: TaskRepository): TaskRepository {
       return repo.deleteTask(id);
     },
 
+    /**
+     * **계약 행의 단계만 고친다.** `deleteTask`와 같은 이유다 — 비워 두면 계약이 남의
+     * 실업무 단계를 id 하나로 고칠 수 있다.
+     */
+    async updateStages(taskId: string, patches: Parameters<TaskRepository['updateStages']>[1]) {
+      const task = await repo.getTask(taskId);
+      if (task === null || !isContractTask(task)) return [];
+      return repo.updateStages(taskId, patches);
+    },
+
     /** 쓰기는 손대지 않는다 — 계약이 넣는 `sourceKey`에 이미 접두사가 붙어 있다 */
     createTask: (input, createdAt) => repo.createTask(input, createdAt),
     upsertTasks: (tasks, options) => repo.upsertTasks(tasks, options),
@@ -951,6 +961,7 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
         ownerMemberId: null,
         ownerNameRaw: '담당자1',
         coOwnerNames: ['담당자2'],
+        stages: [],
       };
 
       const created = await repo.createTask(input, SECOND_UPLOAD_AT);
@@ -1025,6 +1036,145 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
       // 없는 id는 오류가 아니라 `false`다. 두 번 눌러도 「지웠다」가 두 번 나오지 않는다
       expect(await repo.deleteTask(task.id)).toBe(false);
       expect(await repo.deleteTask(MISSING_TASK_ID)).toBe(false);
+    },
+  },
+  {
+    /**
+     * 단계의 **부분 수정** (`PATCH /api/tasks/[id]`의 `stages`). 재는 것은 셋이다 —
+     * 준 칸만 바뀌는가 · 안 준 칸이 남는가 · **남의 업무 단계를 못 고치는가.**
+     *
+     * 마지막이 요점이다. supabase는 `task_id`를 `eq`로 함께 걸어 0행을 만들고, memory는
+     * 같은 자리에서 `taskId`를 함께 본다 — 두 구현이 같은 결과여야 한다.
+     */
+    name: '30. updateStages는 준 칸만 바꾸고, 남의 업무 단계는 건드리지 않는다',
+    async run(repo) {
+      const stage = (seq: number, key: string) => ({
+        seq,
+        stageKey: key,
+        stageLabel: `단계 ${seq}`,
+        plannedDate: '2099-07-21',
+        actualDate: null,
+        content: '처음 내용',
+        confirmStatus: null,
+        slaDays: 2,
+      });
+
+      await repo.upsertTasks(
+        [
+          { ...SEED_A, stages: [stage(0, 'concept'), stage(1, 'produce')] },
+          { ...SEED_B, stages: [stage(0, 'concept')] },
+        ],
+        { occurredAt: FIRST_UPLOAD_AT },
+      );
+
+      const a = findBySourceKey(await repo.listTasks(), KEY_A);
+      const b = findBySourceKey(await repo.listTasks(), KEY_B);
+      const [first, second] = await repo.listStages([a.id]);
+      const [otherStage] = await repo.listStages([b.id]);
+
+      const changed = await repo.updateStages(a.id, [
+        { id: first!.id, actualDate: '2099-07-25', content: null },
+      ]);
+
+      expect(changed).toHaveLength(1);
+      expect(changed[0]!.actualDate).toBe('2099-07-25');
+      // 안 준 칸은 그대로다 — 「안 건드린다」와 「비운다」가 다르다
+      expect(changed[0]!.plannedDate).toBe('2099-07-21');
+      expect(changed[0]!.stageLabel).toBe('단계 0');
+      expect(changed[0]!.slaDays).toBe(2);
+      // `null`은 「비운다」다
+      expect(changed[0]!.content).toBeNull();
+
+      // 같은 업무의 다른 줄은 손대지 않았다
+      const after = await repo.listStages([a.id]);
+      expect(after.find((row) => row.id === second!.id)!.content).toBe('처음 내용');
+
+      /*
+       * **남의 업무의 단계 id를 보내도 0행이다.** 「없는 id」와 같은 자리이며, 조용히
+       * 건너뛰는 것이 아니라 **개수로 드러난다** — 호출자가 그 차이를 403으로 옮긴다.
+       */
+      expect(await repo.updateStages(a.id, [{ id: otherStage!.id, content: '침범' }])).toEqual([]);
+      expect((await repo.listStages([b.id]))[0]!.content).toBe('처음 내용');
+
+      // 없는 id도 마찬가지다
+      expect(await repo.updateStages(a.id, [{ id: MISSING_TASK_ID, content: 'x' }])).toEqual([]);
+    },
+  },
+  {
+    /**
+     * **만들 때 단계도 함께 선다** (`POST /api/tasks`의 `stages`). 업로드가 아니라 사람이
+     * 만드는 편집팀 업무에 타임라인이 없으면, 그 업무만 화면에서 반쪽으로 남는다.
+     *
+     * 뼈대(`seq`·`stageKey`·`stageLabel`·`slaDays`)는 **라우트가 정해 넘긴 그대로** 들어가야
+     * 한다 — 저장소가 순서를 다시 매기면 두 구현이 갈린다.
+     */
+    name: '31. createTask는 준 단계를 함께 세우고, 빈 배열이면 단계가 없다',
+    async run(repo) {
+      const withStages: TaskCreateInput = {
+        sourceKey: `${CONTRACT_KEY_PREFIX}manual-stages`,
+        teamId: 'edit',
+        title: '단계가 있는 수동 업무',
+        status: '진행 중',
+        progress: null,
+        priority: null,
+        assignedAt: null,
+        dueAt: null,
+        nextAction: null,
+        nextActionOwner: null,
+        riskStatus: null,
+        approvalStatus: null,
+        extras: {},
+        nextActionDue: null,
+        note: null,
+        ownerMemberId: null,
+        ownerNameRaw: null,
+        coOwnerNames: [],
+        stages: [
+          {
+            seq: 0,
+            stageKey: 'concept',
+            stageLabel: '컨셉·레퍼런스',
+            slaDays: 2,
+            plannedDate: '2099-08-01',
+            actualDate: null,
+            confirmStatus: null,
+            content: '레퍼런스 수집',
+          },
+          {
+            seq: 1,
+            stageKey: 'production',
+            stageLabel: '제작 진행',
+            slaDays: 5,
+            plannedDate: null,
+            actualDate: null,
+            confirmStatus: null,
+            content: null,
+          },
+        ],
+      };
+
+      const created = await repo.createTask(withStages, SECOND_UPLOAD_AT);
+      const stages = await repo.listStages([created.id]);
+
+      expect(stages.map((row) => row.stageKey)).toEqual(['concept', 'production']);
+      expect(stages.map((row) => row.seq)).toEqual([0, 1]);
+      expect(stages[0]!.stageLabel).toBe('컨셉·레퍼런스');
+      expect(stages[0]!.slaDays).toBe(2);
+      expect(stages[0]!.plannedDate).toBe('2099-08-01');
+      expect(stages[0]!.content).toBe('레퍼런스 수집');
+      // 안 준 칸은 `null`이다 — 만들 때는 합칠 기존 값이 없다
+      expect(stages[1]!.plannedDate).toBeNull();
+
+      // 만들자마자 그 자리에서 고칠 수 있다 (`updateStages`가 같은 행을 본다)
+      expect(await repo.updateStages(created.id, [{ id: stages[0]!.id, actualDate: '2099-08-02' }]))
+        .toHaveLength(1);
+
+      // 빈 배열이면 단계가 없다 — 촬영·마케팅팀이 그렇다
+      const bare = await repo.createTask(
+        { ...withStages, sourceKey: `${CONTRACT_KEY_PREFIX}manual-bare`, stages: [] },
+        SECOND_UPLOAD_AT
+      );
+      expect(await repo.listStages([bare.id])).toEqual([]);
     },
   },
 ];

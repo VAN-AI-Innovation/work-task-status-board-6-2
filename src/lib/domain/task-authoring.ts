@@ -122,6 +122,31 @@ export function lockedTaskFields(role: ViewerRole): readonly string[] {
   }
 }
 
+/**
+ * 단계 한 줄에서 **부원에게 닫힌 칸.** `MEMBER_LOCKED_FIELDS`와 **같은 선**을 긋는다 —
+ * 부원은 자기가 한 일의 사실을 적고, 조직의 판단은 적지 않는다.
+ *
+ * - `plannedDate`(계획일): 단계의 마감이다. 자기가 미루면 「계획보다 늦었다」 표시가
+ *   무의미해진다 (`dueAt`을 잠그는 이유 그대로 · `task-panel.tsx`의 `isLate`).
+ * - 나머지 셋(`actualDate`·`confirmStatus`·`content`)은 **연다.** 언제 실제로 했고 무엇을
+ *   했는지는 당사자만 아는 값이고, 막으면 편집팀 부원에게 단계 표가 읽기 전용이 된다.
+ *
+ * ⚠ 업무 쪽과 마찬가지로 **DB에 이 축의 정책이 없다** — 컬럼 GRANT는 칸 단위라 부원과
+ *   팀장을 가르지 못한다. 앱 층이 유일한 자물쇠이고, 라우트가 같은 함수를 부른다.
+ */
+export const MEMBER_LOCKED_STAGE_FIELDS: readonly string[] = ['plannedDate'];
+
+/** 그 역할이 단계에서 **못 고치는** 칸. 팀장·어드민은 빈 목록이다 */
+export function lockedStageFields(role: ViewerRole): readonly string[] {
+  switch (role) {
+    case 'admin':
+    case 'lead':
+      return [];
+    case 'member':
+      return MEMBER_LOCKED_STAGE_FIELDS;
+  }
+}
+
 /** 업무를 만들 수 있는가. **권한이다** (머리말 · `tasks_insert_scope`) */
 export function canCreateTask(role: ViewerRole): boolean {
   switch (role) {

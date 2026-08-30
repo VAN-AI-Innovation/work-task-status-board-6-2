@@ -120,6 +120,10 @@ function toReadOnly(repo: TaskRepository): TaskRepository {
     async updateTask() {
       throw new StorageReadOnlyError();
     },
+    /** 단계도 같은 자리다 — 빠뜨리면 폴백 중 단계 수정이 메모리에 조용히 저장된다 */
+    async updateStages() {
+      throw new StorageReadOnlyError();
+    },
     /** 같은 이유다 — 만들고 지우는 것도 쓰기다 (`POST`·`DELETE /api/tasks`) */
     async createTask() {
       throw new StorageReadOnlyError();

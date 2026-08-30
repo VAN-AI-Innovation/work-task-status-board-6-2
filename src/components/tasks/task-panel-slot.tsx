@@ -28,6 +28,7 @@ import {
   canAssignOwner,
   canDeleteTask,
   canEditTaskDetails,
+  lockedStageFields,
   lockedTaskFields,
 } from '@/lib/domain/task-authoring';
 import {
@@ -164,6 +165,8 @@ export function TaskPanelSlot({
       statusOptions={statusOptions}
       // 「이 역할이 어느 칸까지 고치는가」. 라우트도 같은 함수를 부른다 (`task-authoring.ts`)
       lockedFields={lockedTaskFields(role)}
+      // 단계는 목록이 다르다 — 부원에게 계획일 하나가 잠긴다 (`lockedStageFields`)
+      lockedStageFields={lockedStageFields(role)}
     />
   );
 }

@@ -32,7 +32,7 @@ import {
   type UpsertOptions,
   type UpsertResult,
 } from '@/lib/store/task-repository';
-import type { MemberRecord, TaskPatch } from '@/types/auth';
+import type { MemberRecord, TaskPatch, TaskStagePatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
 import type { EnumOptionEntry } from '@/types/sheet';
 import type { ExtraValue, Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
@@ -744,6 +744,47 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
     },
 
     /**
+     * 단계 줄의 부분 수정. **`task_id`를 `eq`로 함께 거는 것이 요점이다** — 남의 업무의
+     * 단계 id를 보내도 0행이 되어 조용히 지나간다 (호출자가 개수로 알아본다).
+     *
+     * 줄마다 값이 달라 한 번의 `update`로 묶을 수 없다. 줄 수가 한 자릿수라(편집팀 탭이
+     * 단계 셋) `upsert` 한 번으로 바꾸는 것보다 이쪽이 정직하다 — `upsert`는 보내지 않은
+     * 컬럼을 기본값으로 덮으므로, 부분 수정에 쓰면 `stage_label`·`sla_days`가 날아간다.
+     *
+     * 넣는 컬럼이 `0018`의 `grant update (...)` 목록과 **글자 그대로 같아야 한다.**
+     */
+    async updateStages(taskId: string, patches: readonly TaskStagePatch[]): Promise<TaskStage[]> {
+      // `getTask`와 같은 이유로 모양부터 거른다 — uuid가 아니면 Postgres가 타입 오류를 낸다
+      if (!UUID_PATTERN.test(taskId)) return [];
+
+      const changed: TaskStage[] = [];
+
+      for (const patch of patches) {
+        if (!UUID_PATTERN.test(patch.id)) continue;
+
+        const row: Record<string, string | null> = {};
+        if (patch.plannedDate !== undefined) row.planned_date = patch.plannedDate;
+        if (patch.actualDate !== undefined) row.actual_date = patch.actualDate;
+        if (patch.confirmStatus !== undefined) row.confirm_status = patch.confirmStatus;
+        if (patch.content !== undefined) row.content = patch.content;
+        if (Object.keys(row).length === 0) continue;
+
+        const { data, error } = await client
+          .from('task_stages')
+          .update(row)
+          .eq('id', patch.id)
+          .eq('task_id', taskId)
+          .select(STAGE_COLUMNS)
+          .maybeSingle();
+        // 0행은 「이 업무의 단계가 아니다」이거나 정책이 막은 것이다. 오류가 아니다
+        if (error) fail('task_stages', 'update', error);
+        if (data) changed.push(toStage(data as unknown as StageRow));
+      }
+
+      return changed;
+    },
+
+    /**
      * 사람이 화면에서 만드는 업무 한 건 (`POST /api/tasks`). **`upsert`가 아니라 `insert`다** —
      * 자연키가 겹칠 일이 없고(`manualSourceKey`), 겹친다면 그것은 사고이지 갱신이 아니다.
      *
@@ -781,7 +822,36 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
         .select(TASK_COLUMNS)
         .single();
       if (error) fail('tasks', 'insert', error);
-      return toTask(data as unknown as TaskRow);
+      const created = toTask(data as unknown as TaskRow);
+
+      /*
+       * 단계를 **뒤에** 넣는다. `replaceStages`를 재활용하지 않는 이유는 그쪽이 먼저
+       * `delete`를 돌기 때문이다 — 방금 만든 행에는 지울 것이 없고, 지우는 권한
+       * (`task_stages` delete 정책)을 이 경로가 요구하게 된다.
+       *
+       * ⚠ 트랜잭션이 아니다. 단계 insert가 실패하면 **단계 없는 업무가 남는다** —
+       *   `supabase-js`에 트랜잭션 API가 없어서이고(`runAtomically`가 선택 메서드인 것과 같은
+       *   자리), 그 상태는 화면에서 「단계 정보가 없습니다」로 정직하게 보인다. 되돌리는 대신
+       *   오류를 그대로 올려 사용자가 다시 만들 수 있게 둔다.
+       */
+      if (input.stages.length > 0) {
+        const { error: stageError } = await client.from('task_stages').insert(
+          input.stages.map((stage) => ({
+            task_id: created.id,
+            seq: stage.seq,
+            stage_key: stage.stageKey,
+            stage_label: stage.stageLabel,
+            planned_date: stage.plannedDate,
+            actual_date: stage.actualDate,
+            content: stage.content,
+            confirm_status: stage.confirmStatus,
+            sla_days: stage.slaDays,
+          }))
+        );
+        if (stageError) fail('task_stages', 'insert', stageError);
+      }
+
+      return created;
     },
 
     /**

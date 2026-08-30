@@ -249,3 +249,53 @@ describe('taskPatchSchema — 팀 전용 칸', () => {
     expect(parse({ extras: { 조회수: 12 } }).success).toBe(false);
   });
 });
+
+/**
+ * 단계 (`stages`). **업무 칸과 한 요청에 실린다** — 화면이 「저장」 한 번으로 둘 다 보낼 수
+ * 있어야 사용자가 자기가 만들지 않은 중간 상태를 보지 않는다.
+ */
+describe('taskPatchSchema — 단계', () => {
+  const STAGE_ID = '33333333-3333-4333-8333-333333333333';
+
+  it('id와 고칠 칸을 받는다. 빈 문자열은 `null`(비운다)이 된다', () => {
+    const parsed = parse({
+      stages: [{ id: STAGE_ID, actualDate: '2026-08-30', content: '', confirmStatus: 'true' }],
+    });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.stages).toEqual([
+      { id: STAGE_ID, actualDate: '2026-08-30', content: null, confirmStatus: 'true' },
+    ]);
+  });
+
+  it('id는 uuid여야 한다 — 모양 검사이지 권한이 아니다', () => {
+    expect(parse({ stages: [{ id: 'stage-1', content: 'x' }] }).success).toBe(false);
+  });
+
+  it('구조는 못 고친다 — `seq`·`stageLabel`·`slaDays`는 시트가 정한다', () => {
+    expect(parse({ stages: [{ id: STAGE_ID, seq: 2 }] }).success).toBe(false);
+    expect(parse({ stages: [{ id: STAGE_ID, stageLabel: '새 단계' }] }).success).toBe(false);
+    expect(parse({ stages: [{ id: STAGE_ID, slaDays: 3 }] }).success).toBe(false);
+  });
+
+  it('날짜는 `YYYY-MM-DD`뿐이다 — 시각을 섞지 않는다 (`E4`)', () => {
+    expect(parse({ stages: [{ id: STAGE_ID, plannedDate: '2026-08-30T00:00:00Z' }] }).success).toBe(
+      false
+    );
+    expect(parse({ stages: [{ id: STAGE_ID, plannedDate: null }] }).success).toBe(true);
+  });
+
+  it('빈 배열은 거부한다 — 아무것도 안 바꾸는 요청이 성공으로 보이면 안 된다', () => {
+    expect(parse({ stages: [] }).success).toBe(false);
+  });
+
+  it('id만 있는 줄도 거부한다 — 바꿀 칸이 하나는 있어야 한다', () => {
+    expect(parse({ stages: [{ id: STAGE_ID }] }).success).toBe(false);
+  });
+
+  it('같은 단계를 두 번 싣지 않는다 — 어느 쪽이 이기는지 정할 근거가 없다', () => {
+    expect(
+      parse({ stages: [{ id: STAGE_ID, content: 'a' }, { id: STAGE_ID, content: 'b' }] }).success
+    ).toBe(false);
+  });
+});

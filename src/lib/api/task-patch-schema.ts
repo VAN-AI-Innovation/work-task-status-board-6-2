@@ -42,6 +42,14 @@
  * 정해지기 때문이다** (`viewer-scope.ts` · RLS). 평평한 목록으로 받아 첫 번째를 주 담당으로
  * 삼으면, 화면에서 순서를 바꾸는 것만으로 누가 그 업무를 보는지가 조용히 바뀐다.
  *
+ * ## 단계도 **같은 요청에** 실린다
+ *
+ * `stages`는 `task_stages` 행들의 부분 수정이다. 별도 라우트로 나누지 않은 이유는 화면의
+ * 「저장」이 하나이기 때문이다 — 업무 칸과 단계를 두 요청으로 보내면 그 사이에 화면이 다시
+ * 그려지는 순간이 생기고, 사용자는 자기가 만들지 않은 중간 상태를 본다 (담당자 두 칸을
+ * 함께 보내는 규칙 그대로다). 「그 단계가 이 업무의 것인가」는 모양이 아니라 데이터라
+ * 라우트가 본다.
+ *
  * `.strict()`인 이유는 `assignment-schema.ts`와 같다: 모르는 키를 조용히 버리면 클라이언트가
  * 잘못된 모양을 보내고도 200을 받아, 안 바뀐 값을 나중에 화면에서야 발견한다.
  *
@@ -192,6 +200,42 @@ export const EXTRAS_FIELD = z
   });
 
 /**
+ * 단계 한 줄. **`id` + 고칠 칸 넷**이고, 구조(`seq`·`stageKey`·`stageLabel`·`slaDays`)는
+ * 없다 — 그것은 시트가 정하고 다음 업로드가 통째로 교체한다 (`types/auth.ts`의 머리말).
+ *
+ * `id`만 있는 줄을 거부하는 이유는 `{}` 본문을 거부하는 것과 같다: 아무것도 안 바꾸는 줄에
+ * 성공을 주면 클라이언트 버그가 저장으로 보인다.
+ */
+const stagePatchSchema = z
+  .object({
+    id: z.uuid(),
+    plannedDate: dateSchema.optional(),
+    actualDate: dateSchema.optional(),
+    confirmStatus: labelSchema.optional(),
+    content: textSchema.optional(),
+  })
+  .strict()
+  .refine((stage) => Object.keys(stage).length > 1, {
+    message: '바꿀 값이 없는 단계가 있습니다.',
+  });
+
+/**
+ * 한 업무의 단계 수 상한. 실제 편집팀 탭이 단계 셋이라 넉넉하다.
+ *
+ * **같은 `id`를 두 번 싣지 못한다.** 뒤엣것이 이기는지 앞엣것이 이기는지 정할 근거가 없고,
+ * 화면은 애초에 그런 요청을 만들지 않는다 — 만든다면 그것은 버그이지 뜻이 아니다.
+ */
+const STAGES_MAX = 30;
+
+const stagesSchema = z
+  .array(stagePatchSchema)
+  .min(1)
+  .max(STAGES_MAX)
+  .refine((stages) => new Set(stages.map((stage) => stage.id)).size === stages.length, {
+    message: '같은 단계를 두 번 보낼 수 없습니다.',
+  });
+
+/**
  * 키가 하나도 없는 본문(`{}`)은 거부한다. 아무것도 안 바꾸는 요청에 200을 주면 클라이언트
  * 버그가 **성공으로 보인다** — 사용자는 저장됐다고 믿고 화면을 닫는다.
  */
@@ -217,6 +261,7 @@ export const taskPatchSchema = z
     ownerMemberId: ownerMemberIdSchema.optional(),
     coOwnerMemberIds: coOwnerMemberIdsSchema.optional(),
     extras: EXTRAS_FIELD.optional(),
+    stages: stagesSchema.optional(),
   })
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, {
