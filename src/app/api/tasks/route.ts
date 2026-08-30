@@ -9,6 +9,7 @@ import { toTaskListResponse, toTaskResponse } from '@/lib/api/task-response';
 import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { assignableMembers, creatableTeams } from '@/lib/domain/task-authoring';
+import { stageTemplateFor, stageTemplateOf } from '@/lib/domain/team-stage-template';
 import { deriveTaskFlags } from '@/lib/domain/task-derive';
 import { manualSourceKey, type TaskCreateInput } from '@/lib/store/task-repository';
 
@@ -135,6 +136,34 @@ export async function POST(request: Request): Promise<Response> {
       coOwnerNames.push(name);
     }
 
+    /*
+     * 단계 뼈대는 **서버가 정한다.** 클라이언트가 보낸 것은 `stageKey`와 값 넷뿐이고,
+     * 이름·순서·SLA는 팀의 표에서 온다 (`team-stage-template.ts`) — 담당자 이름을 id에서
+     * 유도하는 것과 같은 규율이다. 모르는 키는 **400**이다: 「그 팀에 그런 단계가 없다」는
+     * 보낸 쪽이 고칠 수 있는 잘못이라 403·503과 갈라 답한다.
+     *
+     * 순서는 **표가 정한 순서**다. 요청이 준 순서를 쓰면 같은 팀 업무끼리 타임라인이 달라진다.
+     */
+    const template = stageTemplateFor(body.teamId);
+    const seedByKey = new Map((body.stages ?? []).map((stage) => [stage.stageKey, stage]));
+    for (const key of seedByKey.keys()) {
+      if (stageTemplateOf(body.teamId, key) === null) return errorResponse('VALIDATION_FAILED');
+    }
+
+    const stages = template.map((stage, index) => {
+      const seed = seedByKey.get(stage.key);
+      return {
+        seq: index,
+        stageKey: stage.key,
+        stageLabel: stage.label,
+        slaDays: stage.slaDays,
+        plannedDate: seed?.plannedDate ?? null,
+        actualDate: seed?.actualDate ?? null,
+        confirmStatus: seed?.confirmStatus ?? null,
+        content: seed?.content ?? null,
+      };
+    });
+
     const input: TaskCreateInput = {
       sourceKey: manualSourceKey(crypto.randomUUID()),
       teamId: body.teamId,
@@ -155,6 +184,7 @@ export async function POST(request: Request): Promise<Response> {
       ownerMemberId,
       ownerNameRaw,
       coOwnerNames,
+      stages,
     };
 
     // 시계는 라우트가 읽어 넘긴다 — `lib` 안에서 시간을 읽지 않는다 (CLAUDE.md CRITICAL)

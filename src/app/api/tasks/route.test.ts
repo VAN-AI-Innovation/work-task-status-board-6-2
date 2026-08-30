@@ -437,4 +437,124 @@ describe('POST /api/tasks', () => {
     expect(res.status).toBe(403);
     expect(calls).toHaveLength(0);
   });
+  /**
+   * **단계 뼈대는 서버가 정한다.** 클라이언트가 보낸 것은 `stageKey`와 값 넷뿐이고,
+   * 이름·순서·SLA는 팀의 표에서 온다 (`team-stage-template.ts`) — 담당자 이름을 id에서
+   * 유도하는 것과 같은 규율이다.
+   */
+  describe('단계', () => {
+    it('편집팀 업무에는 단계 셋이 표 순서대로 선다', async () => {
+      const calls = stub({ role: 'lead', teamId: 'edit' });
+
+      const res = await post({
+        teamId: 'edit',
+        title: '새 업무',
+        stages: [{ stageKey: 'production', content: '초안' }],
+      });
+
+      expect(res.status).toBe(201);
+      expect(calls[0]!.input.stages).toEqual([
+        {
+          seq: 0,
+          stageKey: 'concept',
+          stageLabel: '컨셉·레퍼런스',
+          slaDays: 2,
+          plannedDate: null,
+          actualDate: null,
+          confirmStatus: null,
+          content: null,
+        },
+        {
+          seq: 1,
+          stageKey: 'production',
+          stageLabel: '제작 진행',
+          slaDays: 5,
+          plannedDate: null,
+          actualDate: null,
+          confirmStatus: null,
+          content: '초안',
+        },
+        {
+          seq: 2,
+          stageKey: 'final',
+          stageLabel: '최종본·업로드',
+          slaDays: 7,
+          plannedDate: null,
+          actualDate: null,
+          confirmStatus: null,
+          content: null,
+        },
+      ]);
+    });
+
+    it('값을 하나도 안 보내도 뼈대는 선다 — 나중에 고칠 줄이 있어야 한다', async () => {
+      const calls = stub({ role: 'lead', teamId: 'edit' });
+
+      expect((await post({ teamId: 'edit', title: '새 업무' })).status).toBe(201);
+      expect(calls[0]!.input.stages.map((stage) => stage.stageKey)).toEqual([
+        'concept',
+        'production',
+        'final',
+      ]);
+    });
+
+    it('요청이 준 순서를 쓰지 않는다 — 타임라인은 팀마다 같은 순서다', async () => {
+      const calls = stub({ role: 'lead', teamId: 'edit' });
+
+      await post({
+        teamId: 'edit',
+        title: '새 업무',
+        stages: [
+          { stageKey: 'final', content: 'C' },
+          { stageKey: 'concept', content: 'A' },
+        ],
+      });
+
+      expect(calls[0]!.input.stages.map((stage) => stage.content)).toEqual(['A', null, 'C']);
+    });
+
+    it('단계가 없는 팀은 빈 배열이다 — 뼈대를 지어내지 않는다', async () => {
+      const calls = stub({ role: 'lead', teamId: 'shoot' });
+
+      expect((await post({ teamId: 'shoot', title: '촬영 업무' })).status).toBe(201);
+      expect(calls[0]!.input.stages).toEqual([]);
+    });
+
+    it('그 팀에 없는 단계 키는 400이다 — 보낸 쪽이 고칠 수 있는 잘못이다', async () => {
+      const calls = stub({ role: 'lead', teamId: 'edit' });
+
+      const res = await post({
+        teamId: 'edit',
+        title: '새 업무',
+        stages: [{ stageKey: 'unknown', content: 'x' }],
+      });
+
+      expect(res.status).toBe(400);
+      expect(await code(res)).toBe('VALIDATION_FAILED');
+      expect(calls).toEqual([]);
+    });
+
+    it('단계가 없는 팀에 단계를 보내도 400이다', async () => {
+      stub({ role: 'lead', teamId: 'shoot' });
+
+      expect(
+        (await post({ teamId: 'shoot', title: 'x', stages: [{ stageKey: 'concept' }] })).status
+      ).toBe(400);
+    });
+
+    it('이름·순서·SLA는 받지 않는다 — 구조를 클라이언트가 정하지 못한다', async () => {
+      stub({ role: 'lead', teamId: 'edit' });
+
+      expect(
+        (
+          await post({
+            teamId: 'edit',
+            title: 'x',
+            stages: [{ stageKey: 'concept', stageLabel: '내 마음대로', seq: 9 }],
+          })
+        ).status
+      ).toBe(400);
+    });
+  });
+
 });

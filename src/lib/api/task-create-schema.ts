@@ -37,6 +37,9 @@ import { teamIdSchema } from '@/lib/api/signup-schema';
  */
 const CO_OWNER_MAX = 20;
 
+/** 한 업무의 단계 수 상한. 패치 쪽과 같은 수다 — 편집팀 탭이 셋이라 넉넉하다 */
+const STAGES_MAX = 30;
+
 export const taskCreateSchema = z
   .object({
     /** `teams.id`. 가입·재요청과 **같은 목록**을 본다 (`signup-schema.ts`) */
@@ -61,6 +64,27 @@ export const taskCreateSchema = z
     /** 이름이 아니라 id다 — 이름은 라우트가 명부에서 찾아 채운다 (`task-patch-schema.ts`) */
     ownerMemberId: z.uuid().nullable().optional(),
     coOwnerMemberIds: z.array(z.uuid()).max(CO_OWNER_MAX).optional(),
+
+    /**
+     * 세울 단계. **`stageKey`와 값 넷뿐이다** — 담당자를 id로만 받는 것과 같은 규율이다:
+     * 이름·순서·SLA를 클라이언트가 정할 수 있으면 웹에서 만든 업무의 타임라인이 시트의 것과
+     * 다른 구조를 갖고, 그 차이는 나중에 「왜 이 업무만 단계가 넷이지」로만 드러난다.
+     * 라우트가 `stageTemplateOf(teamId, stageKey)`로 나머지를 채우고, 모르는 키는 400이다.
+     */
+    stages: z
+      .array(
+        z
+          .object({
+            stageKey: z.string().trim().min(1).max(50),
+            plannedDate: TASK_EDITABLE_FIELDS.assignedAt.optional(),
+            actualDate: TASK_EDITABLE_FIELDS.assignedAt.optional(),
+            confirmStatus: TASK_EDITABLE_FIELDS.priority.optional(),
+            content: TASK_EDITABLE_FIELDS.note.optional(),
+          })
+          .strict()
+      )
+      .max(STAGES_MAX)
+      .optional(),
   })
   .strict();
 

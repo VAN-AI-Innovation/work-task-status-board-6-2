@@ -13,6 +13,7 @@
 
 import { resolveHeaders } from '@/lib/sheet/header-resolver';
 import { mapRows, type FieldMapEntry, type RowMapSpec } from '@/lib/sheet/row-mapper';
+import { stageTemplateFor } from '@/lib/domain/team-stage-template';
 import { stageColumnLabels, unpivotStages, type StageGroupSpec } from '@/lib/sheet/stage-unpivot';
 import type { HeaderBand, ParseWarning, SheetGrid } from '@/types/sheet';
 import type { ParsedTask, TabParseResult } from '@/types/task';
@@ -29,33 +30,40 @@ const FIELD_MAP: FieldMapEntry[] = [
 ];
 
 /**
+ * 시트에만 있는 것 — 그룹 헤더 원문과 하위 컬럼 이름. **키·이름·SLA는 짓지 않고
+ * `stageTemplateFor('edit')`에서 읽는다** — 웹에서 업무를 만들 때 세우는 단계 뼈대와 같은
+ * 표여야 하기 때문이다 (`team-stage-template.ts` 머리말 · 그쪽 테스트가 어긋남을 잰다).
+ *
  * `slaDays`는 그룹 헤더의 `(+N일)`을 읽은 값이다 — T2가 헤더 원문을 자르지 않고
  * 보존한 이유가 이것이다. `최종본·업로드`에 `content`가 없는 것은 오타가 아니라
  * 시트의 M~O가 3컬럼이기 때문이다.
+ *
+ * **export하는 이유는 테스트 하나 때문이다.** 두 표가 갈리는 것을 잡을 자리가 달리 없다.
  */
-const STAGE_GROUPS: StageGroupSpec[] = [
+const STAGE_COLUMNS: Readonly<Record<string, { groupHeader: string; cols: StageGroupSpec['cols'] }>> =
   {
-    key: 'concept',
-    label: '컨셉·레퍼런스',
-    groupHeader: '컨셉·레퍼런스 (+2일)',
-    slaDays: 2,
-    cols: { planned: '예정일', actual: '실제', content: '내용', confirm: '확인' },
-  },
-  {
-    key: 'production',
-    label: '제작 진행',
-    groupHeader: '제작 진행 (+5일)',
-    slaDays: 5,
-    cols: { planned: '예정일', actual: '실제', content: '내용', confirm: '확인' },
-  },
-  {
-    key: 'final',
-    label: '최종본·업로드',
-    groupHeader: '최종본·업로드 (+7일)',
-    slaDays: 7,
-    cols: { planned: '예정일', actual: '실제', confirm: '확인' },
-  },
-];
+    concept: {
+      groupHeader: '컨셉·레퍼런스 (+2일)',
+      cols: { planned: '예정일', actual: '실제', content: '내용', confirm: '확인' },
+    },
+    production: {
+      groupHeader: '제작 진행 (+5일)',
+      cols: { planned: '예정일', actual: '실제', content: '내용', confirm: '확인' },
+    },
+    final: {
+      groupHeader: '최종본·업로드 (+7일)',
+      cols: { planned: '예정일', actual: '실제', confirm: '확인' },
+    },
+  };
+
+export const EDIT_TEAM_STAGE_GROUPS: StageGroupSpec[] = stageTemplateFor('edit').map((stage) => ({
+  key: stage.key,
+  label: stage.label,
+  slaDays: stage.slaDays,
+  ...STAGE_COLUMNS[stage.key]!,
+}));
+
+const STAGE_GROUPS = EDIT_TEAM_STAGE_GROUPS;
 
 export function parseEditTeamTab(
   sheet: SheetGrid,

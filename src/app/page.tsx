@@ -76,6 +76,7 @@ import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip, summarizeAllTeams } from '@/lib/domain/progress-stats';
 import { assignableMembers, creatableTeams } from '@/lib/domain/task-authoring';
 import { teamEnumGroups } from '@/lib/domain/team-enum-groups';
+import { stageTemplateFor } from '@/lib/domain/team-stage-template';
 import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
 import { scopeEditableTasks } from '@/lib/domain/viewer-scope';
 import { approvalQueue, groupAlerts } from '@/lib/view/alert-groups';
@@ -102,6 +103,7 @@ import {
 } from '@/lib/view/role-layout';
 import { toTeamSlug } from '@/lib/view/team-slug';
 import { sortTasks } from '@/lib/view/task-sort';
+import { teamExtraColumns } from '@/lib/view/team-extra-columns';
 import { describeSync } from '@/lib/view/sync-freshness';
 
 /**
@@ -240,16 +242,23 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       : teamEnumGroups(await view.repo.listEnumOptions());
 
   /**
-   * 생성 폼이 쓰는 **팀별** 전용 칸. 패널이 팀으로 거르지 않게 여기서 갈라 둔다 — 브라우저로
-   * 나가는 것은 이름과 값 목록뿐이다.
+   * 생성 폼이 쓰는 **팀별** 전용 칸 전량. 패널이 팀으로 거르지 않게 여기서 갈라 둔다.
+   *
+   * 예전에는 `설정` 탭에 값 목록이 있는 칸만 세웠다 — 촬영팀 55칸 중 6칸이다. 나머지는
+   * 만들 때 채울 자리가 아예 없어서, 웹에서 만든 촬영팀 업무는 만들자마자 패널을 다시 열어
+   * [수정하기]를 눌러야 했다. 칸 목록의 근거는 **그 팀 업무들의 `extras` 키**다
+   * (`teamExtraColumns` — 시트 헤더를 따로 저장해 두는 자리가 없다).
    */
-  const extraGroupsByTeam = Object.fromEntries(
+  const extraColumnsByTeam = Object.fromEntries(
     newTaskTeams.map((teamKey) => [
       teamKey,
-      enumGroups
-        .filter((group) => group.teamId === teamKey)
-        .map((group) => ({ name: group.name, values: group.values })),
+      teamExtraColumns(read.tasks, teamKey, enumGroups),
     ])
+  );
+
+  /** 생성 폼이 세울 **단계 뼈대**. 편집팀만 셋이고 나머지는 빈 배열이다 (`ADR-006`) */
+  const stageTemplateByTeam = Object.fromEntries(
+    newTaskTeams.map((teamKey) => [teamKey, stageTemplateFor(teamKey)])
   );
 
   /**
@@ -438,7 +447,8 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
           teams={newTaskTeams}
           candidatesByTeam={newTaskCandidates}
           statusOptions={STATUS_OPTIONS}
-          extraGroupsByTeam={extraGroupsByTeam}
+          extraColumnsByTeam={extraColumnsByTeam}
+          stageTemplateByTeam={stageTemplateByTeam}
           pathname={PATHNAME}
           query={query}
         />
