@@ -422,7 +422,7 @@ public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행�
 | 함수 | 하는 일 | `authenticated` 실행 권한 |
 |---|---|---|
 | `pending_requests()` | 대기·거절 요청 목록. admin 전체 / lead 자기 팀 | ✅ |
-| `member_directory()` | 전 팀 명부(`profiles` ⟗ `members` full outer join). **admin·lead**, 이메일 포함(`0008`) | ✅ |
+| `member_directory()` | 전 팀 명부(`profiles` ⟗ `members` full outer join). **세 역할 전부**에게 같은 것을 준다 — 이메일 포함(`0016`·`0017`) | ✅ |
 | `submit_report(week, body, note)` | 팀 주간 보고 제출·재제출. 팀은 `my_team()`이 정한다 (`0010`) | ✅ |
 | `review_report(team, week, decision, note)` | 보고 승인·반려. **admin 전용**, 반려에는 사유 필수 (`0010`) | ✅ |
 | `list_reports(week)` | 그 주의 보고들. admin은 전 팀, lead는 자기 팀 (`0010`) | ✅ |
@@ -462,7 +462,7 @@ public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행�
 | 테이블 | select | update | insert·delete |
 |---|---|---|---|
 | `tasks` | **admin·lead 전체** / member 담당 건 + 공동 담당 건 | admin 전체 / lead `team_id = my_team()` / member 열람과 같은 범위 (`using` = `with check`) | admin 전체 / lead 자기 팀 (`0013`) |
-| `task_stages` | 부모 `tasks`가 보이면 보인다 | — | 없음 (부모 삭제의 cascade는 RLS를 타지 않는다) |
+| `task_stages` | 부모 `tasks`가 보이면 보인다 | 부모를 **고칠 수 있으면** 고친다(`0018`). 만드는 것은 `tasks_insert_scope`와 같은 문턱(`0019`) | 없음 (부모 삭제의 cascade는 RLS를 타지 않는다) |
 | `goal_metrics` · `team_period_goals` | **admin·lead 전체** / member `team_id = my_team()` | — | 없음 |
 | `teams` · `departments` · `members` · `enum_options` · `sla_rules` | 로그인한 전원 (참조 데이터) | — | 없음 |
 | `profiles` | 본인 행만 | 없음 | 없음 |
@@ -480,6 +480,10 @@ public.my_member_id()  → uuid   -- members.auth_user_id = auth.uid() 인 행�
   팀이 같으면), `tasks`에 `insert`·`delete` 정책이 처음 생겼다. 앱 쪽 대응물은
   `viewer-scope.ts`의 `taskInScope` / `taskEditable` 두 함수와 `task-authoring.ts`의
   `canCreateTask`·`canDeleteTask`·`creatableTeams`다 — **표와 글자 그대로 대응해야 한다.**
+- ⚠ **DB 범위와 화면 범위가 `lead`에서 갈린다** (`ADR-046`). `0012`가 넓힌 열람은 그대로이고
+  (`taskInScope`가 전사, 전사 대시보드도 열린다), **좁아진 것은 DB가 아니라 화면 둘**이다 —
+  팀 탭(`visibleTeamKeys`)과 주간 보고(`report-scope.ts`)가 자기 팀만 낸다. 그래서 이 표를
+  읽을 때 「lead = 전사」는 **저장소 이야기**이지 사이드바 이야기가 아니다.
 - **`member`에게 `owner_member_id is null`인 행은 보이지 않는다** — 시트 담당자가
   `members`에 안 붙은 경우(`unknown_owner`)다. `null`을 「내 것」으로 치면 담당자 미상 업무가
   전원에게 보이고, 그것은 범위 구분이 아니다.
