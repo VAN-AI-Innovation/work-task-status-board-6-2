@@ -20,17 +20,21 @@ import {
   diffTaskFields,
   goalMetricUpsertKey,
   taskUpsertKey,
+  MANUAL_ROW_INDEX,
+  MANUAL_SHEET_TAB,
   type GoalMetricUpsertInput,
   type GoalMetricUpsertResult,
   type TaskEventFilter,
+  type TaskCreateInput,
   type TaskFilter,
   type TaskRepository,
   type TaskUpsertInput,
   type UpsertOptions,
   type UpsertResult,
 } from '@/lib/store/task-repository';
-import type { MemberRecord, TaskPatch } from '@/types/auth';
+import type { MemberRecord, TaskPatch, TaskStagePatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
+import type { EnumOptionEntry } from '@/types/sheet';
 import type { ExtraValue, Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
 
 /** PostgREST가 돌려주는 `tasks` 행. 컬럼 이름은 `supabase/migrations/0001_init.sql`과 1:1이다 */
@@ -123,6 +127,12 @@ interface EventRow {
   upload_id: string | null;
   changed_fields: string[];
   occurred_at: string;
+}
+
+interface EnumOptionRow {
+  group_key: string;
+  value: string;
+  sort_order: number;
 }
 
 interface MemberRow {
@@ -258,8 +268,26 @@ export function toTaskPatchRow(
   options: { updatedAt: string },
 ): Partial<TaskWriteRow> & { updated_at: string } {
   const row: Partial<TaskWriteRow> & { updated_at: string } = { updated_at: options.updatedAt };
+  if (patch.title !== undefined) row.title = patch.title;
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.progress !== undefined) row.progress = patch.progress;
+  // 아래 아홉은 `0013`이 컬럼 GRANT로 연 칸들이다. 여기에만 더하고 정책은 손대지 않는다
+  if (patch.priority !== undefined) row.priority = patch.priority;
+  if (patch.riskStatus !== undefined) row.risk_status = patch.riskStatus;
+  if (patch.approvalStatus !== undefined) row.approval_status = patch.approvalStatus;
+  if (patch.assignedAt !== undefined) row.assigned_at = patch.assignedAt;
+  if (patch.dueAt !== undefined) row.due_at = patch.dueAt;
+  if (patch.nextAction !== undefined) row.next_action = patch.nextAction;
+  if (patch.nextActionOwner !== undefined) row.next_action_owner = patch.nextActionOwner;
+  if (patch.nextActionDue !== undefined) row.next_action_due = patch.nextActionDue;
+  if (patch.delayReason !== undefined) row.delay_reason = patch.delayReason;
+  if (patch.note !== undefined) row.note = patch.note;
+  // `0014`가 연 칸. 합치기는 라우트가 이미 끝냈고 여기서는 통째로 바꾼다
+  if (patch.extras !== undefined) row.extras = patch.extras;
+  // 두 칸은 `0008`이 authenticated에게 연 것이다. 정책(`tasks_update_scope`)은 그대로다
+  if (patch.ownerMemberId !== undefined) row.owner_member_id = patch.ownerMemberId;
+  if (patch.ownerNameRaw !== undefined) row.owner_name_raw = patch.ownerNameRaw;
+  if (patch.coOwnerNames !== undefined) row.co_owner_names = [...patch.coOwnerNames];
   return row;
 }
 
@@ -715,6 +743,139 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
       return data ? toTask(data as unknown as TaskRow) : null;
     },
 
+    /**
+     * 단계 줄의 부분 수정. **`task_id`를 `eq`로 함께 거는 것이 요점이다** — 남의 업무의
+     * 단계 id를 보내도 0행이 되어 조용히 지나간다 (호출자가 개수로 알아본다).
+     *
+     * 줄마다 값이 달라 한 번의 `update`로 묶을 수 없다. 줄 수가 한 자릿수라(편집팀 탭이
+     * 단계 셋) `upsert` 한 번으로 바꾸는 것보다 이쪽이 정직하다 — `upsert`는 보내지 않은
+     * 컬럼을 기본값으로 덮으므로, 부분 수정에 쓰면 `stage_label`·`sla_days`가 날아간다.
+     *
+     * 넣는 컬럼이 `0018`의 `grant update (...)` 목록과 **글자 그대로 같아야 한다.**
+     */
+    async updateStages(taskId: string, patches: readonly TaskStagePatch[]): Promise<TaskStage[]> {
+      // `getTask`와 같은 이유로 모양부터 거른다 — uuid가 아니면 Postgres가 타입 오류를 낸다
+      if (!UUID_PATTERN.test(taskId)) return [];
+
+      const changed: TaskStage[] = [];
+
+      for (const patch of patches) {
+        if (!UUID_PATTERN.test(patch.id)) continue;
+
+        const row: Record<string, string | null> = {};
+        if (patch.plannedDate !== undefined) row.planned_date = patch.plannedDate;
+        if (patch.actualDate !== undefined) row.actual_date = patch.actualDate;
+        if (patch.confirmStatus !== undefined) row.confirm_status = patch.confirmStatus;
+        if (patch.content !== undefined) row.content = patch.content;
+        if (Object.keys(row).length === 0) continue;
+
+        const { data, error } = await client
+          .from('task_stages')
+          .update(row)
+          .eq('id', patch.id)
+          .eq('task_id', taskId)
+          .select(STAGE_COLUMNS)
+          .maybeSingle();
+        // 0행은 「이 업무의 단계가 아니다」이거나 정책이 막은 것이다. 오류가 아니다
+        if (error) fail('task_stages', 'update', error);
+        if (data) changed.push(toStage(data as unknown as StageRow));
+      }
+
+      return changed;
+    },
+
+    /**
+     * 사람이 화면에서 만드는 업무 한 건 (`POST /api/tasks`). **`upsert`가 아니라 `insert`다** —
+     * 자연키가 겹칠 일이 없고(`manualSourceKey`), 겹친다면 그것은 사고이지 갱신이 아니다.
+     *
+     * 넣는 컬럼이 `0013` 5절의 `grant insert (...)` 목록과 **글자 그대로 같아야 한다.**
+     * 하나라도 목록 밖이면 PostgREST가 아니라 Postgres가 권한 오류를 내는데, 그 오류는
+     * 「행을 못 만든다」로 보여 원인을 찾기 어렵다.
+     */
+    async createTask(input: TaskCreateInput, createdAt: string): Promise<Task> {
+      const { data, error } = await client
+        .from('tasks')
+        .insert({
+          team_id: input.teamId,
+          source_key: input.sourceKey,
+          title: input.title,
+          owner_member_id: input.ownerMemberId,
+          owner_name_raw: input.ownerNameRaw,
+          co_owner_names: [...input.coOwnerNames],
+          status: input.status,
+          approval_status: input.approvalStatus,
+          risk_status: input.riskStatus,
+          priority: input.priority,
+          progress: input.progress,
+          // `0014`가 insert에도 연 칸. 만들 때는 합칠 기존 값이 없어 그대로 넣는다
+          extras: input.extras,
+          assigned_at: input.assignedAt,
+          due_at: input.dueAt,
+          next_action: input.nextAction,
+          next_action_owner: input.nextActionOwner,
+          next_action_due: input.nextActionDue,
+          note: input.note,
+          source_sheet_tab: MANUAL_SHEET_TAB,
+          source_row_index: MANUAL_ROW_INDEX,
+          updated_at: createdAt,
+        })
+        .select(TASK_COLUMNS)
+        .single();
+      if (error) fail('tasks', 'insert', error);
+      const created = toTask(data as unknown as TaskRow);
+
+      /*
+       * 단계를 **뒤에** 넣는다. `replaceStages`를 재활용하지 않는 이유는 그쪽이 먼저
+       * `delete`를 돌기 때문이다 — 방금 만든 행에는 지울 것이 없고, 지우는 권한
+       * (`task_stages` delete 정책)을 이 경로가 요구하게 된다.
+       *
+       * ⚠ 트랜잭션이 아니다. 단계 insert가 실패하면 **단계 없는 업무가 남는다** —
+       *   `supabase-js`에 트랜잭션 API가 없어서이고(`runAtomically`가 선택 메서드인 것과 같은
+       *   자리), 그 상태는 화면에서 「단계 정보가 없습니다」로 정직하게 보인다. 되돌리는 대신
+       *   오류를 그대로 올려 사용자가 다시 만들 수 있게 둔다.
+       */
+      if (input.stages.length > 0) {
+        const { error: stageError } = await client.from('task_stages').insert(
+          input.stages.map((stage) => ({
+            task_id: created.id,
+            seq: stage.seq,
+            stage_key: stage.stageKey,
+            stage_label: stage.stageLabel,
+            planned_date: stage.plannedDate,
+            actual_date: stage.actualDate,
+            content: stage.content,
+            confirm_status: stage.confirmStatus,
+            sla_days: stage.slaDays,
+          }))
+        );
+        if (stageError) fail('task_stages', 'insert', stageError);
+      }
+
+      return created;
+    },
+
+    /**
+     * 단계·이력은 **FK가 지운다** (`on delete cascade`, `0001_init.sql`). 참조 무결성 동작은
+     * RLS를 타지 않으므로 그 두 테이블에 권한을 더할 필요가 없다 — 문은 `tasks_delete_scope`
+     * 하나다 (`0013` 4절).
+     *
+     * `select`를 붙여 **실제로 지워진 행을 확인한다.** 붙이지 않으면 정책이 0행을 지운 것과
+     * 한 행을 지운 것이 응답에서 같아지고, 화면이 지우지 못한 것을 지웠다고 말한다.
+     */
+    async deleteTask(id: string): Promise<boolean> {
+      // `getTask`·`updateTask`와 같은 이유로 모양부터 거른다 — uuid가 아니면 타입 오류다
+      if (!UUID_PATTERN.test(id)) return false;
+
+      const { data, error } = await client
+        .from('tasks')
+        .delete()
+        .eq('id', id)
+        .select('id')
+        .maybeSingle();
+      if (error) fail('tasks', 'delete', error);
+      return data !== null;
+    },
+
     async listMembers(): Promise<MemberRecord[]> {
       const { data, error } = await client
         .from('members')
@@ -723,6 +884,36 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
         .order('name');
       if (error) fail('members', 'select', error);
       return (data as unknown as MemberRow[]).map(toMember);
+    },
+
+    async listEnumOptions(): Promise<EnumOptionEntry[]> {
+      const { data, error } = await client
+        .from('enum_options')
+        .select('group_key,value,sort_order')
+        .order('group_key')
+        .order('sort_order');
+      if (error) fail('enum_options', 'select', error);
+
+      return (data as unknown as EnumOptionRow[]).map((row) => ({
+        groupKey: row.group_key,
+        value: row.value,
+        sortOrder: row.sort_order,
+      }));
+    },
+
+    /** `(group_key, value)`가 unique다 — 같은 값이 다시 오면 순서만 갱신된다 */
+    async upsertEnumOptions(entries: readonly EnumOptionEntry[]): Promise<void> {
+      if (entries.length === 0) return;
+
+      const { error } = await client.from('enum_options').upsert(
+        entries.map((entry) => ({
+          group_key: entry.groupKey,
+          value: entry.value,
+          sort_order: entry.sortOrder,
+        })),
+        { onConflict: 'group_key,value' }
+      );
+      if (error) fail('enum_options', 'upsert', error);
     },
 
     async getLastSyncedAt(): Promise<string | null> {

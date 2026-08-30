@@ -88,6 +88,7 @@ function payloadOf(overrides: Partial<CommitPayload> = {}): CommitPayload {
     tasks: [taskInput(), taskInput({ sourceKey: 'card-b', title: '카드뉴스 B' })],
     goalMetrics: [goalInput()],
     teamKeys: ['edit', 'marketing'],
+    enums: [],
     ...overrides,
   };
 }

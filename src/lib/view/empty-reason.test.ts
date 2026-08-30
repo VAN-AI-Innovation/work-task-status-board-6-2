@@ -16,6 +16,7 @@ function viewer(overrides: Partial<Viewer> = {}): Viewer {
     role: 'member',
     teamId: 'edit',
     memberId: 'member-1',
+    memberName: '담당자1',
     ...overrides,
   };
 }
@@ -34,21 +35,25 @@ describe('emptyReason', () => {
   });
 
   /*
-   * `member`이면서 `memberId`가 없으면 **보일 수 있는 업무가 애초에 없다**
-   * (`viewer-scope.ts`의 null 가드 · `PLAN.md` 결정 D). 「아직 데이터가 없습니다」를 띄우면
-   * 그 사람은 전사 데이터가 있는데도 시트를 올리러 간다.
+   * `member`이면서 **팀이 없으면** 보일 수 있는 업무가 애초에 없다 (`viewer-scope.ts`의 null
+   * 가드). 「아직 데이터가 없습니다」를 띄우면 그 사람은 데이터가 있는데도 시트를 올리러 간다.
    */
-  it('담당자에 연결되지 않은 member는 원인을 따로 말한다', () => {
-    expect(emptyReason(viewer({ memberId: null }), 0)).toBe('unlinked-member');
+  it('팀이 없는 member는 원인을 따로 말한다', () => {
+    expect(emptyReason(viewer({ teamId: null }), 0)).toBe('no-team');
   });
 
   it('그 사람에게는 필터를 지워도 달라지지 않으므로 문구가 그대로다', () => {
-    expect(emptyReason(viewer({ memberId: null }), 3)).toBe('unlinked-member');
+    expect(emptyReason(viewer({ teamId: null }), 3)).toBe('no-team');
   });
 
-  it('admin·lead는 `memberId`가 없어도 이 문구를 보지 않는다 — 그들에게 빈 표는 다른 뜻이다', () => {
-    expect(emptyReason(viewer({ role: 'admin', memberId: null }), 0)).toBe('no-data');
-    expect(emptyReason(viewer({ role: 'lead', memberId: null }), 0)).toBe('no-data');
-    expect(emptyReason(viewer({ role: 'lead', memberId: null }), 1)).toBe('no-match');
+  /** 명부에 안 붙은 계정(`memberId === null`)도 팀이 있으면 그 팀을 본다 (`0015`) */
+  it('담당자에 연결되지 않았어도 팀이 있으면 이 문구가 아니다', () => {
+    expect(emptyReason(viewer({ memberId: null }), 0)).toBe('no-data');
+  });
+
+  it('admin·lead는 팀이 없어도 이 문구를 보지 않는다 — 그들에게 빈 표는 다른 뜻이다', () => {
+    expect(emptyReason(viewer({ role: 'admin', teamId: null }), 0)).toBe('no-data');
+    expect(emptyReason(viewer({ role: 'lead', teamId: null }), 0)).toBe('no-data');
+    expect(emptyReason(viewer({ role: 'lead', teamId: null }), 1)).toBe('no-match');
   });
 });

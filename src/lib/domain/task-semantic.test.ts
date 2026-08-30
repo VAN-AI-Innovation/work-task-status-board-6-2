@@ -13,6 +13,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   STATUS_OPTIONS,
+  APPROVAL_DECISION_STATUS,
   STATUS_SEMANTIC_MAP,
   buildSemanticIndex,
   collectUnregisteredEnumWarnings,
@@ -299,5 +300,22 @@ describe('STATUS_SEMANTIC_MAP', () => {
     // 화면이 실제로 쓰는 폴백 표(`buildSemanticIndex(null)`)가 열 값을 전부 안다
     const fallback = buildSemanticIndex(null);
     expect(STATUS_OPTIONS.every((value) => toSemantic(value, fallback) !== null)).toBe(true);
+  });
+});
+
+/**
+ * 승인 대기함의 [승인]·[반려]가 넣는 상태 원문. 화면이 한글을 직접 적지 않게 여기 두므로
+ * (`ADR-009`), **매핑표에 없는 값이면 그 조작이 상태를 조용히 미매핑으로 만든다.**
+ */
+describe('APPROVAL_DECISION_STATUS', () => {
+  it('두 값 모두 시트 10단계 안에 있다', () => {
+    for (const status of Object.values(APPROVAL_DECISION_STATUS)) {
+      expect(STATUS_SEMANTIC_MAP[status]).toBeDefined();
+    }
+  });
+
+  it('승인은 승인 대기의 다음 단계이고, 반려는 수정으로 되돌린다', () => {
+    expect(STATUS_SEMANTIC_MAP[APPROVAL_DECISION_STATUS.approved]).toBe('pending_release');
+    expect(STATUS_SEMANTIC_MAP[APPROVAL_DECISION_STATUS.rejected]).toBe('rework');
   });
 });

@@ -12,8 +12,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionOutcome } from '@/lib/auth/viewer-session';
 import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
 import { buildKpiStrip, type KpiTile, type TeamSummary } from '@/lib/domain/progress-stats';
-import { resolveReportPeriod } from '@/lib/domain/report-period';
-import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 import { kstToday } from '@/lib/domain/kst-today';
 import { buildSemanticIndex, STATUS_OPTIONS } from '@/lib/domain/task-semantic';
 import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
@@ -26,7 +24,6 @@ import type { GoalRow } from '@/lib/view/goal-view';
 import type { ExtraCell } from '@/lib/view/extras-render';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
 import {
-  COMPACT_KPI_KEYS,
   DASHBOARD_LAYOUT,
   layoutFor,
   SECTION_ORDER,
@@ -213,6 +210,7 @@ function viewer(overrides: Partial<Viewer> = {}): Viewer {
     role: 'admin',
     teamId: null,
     memberId: null,
+    memberName: '담당자1',
     ...overrides,
   };
 }
@@ -702,15 +700,33 @@ describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
    * **이 테스트가 완료 기준 7의 실체다.** 세 역할이 같은 순서를 그리면 `?as=`는 배지만 바꾸는
    * 장식이 되고 `H7` 헤지가 성립하지 않는다.
    */
-  it('맨 위에 오는 것이 역할마다 다르다', async () => {
+  /**
+   * 첫 줄은 세 역할이 같다 — 업무 표다 (`TASKS_FIRST`). **차이는 그 다음 줄부터** 남고
+   * 완료 기준 7이 재는 것은 거기 있다.
+   */
+  it('세 역할 모두 업무 표가 맨 위다', async () => {
     await seed();
 
-    const first = async (as: string): Promise<string> =>
-      sectionKeys(await Home(props({ as })))[0];
+    for (const as of ['admin', 'lead', 'member']) {
+      expect(sectionKeys(await Home(props({ as })))[0]).toBe('tasks');
+    }
+  });
 
-    expect(await first('admin')).toBe('kpi');
-    expect(await first('lead')).toBe('alerts');
-    expect(await first('member')).toBe('tasks');
+  it('업무 표 아래는 역할이 정한 순서 그대로다', async () => {
+    await seed();
+
+    const second = async (as: string): Promise<string> =>
+      sectionKeys(await Home(props({ as })))[1];
+
+    // 대표는 전체 그림부터, 나머지 둘은 지금 문제(알림)부터다
+    expect(await second('admin')).toBe('kpi');
+    expect(await second('lead')).toBe('alerts');
+    expect(await second('member')).toBe('alerts');
+
+    // 팀장과 부원은 **같은 순서**다 — 부원의 화면이 팀 대시보드 하나로 좁혀진 뒤의 규칙이다
+    expect(sectionKeys(await Home(props({ as: 'member' })))).toEqual(
+      sectionKeys(await Home(props({ as: 'lead' })))
+    );
   });
 
   it('그린 순서가 `layoutFor`가 정한 그대로다 — 화면이 표를 다시 짜지 않는다', async () => {
@@ -750,23 +766,18 @@ describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
     expect(sectionKeys(await Home(props()))).toEqual(placedKeys('member'));
   });
 
-  it('`member`의 KPI는 축약 3칸이고, 그 값은 10칸에서 골라 온 것이다', async () => {
+  it('세 역할이 같은 10칸 KPI를 본다 — 축약 3칸은 없앴다', async () => {
     await seed();
 
-    const compact = findComponent(await Home(props({ as: 'member' })), 'KpiStrip')?.props;
-    const full = findComponent(await Home(props({ as: 'admin' })), 'KpiStrip')?.props
-      ?.tiles as KpiTile[];
+    const keysOf = async (as: string): Promise<string[]> =>
+      ((findComponent(await Home(props({ as })), 'KpiStrip')?.props?.tiles as KpiTile[]) ?? []).map(
+        (tile) => tile.key
+      );
 
-    const tiles = compact?.tiles as KpiTile[];
-    expect(compact?.compact).toBe(true);
-    expect(tiles.map((tile) => tile.key)).toEqual([...COMPACT_KPI_KEYS]);
-    // 화면이 따로 세지 않았다 — 같은 키의 값이 10칸과 같다
-    for (const tile of tiles) {
-      expect(tile.value).toBe(full.find((entry) => entry.key === tile.key)?.value);
-    }
+    expect(await keysOf('member')).toEqual(await keysOf('admin'));
+    expect(await keysOf('lead')).toEqual(await keysOf('admin'));
   });
 
-  /** 그 사람이 누군지 우리는 모른다. 이름을 대신 채워 넣지 않고 **묻는다** (`UC-14`) */
   it('`member`가 담당자를 고르지 않았을 때만 안내가 뜬다', async () => {
     await seed();
 
@@ -778,51 +789,12 @@ describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
   });
 });
 
-describe('/ — 주간 브리핑 카드 (`UC-08` · 완료 기준 9)', () => {
-  it('마크다운 문자열을 그대로 넘긴다 — 화면이 다시 만들지 않는다', async () => {
-    await seed();
-    await seedGoals();
-
-    const tasks = await handle.repo.listTasks();
-    const period = resolveReportPeriod(kstToday(new Date()), null);
-    const markdown = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard')?.props
-      ?.markdown as string;
-
-    expect(markdown).toBe(
-      buildWeeklyReport({
-        tasks,
-        stages: await handle.repo.listStages(tasks.map((task) => task.id)),
-        goals: await handle.repo.listGoalMetrics(),
-        period,
-        events: await handle.repo.listEvents({ since: period.since, until: period.until }),
-        ctx: { today: kstToday(new Date()), semanticIndex: buildSemanticIndex(null) },
-      })
-    );
-  });
-
-  /** 이 문자열은 복사돼 회의록으로 나간다. `extras`가 한 값도 실리면 안 된다 (`S6`) */
-  it('연락처·계정이 실리지 않는다', async () => {
+describe('/ — 주간 브리핑 (`UC-08`)', () => {
+  /** 브리핑은 전용 화면(`/report`)이 진다. 대시보드가 같은 문서를 한 번 더 그리지 않는다 */
+  it('대시보드에 브리핑 카드가 없다', async () => {
     await seed();
 
-    const markdown = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard')?.props
-      ?.markdown as string;
-
-    expect(markdown).not.toContain('연락처');
-    expect(markdown).not.toContain('계정');
-  });
-
-  /**
-   * T9 step 4에서 이력 조회 경로(`listEvents`)가 생겨 **각주가 회수됐다.** 「집계되지 않음」은
-   * 이제 저장소가 이력을 읽지 못한 경우에만 나오고, 0건은 0건이라고 말한다.
-   */
-  it('변경 건수를 실제로 세고, 「집계되지 않음」 각주를 달지 않는다', async () => {
-    await seed();
-
-    const card = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard');
-
-    expect(card?.props?.note).toBeUndefined();
-    expect(card?.props?.markdown as string).toContain('- 이번 주 변경: 0건');
-    expect(card?.props?.markdown as string).not.toContain('집계되지 않음');
+    expect(textOf(await Home(props({ as: 'admin' })))).not.toContain('주간 브리핑');
   });
 });
 
@@ -850,15 +822,46 @@ describe('/ — 로그인 상태 (T8 완료 기준 1·6)', () => {
     expect(topbar?.showRoleSwitch).toBe(false);
   });
 
-  it('프로필 없는 계정도 계정이다 — 역할은 null이고 로그아웃 자리는 남는다', async () => {
-    await seed();
-    session = { status: 'no_profile', userId: 'user-9', email: 'ghost@van.test' };
+  /**
+   * **T11에서 갈래가 바뀌었다.** 예전에는 이 계정이 「아무것도 없는 대시보드 + 로그아웃
+   * 버튼」을 봤는데, 그 화면은 원인을 한 글자도 말하지 않았다. 이제 `/pending`으로 보내고
+   * 거기서 사유를 말한다 (`pending-gate.ts`). 상단 바가 여전히 이 계정을 「계정」으로 그린다는
+   * 사실은 `toAccount`가 지고 `viewer-session.test.ts`가 잰다.
+   */
+  it.each([
+    ['no_profile', { status: 'no_profile', userId: 'user-9', email: 'ghost@van.test' }],
+    [
+      'pending',
+      {
+        status: 'pending',
+        userId: 'user-9',
+        email: 'ghost@van.test',
+        teamId: 'edit',
+        displayName: '새내기',
+      },
+    ],
+    [
+      'rejected',
+      {
+        status: 'rejected',
+        userId: 'user-9',
+        email: 'ghost@van.test',
+        teamId: 'edit',
+        displayName: '새내기',
+      },
+    ],
+  ] as [string, SessionOutcome][])(
+    '%s 계정은 대시보드가 아니라 `/pending`으로 간다',
+    async (_label, outcome) => {
+      await seed();
+      session = outcome;
 
-    expect(topbarProps(await Home(props()))?.account).toEqual({
-      email: 'ghost@van.test',
-      role: null,
-    });
-  });
+      // `redirect()`는 던져서 렌더를 끊는다. 목적지는 에러의 `digest`에 실린다
+      await expect(Home(props())).rejects.toMatchObject({
+        digest: expect.stringContaining('/pending'),
+      });
+    }
+  );
 
   it('`?as=`가 세션을 이기지 못한다 — URL은 사용자가 타이핑한 문자열이다', async () => {
     await seed();
@@ -869,14 +872,14 @@ describe('/ — 로그인 상태 (T8 완료 기준 1·6)', () => {
   });
 });
 
-describe('/ — 담당자 미연결 (`PLAN.md` 결정 D)', () => {
-  it('계정이 담당자에 안 붙은 부원에게는 원인을 말하고 업로드로 보내지 않는다', async () => {
+describe('/ — 팀 미배정', () => {
+  it('팀이 없는 부원에게는 원인을 말하고 업로드로 보내지 않는다', async () => {
     await seed();
-    session = { status: 'ok', viewer: viewer({ role: 'member', memberId: null }) };
+    session = { status: 'ok', viewer: viewer({ role: 'member', teamId: null, memberId: null }) };
 
     const tree = await Home(props());
-    expect(findComponent(tree, 'EmptyState')?.props?.kind).toBe('unlinked-member');
-    // 시트를 올려도 그 사람의 업무는 여전히 보이지 않는다 — 필요한 것은 계정 연결이다
+    expect(findComponent(tree, 'EmptyState')?.props?.kind).toBe('no-team');
+    // 시트를 올려도 그 사람에게는 여전히 아무것도 안 보인다 — 필요한 것은 팀 배정이다
     expect(findComponent(tree, 'SeedButton')).toBeNull();
   });
 
@@ -901,11 +904,46 @@ describe('/ — 수정 폼 (`UC-16`)', () => {
 
   it('범위 안의 업무에는 수정 폼이 뜬다 — 판정은 화면이 아니라 `taskInScope`가 한다', async () => {
     await seed();
+    session = { status: 'ok', viewer: viewer({ role: 'lead', teamId: 'edit' }) };
+    const id = await idOf('edit');
+
+    const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
+    expect(panel?.props?.canEdit).toBe(true);
+  });
+
+  /**
+   * 범위는 넓은데 폼은 없다. **권한이 아니라 화면 규칙이다** — 진행률을 손수 적는 것은 그
+   * 업무를 들고 있는 사람의 일이고, 전사를 보는 자리에 그 폼이 있으면 남의 업무 숫자를
+   * 대신 적게 된다 (`lib/domain/task-authoring.ts`).
+   */
+  /*
+   * 예전에는 대표·실장에게 `canEdit`이 **거짓**이었다 (`canEditProgress`). 그 폼이 진행률 두
+   * 칸이 아니라 업무 내용을 고치는 자리가 되면서 뒤집혔다 — 근거는 `task-authoring.ts`에 있다.
+   * 삭제도 함께 열린다.
+   */
+  it('대표·실장에게는 수정·담당자 지정·삭제가 모두 뜬다', async () => {
+    await seed();
     session = { status: 'ok', viewer: viewer() };
     const id = await idOf('edit');
 
     const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
     expect(panel?.props?.canEdit).toBe(true);
+    expect(panel?.props?.canAssign).toBe(true);
+    expect(panel?.props?.canDelete).toBe(true);
+  });
+
+  it('담당자 후보는 그 업무의 팀 사람만이다 — 좁히는 것은 `assignableMembers`다', async () => {
+    await seed();
+    session = { status: 'ok', viewer: viewer() };
+    const id = await idOf('edit');
+
+    const panel = findComponent(openSlot(await Home(props({ task: id }))), 'TaskPanel');
+    const candidates = (panel?.props?.ownerCandidates ?? []) as { id: string; name: string }[];
+
+    // 브라우저로 나가는 것은 `{id, name}` 둘뿐이다 — `authUserId`를 싣지 않는다 (`S6`)
+    for (const candidate of candidates) {
+      expect(Object.keys(candidate).sort()).toEqual(['id', 'name']);
+    }
   });
 
   it('상태 목록을 화면이 다시 적지 않는다 — `STATUS_SEMANTIC_MAP`에서 온다 (`ADR-009`)', async () => {

@@ -22,14 +22,25 @@ import Link from 'next/link';
 
 import { TaskPanel } from '@/components/tasks/task-panel';
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
+import type { TeamEnumGroup } from '@/lib/domain/team-enum-groups';
+import {
+  assignableMembers,
+  canAssignOwner,
+  canDeleteTask,
+  canEditTaskDetails,
+  lockedStageFields,
+  lockedTaskFields,
+} from '@/lib/domain/task-authoring';
 import {
   buildHref,
   countActiveFilters,
   FILTER_RESET_PATCH,
   type DashboardQuery,
 } from '@/lib/view/dashboard-query';
+import { toExtraFields } from '@/lib/view/extras-edit';
 import { toExtraCells } from '@/lib/view/extras-render';
 import type { TaskResponse } from '@/types/api';
+import type { MemberRecord } from '@/types/auth';
 import type { TaskStage } from '@/types/task';
 
 export function TaskPanelSlot({
@@ -39,7 +50,10 @@ export function TaskPanelSlot({
   query,
   pathname,
   editableIds,
+  hasSession,
+  members,
   statusOptions,
+  enumGroups,
 }: {
   /** **화면에 실제로 보이는 목록.** 칩으로 가린 업무의 패널이 열리면 표와 어긋난다 */
   tasks: TaskResponse[];
@@ -53,8 +67,25 @@ export function TaskPanelSlot({
    * 폼이 아예 뜨지 않는다.
    */
   editableIds: ReadonlySet<string>;
+  /**
+   * 로그인한 세션이 있는가. **「고칠 수 없다」와 「로그인하지 않았다」를 가르는 데만 쓴다** —
+   * 데모에서는 `editableIds`가 늘 비어 있어서, 그것만 보면 모든 업무에 「다른 팀 업무입니다」가
+   * 붙는다 (`team-visibility.ts`·`staff-tools.ts`가 같은 이유로 이 인자를 받는다).
+   */
+  hasSession: boolean;
+  /**
+   * 시트 명부 전량. 담당자 후보를 **여기서 좁힌다** — 페이지가 팀별로 미리 나눠 보내면
+   * 어느 팀 것인지 아는 곳이 둘이 된다. 브라우저로 나가는 것은 좁힌 뒤의 `{id, name}`
+   * 뿐이다 (`authUserId`를 클라이언트 번들에 싣지 않는다 — `S6`).
+   */
+  members: readonly MemberRecord[];
   /** 상태 드롭다운 목록. 문자열은 `STATUS_SEMANTIC_MAP` 한 곳에서 온다 (`ADR-009`) */
   statusOptions: readonly string[];
+  /**
+   * `설정` 탭의 팀 전용 그룹. 팀 전용 칸의 드롭다운이 여기서 나온다 — 페이지가 저장소에서
+   * 읽어 `teamEnumGroups`로 접은 값이고, 비어 있으면 그 칸들은 자유 입력으로 남는다.
+   */
+  enumGroups: readonly TeamEnumGroup[];
 }) {
   const openId = query.task;
   if (openId === null) return null;
@@ -96,10 +127,46 @@ export function TaskPanelSlot({
         .sort((left, right) => left.seq - right.seq)}
       // 변환은 서버에서 끝낸다 — 패널은 마스킹도 스킴 검사도 다시 하지 않는다 (`S6`·`S7`)
       cells={toExtraCells(task.extras, role)}
+      /*
+       * 고칠 수 있는 팀 전용 칸. **읽기용(`cells`)과 나눠 만든다** — 그쪽은 민감 키를
+       * 「(비공개)」로 남기고, 이쪽은 아예 빼야 한다 (보내면 저장이 통째로 실패한다).
+       */
+      extraFields={toExtraFields(task.extras, task.teamId, enumGroups)}
       closeHref={closeHref}
-      // 판정 결과를 **찾아보기만** 한다. 숨김은 방어가 아니고 거부는 `PATCH`가 한다
-      canEdit={editableIds.has(task.id)}
+      /*
+       * 판정 결과를 **찾아보기만** 한다. 숨김은 방어가 아니고 거부는 `PATCH`가 한다.
+       *
+       * 범위(`editableIds`)에 역할 한 겹이 더 걸린다 — 그 겹의 근거는 `task-authoring.ts`에
+       * 있다. `editableIds`는 이제 「보이는 것」이 아니라 **「고칠 수 있는 것」**이다
+       * (`scopeEditableTasks`).
+       */
+      /*
+       * **셋 다 범위 + 역할이다.** 담당자 지정만 오래도록 역할 하나로 서 있었는데, 팀장이
+       * 전 팀을 **보게** 된 뒤로(`0012`) 그 자리에 「보이는데 못 고치는」 업무가 생겼다 —
+       * 그대로 두면 팀장이 남의 팀 업무에서 담당자 폼을 보고 저장을 눌러 403을 받는다.
+       */
+      canEdit={editableIds.has(task.id) && canEditTaskDetails(role)}
+      canAssign={editableIds.has(task.id) && canAssignOwner(role)}
+      canDelete={editableIds.has(task.id) && canDeleteTask(role)}
+      /*
+       * **감추기만 하면 「어디 갔지」가 된다.** 폼 셋이 통째로 사라진 화면은 고장과 구분되지
+       * 않으므로 한 줄로 사유를 적는다 (`UI_GUIDE.md`「접힌 것과 없는 것이 같아 보이면 안 된다」).
+       * 로그인하지 않았으면 적지 않는다 — 그때는 「내 팀이 아니다」가 아니라 「아직 로그인이
+       * 없다」이고, 데모 화면에 남의 팀 이야기를 띄울 이유가 없다.
+       */
+      readOnly={hasSession && !editableIds.has(task.id)}
+      // 부원에게는 같은 팀 남의 업무가, 팀장·어드민에게는 다른 팀 업무가 그 자리다
+      readOnlyReason={role === 'member' ? 'not-mine' : 'other-team'}
+      // 브라우저로 나가는 것은 이 둘뿐이다 (`MemberRecord`의 `authUserId`를 싣지 않는다)
+      ownerCandidates={assignableMembers(members, task.teamId).map((member) => ({
+        id: member.id,
+        name: member.name,
+      }))}
       statusOptions={statusOptions}
+      // 「이 역할이 어느 칸까지 고치는가」. 라우트도 같은 함수를 부른다 (`task-authoring.ts`)
+      lockedFields={lockedTaskFields(role)}
+      // 단계는 목록이 다르다 — 부원에게 계획일 하나가 잠긴다 (`lockedStageFields`)
+      lockedStageFields={lockedStageFields(role)}
     />
   );
 }

@@ -21,16 +21,33 @@ import { rowClassOf } from '@/lib/view/status-badge';
 import type { TaskResponse } from '@/types/api';
 
 /** 컬럼 확정값 (`ARCHITECTURE.md`「부서별 탭」의 공통 8~10컬럼) */
-const COLUMNS: readonly { label: string; numeric?: true }[] = [
-  { label: '상태' },
-  { label: '팀' },
-  { label: '업무명' },
-  { label: '담당자' },
-  { label: '마감', numeric: true },
-  { label: 'D-DAY', numeric: true },
-  { label: '진행률', numeric: true },
-  { label: '다음 조치' },
+const COLUMNS: readonly string[] = [
+  '상태',
+  '팀',
+  '업무명',
+  '담당자',
+  '마감',
+  'D-DAY',
+  '진행률',
+  '다음 조치',
 ];
+
+/**
+ * 담당자 칸의 글자. **주 담당과 공동 담당을 한 칸에 잇는다** — 시트가 두 칸으로 갖고 있고
+ * 패널도 두 줄로 보여 주지만, 표에서 공동 담당이 빠지면 「이 업무는 누가 하나」에 절반만
+ * 답하게 된다. 실제로 공동 담당을 걸어 둔 사람이 표에서 자기 이름을 못 찾는 일이 있었다.
+ *
+ * 주 담당이 **먼저**다. 그 순서가 열람 범위를 정하는 순서이기도 하다 (`viewer-scope.ts`).
+ * 주 담당이 비었는데 공동 담당만 있는 행도 있으므로(시트에서 그렇게 온다) 빈 자리를
+ * 건너뛰고 잇는다.
+ */
+function ownerText(task: TaskResponse): string {
+  const names = [task.ownerNameRaw, ...task.coOwnerNames].filter(
+    (name): name is string => name !== null && name.trim() !== ''
+  );
+
+  return names.length === 0 ? EMPTY : names.join(', ');
+}
 
 /**
  * D-DAY만 색을 갖는다. 지연은 이미 배지와 좌측 보더가 말하고 있으므로 여기서는 **마감 임박**
@@ -57,12 +74,9 @@ export function TaskTable({
       <table className="w-full min-w-[900px] border-collapse text-sm">
         <thead>
           <tr className="bg-brand-soft text-brand sticky top-0 text-xs font-medium">
-            {COLUMNS.map((column) => (
-              <th
-                key={column.label}
-                className={`px-3 py-2 ${column.numeric === true ? 'text-right' : 'text-left'}`}
-              >
-                {column.label}
+            {COLUMNS.map((label) => (
+              <th key={label} className="px-3 py-2 text-left">
+                {label}
               </th>
             ))}
           </tr>
@@ -87,16 +101,15 @@ export function TaskTable({
                   {task.title ?? EMPTY}
                 </Link>
               </td>
-              <td className="text-ink-body px-3 py-2 whitespace-nowrap">
-                {task.ownerNameRaw ?? EMPTY}
-              </td>
-              <td className="text-ink px-3 py-2 text-right tabular-nums">
+              {/* 이름이 여럿이면 줄바꿈을 허용한다 — `nowrap`이면 긴 목록이 표를 옆으로 민다 */}
+              <td className="text-ink-body px-3 py-2">{ownerText(task)}</td>
+              <td className="text-ink px-3 py-2 text-left tabular-nums">
                 {formatDate(task.dueAt)}
               </td>
-              <td className={`px-3 py-2 text-right tabular-nums ${ddayClassOf(task)}`}>
+              <td className={`px-3 py-2 text-left tabular-nums ${ddayClassOf(task)}`}>
                 {formatDday(task.flags.dday)}
               </td>
-              <td className="text-ink px-3 py-2 text-right tabular-nums">
+              <td className="text-ink px-3 py-2 text-left tabular-nums">
                 {formatPercent(task.progress)}
               </td>
               <td className="text-ink-body px-3 py-2">{task.nextAction ?? EMPTY}</td>

@@ -75,6 +75,17 @@ describe('proxy — 미인증 (T8 완료 기준 7)', () => {
   });
 
   /**
+   * **`/pending`도 보호 대상이다** (T11). 승인을 기다리는 사람은 로그인한 상태이므로,
+   * 이 화면을 공개로 두면 로그아웃 상태에서도 열리고 세션 갱신이 건너뛰어진다.
+   */
+  it('승인 대기 화면도 미인증이면 `/login?next=…`으로 보낸다', async () => {
+    const response = await proxy(requestFor('/pending'));
+
+    expect(response?.status).toBe(307);
+    expect(locationOf(response as Response)).toBe('/login?next=%2Fpending');
+  });
+
+  /**
    * API에 302를 주면 클라이언트가 따라가서 **로그인 화면 HTML을 JSON으로 파싱하려 든다**.
    * 문구는 `api-error.ts`의 표와 글자까지 같아야 한다.
    */
@@ -90,7 +101,7 @@ describe('proxy — 미인증 (T8 완료 기준 7)', () => {
 });
 
 describe('proxy — 공개 경로', () => {
-  it.each(['/login', '/api/auth/login', '/api/auth/logout', '/api/health'])(
+  it.each(['/login', '/signup', '/api/auth/login', '/api/auth/logout', '/api/health'])(
     '`%s`는 미인증이어도 그대로 지나간다',
     async (path) => {
       const response = await proxy(requestFor(path));

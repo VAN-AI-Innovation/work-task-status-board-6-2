@@ -19,14 +19,14 @@ import type { GoalRow } from '@/lib/view/goal-view';
 import { formatPercent } from '@/lib/view/kpi-format';
 import { teamLabel } from '@/lib/view/team-slug';
 
-const COLUMNS: readonly { label: string; numeric?: true }[] = [
-  { label: '팀' },
-  { label: '과제' },
-  { label: '목표 KPI' },
-  { label: '목표 수치', numeric: true },
-  { label: '실제 성과', numeric: true },
-  { label: '달성률', numeric: true },
-  { label: '직전 대비' },
+const COLUMNS: readonly string[] = [
+  '팀',
+  '과제',
+  '목표 KPI',
+  '목표 수치',
+  '실제 성과',
+  '달성률',
+  '직전 대비',
 ];
 
 export function GoalSection({
@@ -72,12 +72,9 @@ export function GoalSection({
             <table className="w-full min-w-[760px] border-collapse text-sm">
               <thead>
                 <tr className="bg-brand-soft text-brand text-xs font-medium">
-                  {COLUMNS.map((column) => (
-                    <th
-                      key={column.label}
-                      className={`px-3 py-2 ${column.numeric ? 'text-right' : 'text-left'}`}
-                    >
-                      {column.label}
+                  {COLUMNS.map((label) => (
+                    <th key={label} className="px-3 py-2 text-left">
+                      {label}
                     </th>
                   ))}
                 </tr>
@@ -91,9 +88,9 @@ export function GoalSection({
                     <td className="text-ink-muted px-3 py-2 text-xs">{row.teamLabel}</td>
                     <td className="text-ink-body px-3 py-2">{row.title}</td>
                     <td className="text-ink-muted px-3 py-2 text-xs">{row.kpiName}</td>
-                    <td className="text-ink px-3 py-2 text-right tabular-nums">{row.target}</td>
-                    <td className="text-ink px-3 py-2 text-right tabular-nums">{row.actual}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">
+                    <td className="text-ink px-3 py-2 text-left tabular-nums">{row.target}</td>
+                    <td className="text-ink px-3 py-2 text-left tabular-nums">{row.actual}</td>
+                    <td className="px-3 py-2 text-left tabular-nums">
                       {/* 미달만 앰버다. 초과 달성을 초록으로 칠하지 않는다 */}
                       <span className={row.belowTarget ? 'text-warn' : 'text-ink'}>{row.rate}</span>
                       {row.sheetRate !== null && (

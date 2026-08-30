@@ -97,6 +97,8 @@ async function applyPayload(
 
   const taskResult = await repo.upsertTasks(linked.tasks, options);
   const goalResult = await repo.upsertGoalMetrics(payload.goalMetrics, options);
+  // `설정` 탭의 값 목록. 이 필드가 생기기 전의 레코드에는 없어서 `?? []`다 (`CommitPayload`)
+  await repo.upsertEnumOptions(payload.enums ?? []);
 
   return {
     created: taskResult.created,

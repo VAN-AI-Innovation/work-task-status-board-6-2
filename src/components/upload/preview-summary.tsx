@@ -56,10 +56,10 @@ export function PreviewSummary({ preview }: { preview: UploadPreview }) {
             <tr className="bg-raise text-xs font-medium text-ink-muted">
               <th className="px-3 py-2 text-left">시트</th>
               <th className="px-3 py-2 text-left">팀</th>
-              <th className="px-3 py-2 text-right">업무</th>
-              <th className="px-3 py-2 text-right">신규</th>
-              <th className="px-3 py-2 text-right">변경</th>
-              <th className="px-3 py-2 text-right">유지</th>
+              <th className="px-3 py-2 text-left">업무</th>
+              <th className="px-3 py-2 text-left">신규</th>
+              <th className="px-3 py-2 text-left">변경</th>
+              <th className="px-3 py-2 text-left">유지</th>
               <th className="px-3 py-2 text-left">상태</th>
             </tr>
           </thead>
@@ -70,12 +70,12 @@ export function PreviewSummary({ preview }: { preview: UploadPreview }) {
                 <td className="px-3 py-2 text-ink-body">
                   {tab.teamKey === null ? '—' : teamLabel(tab.teamKey)}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink">
+                <td className="px-3 py-2 text-left tabular-nums text-ink">
                   {tab.taskCount}
                 </td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink">{tab.created}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink">{tab.updated}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink-muted">
+                <td className="px-3 py-2 text-left tabular-nums text-ink">{tab.created}</td>
+                <td className="px-3 py-2 text-left tabular-nums text-ink">{tab.updated}</td>
+                <td className="px-3 py-2 text-left tabular-nums text-ink-muted">
                   {tab.unchanged}
                 </td>
                 <td

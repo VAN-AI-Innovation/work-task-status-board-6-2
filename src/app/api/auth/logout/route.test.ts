@@ -106,3 +106,46 @@ describe('POST /api/auth/logout', () => {
     expect(locationOf(response)).toBe('/login');
   });
 });
+
+/**
+ * 공격 #8 — `POST`로 좁힌 것만으로는 부족하다. 폼 전송은 **남의 페이지에서도** 보낼 수
+ * 있으므로(`<form action="…/api/auth/logout">`에 자동 submit) 출처를 함께 본다.
+ *
+ * ⚠ **이 라우트만 리다이렉트가 아니라 `403`이다.** 실패했을 때 사용자를 보낼 「원래 자리」가
+ * 없기 때문이다 — 로그인 화면으로 보내면 세션은 살아 있는데 로그아웃된 것처럼 보이고,
+ * **그 착시가 정확히 공격자가 노린 결과다.** 거절은 거절로 보여야 한다.
+ */
+describe('POST /api/auth/logout — 출처 (T11 step 9)', () => {
+  function withOrigin(origin: string): Request {
+    return new Request('http://localhost:3000/api/auth/logout', {
+      method: 'POST',
+      headers: { origin, host: 'localhost:3000' },
+    });
+  }
+
+  it('다른 출처의 폼은 403이고 세션에 손대지 않는다', async () => {
+    const response = await routeModule.POST(withOrigin('https://evil.example'));
+    const parsed = (await response.json()) as { error: { code: string; message: string } };
+
+    expect(response.status).toBe(403);
+    expect(parsed.error.code).toBe('FORBIDDEN');
+    expect(parsed.error.message).toMatch(/[가-힣]/);
+    // 급소 — signOut이 불리지 않았고 쿠키를 지우는 값도 실리지 않았다
+    expect(signOutCalls).toBe(0);
+    expect(response.headers.getSetCookie()).toEqual([]);
+  });
+
+  it('같은 출처의 폼은 통과한다', async () => {
+    const response = await routeModule.POST(withOrigin('http://localhost:3000'));
+
+    expect(signOutCalls).toBe(1);
+    expect(locationOf(response)).toBe('/login');
+  });
+
+  it('`Origin`이 없는 요청(`curl`)은 통과한다 — T8의 검증 절차가 죽지 않는다', async () => {
+    const response = await routeModule.POST(request());
+
+    expect(signOutCalls).toBe(1);
+    expect(response.status).toBe(303);
+  });
+});

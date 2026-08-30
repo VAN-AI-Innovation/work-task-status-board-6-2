@@ -100,6 +100,7 @@ const signedIn = (role: ViewerRole, over: Partial<{ teamId: Task['teamId'] | nul
     role,
     teamId: over.teamId === undefined ? 'edit' : over.teamId,
     memberId: over.memberId === undefined ? 'member-1' : over.memberId,
+    memberName: null,
   },
 });
 
@@ -249,24 +250,34 @@ describe('buildReadContext', () => {
     expect(context.tasks.map((task) => task.id)).toEqual(['task-mine', 'task-ok']);
   });
 
-  it('member 세션이면 본인 담당 건만 남고 viewer가 실린다 (viewer-scope)', async () => {
+  it('member 세션이면 자기 팀만 남고 viewer가 실린다 (viewer-scope)', async () => {
     const mine = makeTask({ id: 'task-mine', sourceKey: 'edit-mine', ownerMemberId: 'member-1' });
-    const theirs = makeTask({ id: 'task-theirs', sourceKey: 'edit-theirs', ownerMemberId: 'member-2' });
-    const view = makeView([mine, theirs, ON_TIME], [], signedIn('member'));
+    // 같은 팀 남의 건은 **보인다** (`0015`). 좁히는 것은 수정 범위뿐이다
+    const teammate = makeTask({
+      id: 'task-teammate',
+      sourceKey: 'edit-teammate',
+      ownerMemberId: 'member-2',
+    });
+    const other = makeTask({ id: 'task-shoot', teamId: 'shoot', sourceKey: 'shoot-001' });
+    const view = makeView([mine, teammate, other], [], signedIn('member'));
 
     const context = await buildReadContext(view, NOW, { as: null, filter: {} });
 
-    expect(context.tasks.map((task) => task.id)).toEqual(['task-mine']);
+    expect(context.tasks.map((task) => task.id)).toEqual(['task-mine', 'task-teammate']);
     expect(context.viewer?.memberId).toBe('member-1');
   });
 
-  it('lead 세션이면 자기 팀만 남는다', async () => {
+  /*
+   * **팀장의 열람 범위는 전사다** (`0012_lead_org_read.sql` · `viewer-scope.ts`). 좁히는 것은
+   * 이제 수정 범위(`taskEditable`)뿐이고, 이 함수는 조회 문맥이라 그것을 걸지 않는다.
+   */
+  it('lead 세션도 전 팀을 본다 — 좁히는 것은 수정 범위뿐이다', async () => {
     const shoot = makeTask({ id: 'task-shoot', teamId: 'shoot', sourceKey: 'shoot-001' });
     const view = makeView([ON_TIME, shoot], [], signedIn('lead'));
 
     const context = await buildReadContext(view, NOW, { as: null, filter: {} });
 
-    expect(context.tasks.map((task) => task.id)).toEqual(['task-ok']);
+    expect(context.tasks.map((task) => task.id)).toEqual(['task-ok', 'task-shoot']);
   });
 
   it('admin 세션은 전부 본다', async () => {
@@ -289,9 +300,11 @@ describe('buildReadContext', () => {
       dueAt: '2026-08-10',
       ownerMemberId: 'member-1',
     });
+    // 범위 밖 = **다른 팀**이다 (`0015` 이후 부원의 범위 축은 팀이다)
     const theirLate = makeTask({
       id: 'task-their-late',
-      sourceKey: 'edit-their-late',
+      teamId: 'shoot',
+      sourceKey: 'shoot-their-late',
       dueAt: '2026-08-10',
       ownerMemberId: 'member-2',
     });
@@ -311,7 +324,12 @@ describe('buildReadContext', () => {
 
   it('범위를 거른 뒤에도 지연이 없으면 플래그 표는 범위 목록과 같다', async () => {
     const mine = makeTask({ id: 'task-mine', sourceKey: 'edit-mine', ownerMemberId: 'member-1' });
-    const theirs = makeTask({ id: 'task-theirs', sourceKey: 'edit-theirs', ownerMemberId: 'member-2' });
+    const theirs = makeTask({
+      id: 'task-theirs',
+      teamId: 'shoot',
+      sourceKey: 'shoot-theirs',
+      ownerMemberId: 'member-2',
+    });
     const view = makeView([mine, theirs], [], signedIn('member'));
 
     const context = await buildReadContext(view, NOW, { as: null, filter: {} });

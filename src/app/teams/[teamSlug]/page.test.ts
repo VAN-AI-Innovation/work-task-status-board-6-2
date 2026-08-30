@@ -16,7 +16,6 @@ import type { AlertGroup } from '@/lib/view/alert-groups';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
 import type { GoalRow } from '@/lib/view/goal-view';
 import {
-  COMPACT_KPI_KEYS,
   layoutFor,
   SECTION_ORDER,
   sectionsFor,
@@ -173,6 +172,7 @@ function viewer(overrides: Partial<Viewer> = {}): Viewer {
     role: 'lead',
     teamId: 'edit',
     memberId: null,
+    memberName: '담당자1',
     ...overrides,
   };
 }
@@ -189,7 +189,7 @@ beforeEach(() => {
 });
 
 /** 이 화면이 실제로 그리는 섹션. 나머지는 `null`이라 순서 배열에서 조용히 빠진다 */
-const SUPPORTED: readonly SectionKey[] = ['kpi', 'kpi_compact', 'charts', 'goals', 'alerts', 'tasks'];
+const SUPPORTED: readonly SectionKey[] = ['kpi', 'charts', 'goals', 'alerts', 'tasks'];
 
 describe('/teams/[teamSlug] — 슬러그', () => {
   it('세 팀이 각각 자기 이름으로 뜬다', async () => {
@@ -299,19 +299,6 @@ describe('/teams/[teamSlug] — 화면 구성', () => {
     expect(empty?.props?.resetHref).toBeUndefined();
   });
 
-  /*
-   * 세 번째 갈래 (`PLAN.md` 결정 D). 이 사람에게는 필터를 지워도 결과가 같으므로
-   * 초기화 링크를 주지 않는다 — 필요한 것은 계정 연결이다.
-   */
-  it('계정이 담당자에 안 붙은 부원에게는 원인을 말하고 초기화 링크를 주지 않는다', async () => {
-    await seed();
-    session = { status: 'ok', viewer: viewer({ role: 'member', memberId: null }) };
-
-    const empty = findComponent(await TeamPage(props('edit')), 'EmptyState');
-
-    expect(empty?.props?.kind).toBe('unlinked-member');
-    expect(empty?.props?.resetHref).toBeUndefined();
-  });
 });
 
 describe('/teams/[teamSlug] — 로그인 상태 (T8 완료 기준 1·6)', () => {
@@ -340,7 +327,8 @@ describe('/teams/[teamSlug] — 로그인 상태 (T8 완료 기준 1·6)', () =>
         ?.canEdit
     ).toBe(false);
 
-    session = { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) };
+    // 팀장은 자기 팀 업무를 고친다 (`canEditTaskDetails` · `taskEditable`)
+    session = { status: 'ok', viewer: viewer({ role: 'lead', teamId: 'edit' }) };
     expect(
       findComponent(openSlot(await TeamPage(props('edit', { task: id }))), 'TaskPanel')?.props
         ?.canEdit
@@ -443,33 +431,44 @@ describe('/teams/[teamSlug] — 역할별 진입 화면 (완료 기준 7)', () =
     }
   });
 
-  it('맨 위에 오는 것이 역할마다 다르다', async () => {
+  /** `/`와 같다 — 첫 줄은 셋 다 업무 표이고 차이는 그 아래에 남는다 (`TASKS_FIRST`) */
+  it('세 역할 모두 업무 표가 맨 위다', async () => {
     await seed();
 
-    expect(sectionKeys(await TeamPage(props('edit', { as: 'admin' })))[0]).toBe('kpi');
-    expect(sectionKeys(await TeamPage(props('edit', { as: 'lead' })))[0]).toBe('alerts');
-    expect(sectionKeys(await TeamPage(props('edit', { as: 'member' })))[0]).toBe('tasks');
+    for (const as of ['admin', 'lead', 'member']) {
+      expect(sectionKeys(await TeamPage(props('edit', { as })))[0]).toBe('tasks');
+    }
+  });
+
+  it('업무 표 아래의 순서는 역할마다 다르다', async () => {
+    await seed();
+
+    expect(sectionKeys(await TeamPage(props('edit', { as: 'admin' })))[1]).toBe('kpi');
+    expect(sectionKeys(await TeamPage(props('edit', { as: 'lead' })))[1]).toBe('alerts');
+    expect(sectionKeys(await TeamPage(props('edit', { as: 'member' })))[1]).toBe('alerts');
   });
 
   /** `/`가 지기로 한 섹션은 여기에 없다 — 행 하나짜리 표와 승인 대기함은 전사 화면의 것이다 */
-  it('팀 요약표·승인 대기함·브리핑은 그리지 않는다', async () => {
+  it('팀 요약표·승인 대기함은 그리지 않는다', async () => {
     await seed();
 
     const tree = await TeamPage(props('edit', { as: 'admin' }));
 
     expect(findComponent(tree, 'TeamSummaryTable')).toBeNull();
     expect(findComponent(tree, 'ApprovalQueue')).toBeNull();
-    expect(findComponent(tree, 'BriefingCard')).toBeNull();
   });
 
-  it('`member`의 KPI는 축약 3칸이다', async () => {
+  /** 팀 화면은 세 역할이 **같은 모양**이다 — 부원에게 이 화면이 유일한 대시보드다 */
+  it('`member`의 KPI가 팀장과 같은 10칸이다', async () => {
     await seed();
 
-    const strip = findComponent(await TeamPage(props('edit', { as: 'member' })), 'KpiStrip')?.props;
+    const keysOf = async (as: string): Promise<string[]> =>
+      (
+        (findComponent(await TeamPage(props('edit', { as })), 'KpiStrip')?.props?.tiles as {
+          key: string;
+        }[]) ?? []
+      ).map((tile) => tile.key);
 
-    expect(strip?.compact).toBe(true);
-    expect((strip?.tiles as { key: string }[]).map((tile) => tile.key)).toEqual([
-      ...COMPACT_KPI_KEYS,
-    ]);
+    expect(await keysOf('member')).toEqual(await keysOf('lead'));
   });
 });

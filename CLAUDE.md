@@ -12,7 +12,7 @@ Google Sheets에 흩어진 팀별 업무(16/70/20 컬럼)를 **시트 업로드�
 Google Docs 워크로드 문서를 **업무 배정표 xlsx로 뽑는** 웹. 이 둘이 최우선 산출물이다.
 근거 문서는 `docs/PLAN.md` — **결정이 바뀌면 코드보다 PLAN.md를 먼저 고친다.**
 설계 상세는 `docs/ARCHITECTURE.md`, 결정 이력은 `docs/ADR.md`, 화면 규칙은 `docs/UI_GUIDE.md`.
-작업 단위는 `docs/TICKETS.md` (T0~T10, GitHub 이슈와 1:1).
+작업 단위는 `docs/TICKETS.md` (T0~T11, GitHub 이슈와 1:1).
 
 ## 아키텍처 규칙
 - CRITICAL: 비즈니스 로직은 `src/lib/`에만 둔다. 라우트 핸들러와 서버 컴포넌트는 `src/lib/`를
@@ -40,6 +40,14 @@ Google Docs 워크로드 문서를 **업무 배정표 xlsx로 뽑는** 웹. 이 
   (`연락처`·`계정`·`이메일`·`전화`)는 admin·lead에게만 내려보낸다.
 - CRITICAL: 생성하는 xlsx의 문자열 셀은 텍스트 타입으로 강제하고, `=`·`+`·`-`·`@`·탭·개행으로
   시작하면 `'` 프리픽스를 붙일 것 (수식 주입 방어). 읽을 때는 수식 셀의 `result`만 쓴다.
+- CRITICAL: `profiles`·`members`의 상태·역할 변경은 `security definer` 함수(RPC)로만 한다.
+  앱이 그 테이블을 직접 `update`하지 않는다 — `insert`·`update`·`delete` GRANT가 애초에 없다.
+  새 계정의 `role`·`status`는 트리거가 정하며 `user_metadata`에서 읽지 않는다 (`ADR-031`·`ADR-032`).
+- CRITICAL: 인증·팀·멤버 라우트(`app/api/auth`·`app/api/team`·`app/api/members`)에서
+  `service_role`을 쓰지 말 것 — `getStorage()`도 부르지 않는다. 그 경로는 사용자 JWT로만
+  나가며, 검사가 `auth.uid()`에 기대므로 `service_role`로 부르면 판정이 깨진다 (`ADR-024`).
+  상태를 바꾸는 `POST`는 `lib/api/same-origin.ts`로 출처를 본다. 위 둘을 `lib/security-rules.ts`가
+  파일 내용으로 잰다.
 - 에러 메시지·로그에 셀 값을 담지 말 것. 위치(`시트명!행:열`)와 사유만 남긴다.
 
 ## 개발 프로세스

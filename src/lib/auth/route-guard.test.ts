@@ -27,6 +27,24 @@ describe('classifyRequest — 실제 저장소', () => {
     expect(classifyRequest('/login', LIVE)).toBe('public');
   });
 
+  /**
+   * 가입 화면이 로그인을 요구하면 **아무도 계정을 만들 수 없다** (T11). 로그인 화면과
+   * 같은 이유로 공개이고, 가입 라우트(`/api/auth/signup`)는 이미 `/api/auth` 아래다.
+   */
+  it('가입 화면과 가입 라우트는 `public`이다', () => {
+    expect(classifyRequest('/signup', LIVE)).toBe('public');
+    expect(classifyRequest('/api/auth/signup', LIVE)).toBe('public');
+  });
+
+  /**
+   * **`/pending`은 공개가 아니다.** 대기 사용자는 **로그인한 상태**라, 공개로 두면
+   * 로그아웃 상태에서도 열려 아무 뜻 없는 화면이 노출되고 `proxy`가 세션 갱신을 건너뛰어
+   * 토큰이 조용히 만료된다. `page`면 미인증은 `/login`으로 가고 인증된 대기 계정은 지나간다.
+   */
+  it('`/pending`은 `page`다 — 대기 사용자는 로그인한 상태다', () => {
+    expect(classifyRequest('/pending', LIVE)).toBe('page');
+  });
+
   it('인증 라우트는 `public`이다 — 로그인하려면 먼저 불러야 한다', () => {
     expect(classifyRequest('/api/auth/login', LIVE)).toBe('public');
     expect(classifyRequest('/api/auth/logout', LIVE)).toBe('public');
@@ -54,6 +72,7 @@ describe('classifyRequest — 실제 저장소', () => {
   it('공개 경로는 정확히 일치하거나 그 아래여야 한다', () => {
     expect(classifyRequest('/api/healthz', LIVE)).toBe('api');
     expect(classifyRequest('/logins', LIVE)).toBe('page');
+    expect(classifyRequest('/signups', LIVE)).toBe('page');
     expect(classifyRequest('/api/authorize', LIVE)).toBe('api');
   });
 });
@@ -66,6 +85,7 @@ describe('classifyRequest — 데모 모드 (결정 E)', () => {
   const cases = [
     '/',
     '/login',
+    '/signup',
     '/api/auth/login',
     '/api/health',
     '/api/tasks',

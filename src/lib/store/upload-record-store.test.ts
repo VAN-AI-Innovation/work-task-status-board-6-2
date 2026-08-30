@@ -65,6 +65,7 @@ const PAYLOAD: CommitPayload = {
   tasks: [TASK],
   goalMetrics: [],
   teamKeys: ['edit'],
+  enums: [],
 };
 
 const SUMMARY: UploadSummary = {

@@ -36,12 +36,8 @@
  * 무엇이 맨 위에 오느냐뿐이다. **삭제하지 않는 것이 요점이다**: 인증이 붙은 뒤에도 그대로다 —
  * 범위 축소는 이미 **데이터에서** 일어났고(`viewer-scope.ts`·RLS), 화면이 섹션을 또 지우면
  * 같은 규칙이 두 벌이 된다. 화면이 하는 일은 막는 것이 아니라 **사실을 말하는 것**이다.
- * `detail` zone(목표·브리핑·승인 대기)은 접히지만 **제목 줄은 항상 남는다** — 접힌 것과
+ * `detail` zone(목표·승인 대기)은 접히지만 **제목 줄은 항상 남는다** — 접힌 것과
  * 없는 것이 화면에서 같아 보이면 안 된다.
- *
- * 주간 브리핑도 여기서 짓지 않는다 — `buildWeeklyReport`가 만든 **마크다운 문자열**을 그대로
- * 카드에 넘긴다. 자기 API(`/api/report/weekly`)를 부르지 않는 것은 다른 섹션과 같은 이유다
- * (`ADR-007`).
  *
  * 차트도 여기서 세지 않는다. `buildStatusBreakdown`·`buildCompletionBars`가 만든 배열만
  * 넘어간다 — 업무 배열 전량을 넘기면 직렬화 비용을 치르고 클라이언트 번들에 업무 데이터가
@@ -50,6 +46,7 @@
  */
 
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 import type { ReactNode } from 'react';
 
@@ -57,7 +54,6 @@ import { AlertPanel } from '@/components/alerts/alert-panel';
 import { ApprovalQueue } from '@/components/alerts/approval-queue';
 import { CompletionBars } from '@/components/charts/completion-bars';
 import { StatusBars } from '@/components/charts/status-bars';
-import { BriefingCard } from '@/components/dashboard/briefing-card';
 import { KpiStrip } from '@/components/dashboard/kpi-strip';
 import { TeamSummaryTable } from '@/components/dashboard/team-summary-table';
 import { GoalSection } from '@/components/goals/goal-section';
@@ -65,21 +61,24 @@ import { PageShell } from '@/components/shell/page-shell';
 import { SectionGrid } from '@/components/shell/section-grid';
 import { EmptyState } from '@/components/tasks/empty-state';
 import { FilterBar } from '@/components/tasks/filter-bar';
+import { TaskCreatePanel } from '@/components/tasks/task-create-panel';
 import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
 import { TaskTable } from '@/components/tasks/task-table';
 import { SeedButton } from '@/components/upload/seed-button';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
-import { loadPeriodEvents } from '@/lib/api/report-context';
 import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
+import { gateForSession } from '@/lib/auth/pending-gate';
+import { canSeeOrgDashboard } from '@/lib/domain/staff-tools';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { collectAlerts } from '@/lib/domain/alert-rules';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip, summarizeAllTeams } from '@/lib/domain/progress-stats';
+import { assignableMembers, creatableTeams } from '@/lib/domain/task-authoring';
+import { teamEnumGroups } from '@/lib/domain/team-enum-groups';
+import { stageTemplateFor } from '@/lib/domain/team-stage-template';
 import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
-import { scopeTasks } from '@/lib/domain/viewer-scope';
-import { resolveReportPeriod } from '@/lib/domain/report-period';
-import { buildWeeklyReport } from '@/lib/domain/weekly-report';
+import { scopeEditableTasks } from '@/lib/domain/viewer-scope';
 import { approvalQueue, groupAlerts } from '@/lib/view/alert-groups';
 import {
   buildCompletionBars,
@@ -98,12 +97,13 @@ import {
 import { emptyReason } from '@/lib/view/empty-reason';
 import { toGoalRows } from '@/lib/view/goal-view';
 import {
-  COMPACT_KPI_KEYS,
   DASHBOARD_LAYOUT,
   layoutFor,
   type SectionKey,
 } from '@/lib/view/role-layout';
+import { toTeamSlug } from '@/lib/view/team-slug';
 import { sortTasks } from '@/lib/view/task-sort';
+import { teamExtraColumns } from '@/lib/view/team-extra-columns';
 import { describeSync } from '@/lib/view/sync-freshness';
 
 /**
@@ -117,6 +117,15 @@ const PATHNAME = '/';
 
 export default async function Home({ searchParams }: PageProps<'/'>) {
   const view = await currentViewerContext();
+
+  /*
+   * **승인을 기다리는 계정은 여기서 멈춘다** (T11). `proxy`는 「사용자가 있느냐」까지만 알고
+   * (DB를 조회하지 않는다), 대기 여부는 `profiles`를 읽는 `resolveSession`이 안다 — 그래서
+   * 그 판정이 도착하는 첫 자리가 여기다. 규칙 자체는 `pending-gate.ts` 한 곳에 있다.
+   */
+  const gate = gateForSession(view.session, PATHNAME);
+  if (gate.kind === 'redirect') redirect(gate.to);
+
   // Next 16에서 `searchParams`는 Promise다
   const sp = toURLSearchParams(await searchParams);
 
@@ -125,6 +134,18 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     as: sp.get('as'),
     ...parseTaskQuery(sp),
   });
+
+  /*
+   * **부원은 이 화면을 쓰지 않는다** (`canSeeOrgDashboard` · `0015`). 열람 범위가 자기 팀이라
+   * 여기 서는 숫자는 팀 화면과 같은 값이고, 제목만 「전사」다. 404가 아니라 **자기 팀 화면으로
+   * 보낸다** — 이 주소는 사이드바의 옛 링크·북마크로 계속 들어오는 자리다.
+   *
+   * 팀이 없으면 보낼 곳이 없으므로 그대로 둔다: 아래 빈 화면이 「소속 팀이 정해지지
+   * 않았습니다」라고 말한다 (`empty-reason.ts`).
+   */
+  if (!canSeeOrgDashboard(read.role, read.viewer !== null) && read.viewer?.teamId != null) {
+    redirect(`/teams/${toTeamSlug(read.viewer.teamId)}`);
+  }
 
   const freshness = describeSync(read.meta.lastSyncedAt, read.meta.today);
   const teams = summarizeAllTeams(read.tasks, read.ctx);
@@ -155,15 +176,15 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   const reason = emptyReason(read.viewer, activeFilters);
 
   /*
-   * **고칠 수 있는 업무의 id.** `read.tasks`는 이미 범위가 걸린 목록이라 라이브에서는 이
-   * 계산이 대개 항등이지만, 그렇다고 「보이면 고칠 수 있다」를 화면이 가정하게 두지 않는다 —
-   * 열람과 수정이 갈리는 날 그 가정은 조용히 틀린다. 판정은 다시 쓰지 않고 부른다
-   * (`viewer-scope.ts`). 세션이 없으면 빈 집합이고, 그때 수정 폼은 뜨지 않는다.
+   * **고칠 수 있는 업무의 id.** 「보이면 고칠 수 있다」는 **더 이상 참이 아니다** — 팀장은
+   * 전 팀을 보지만 고치는 것은 자기 팀뿐이다 (`0012` · `viewer-scope.ts`의 표). 그 자리를
+   * 이 집합이 진다. 판정은 다시 쓰지 않고 부른다. 세션이 없으면 빈 집합이고, 그때 수정
+   * 폼도 담당자 지정도 뜨지 않는다.
    */
   const editableIds =
     read.viewer === null
       ? new Set<string>()
-      : new Set(scopeTasks(read.tasks, read.viewer).map((task) => task.id));
+      : new Set(scopeEditableTasks(read.tasks, read.viewer).map((task) => task.id));
 
   /*
    * 알림·승인 대기함이 보는 목록은 **표에 실제로 보이는 것**(`visible`)이다. 이름을 붙일 수
@@ -179,34 +200,77 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   );
   const waiting = approvalQueue(visible, read.meta.today);
 
+
   /*
    * 목표 지표는 업무 필터를 타지 않는다 — 성과 지표는 진행 상태·마감·담당자 축이 아니라
    * 목표값 대 실적값 축으로 움직인다 (`ADR-002`). `toGoalResponse`를 반드시 거친다:
    * 성과 행에도 담당자·채널·문의자 계정이 섞여 들어온다 (`S6`).
    *
-   * 저장소는 **한 번만** 읽는다 — 같은 목록을 목표 섹션과 브리핑이 함께 본다.
+   * 저장소는 **한 번만** 읽는다 — 같은 목록을 목표 섹션과 차트가 함께 본다.
    */
   const goals = await view.repo.listGoalMetrics();
   const goalStats = summarizeGoals(goals);
   const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
 
-  /*
-   * 브리핑은 `buildWeeklyReport`가 만든 마크다운 문자열 그대로다 (`UC-08`). 화면이 보고 있는
-   * 것과 **같은 목록**(`read.tasks`)을 넘기므로, 필터를 걸어 둔 채 복사해도 회의록의 숫자가
-   * 화면과 어긋나지 않는다.
-   *
-   * **변경 이력은 이 주의 것을 실제로 읽는다** (T9 step 4). 읽지 못하면 `loadPeriodEvents`가
-   * `null`을 주고 보고서가 「집계되지 않음」이라 적는다 — 0건과 구분한다.
+  /**
+   * **만들 수 있는 팀.** 로그인하지 않았으면(데모) 빈 목록이라 버튼이 뜨지 않는다 —
+   * `POST /api/tasks`가 어차피 401을 내는데, 누르면 실패하는 버튼을 두지 않는다.
+   * 목록 자체는 `creatableTeams`가 정한다 (어드민 셋, 팀장 자기 팀 하나, 부원 없음).
    */
-  const period = resolveReportPeriod(read.ctx.today, null);
-  const briefing = buildWeeklyReport({
-    tasks: read.tasks,
-    stages: read.stages,
-    goals,
-    period,
-    events: await loadPeriodEvents(view.repo, period),
-    ctx: read.ctx,
-  });
+  const newTaskTeams =
+    read.viewer === null ? [] : creatableTeams(read.role, read.viewer.teamId);
+
+  /*
+   * **패널이 열려 있거나 만들 수 있을 때만 명부를 읽는다.** 담당자 후보 말고는 이 화면이
+   * 명부를 쓰지 않는데, 늘 읽으면 표만 보고 나가는 대부분의 방문에 조회가 하나 더 붙는다
+   * (`/members`가 고른 사람이 있을 때만 업무를 읽는 것과 같은 판단이다).
+   *
+   * 생성 버튼이 있는 사람에게는 늘 읽는다 — 후보 없이 뜨는 폼은 담당자를 못 고르고, 폼을
+   * 연 뒤에 명부를 가져오려면 이 화면에 없는 조회 라우트가 하나 필요해진다.
+   */
+  const members =
+    query.task === null && newTaskTeams.length === 0 ? [] : await view.repo.listMembers();
+
+  /**
+   * 팀 전용 칸의 드롭다운이 쓸 값 목록 (`설정` 탭). **명부와 같은 조건으로 읽는다** — 쓰는
+   * 곳이 패널의 수정 폼 하나라, 표만 보고 나가는 방문에 조회를 하나 더 붙일 이유가 없다.
+   * 갈라내는 것은 도메인이 한다 (`teamEnumGroups`).
+   */
+  const enumGroups =
+    query.task === null && newTaskTeams.length === 0
+      ? []
+      : teamEnumGroups(await view.repo.listEnumOptions());
+
+  /**
+   * 생성 폼이 쓰는 **팀별** 전용 칸 전량. 패널이 팀으로 거르지 않게 여기서 갈라 둔다.
+   *
+   * 예전에는 `설정` 탭에 값 목록이 있는 칸만 세웠다 — 촬영팀 55칸 중 6칸이다. 나머지는
+   * 만들 때 채울 자리가 아예 없어서, 웹에서 만든 촬영팀 업무는 만들자마자 패널을 다시 열어
+   * [수정하기]를 눌러야 했다. 칸 목록의 근거는 **그 팀 업무들의 `extras` 키**다
+   * (`teamExtraColumns` — 시트 헤더를 따로 저장해 두는 자리가 없다).
+   */
+  const extraColumnsByTeam = Object.fromEntries(
+    newTaskTeams.map((teamKey) => [
+      teamKey,
+      teamExtraColumns(read.tasks, teamKey, enumGroups),
+    ])
+  );
+
+  /** 생성 폼이 세울 **단계 뼈대**. 편집팀만 셋이고 나머지는 빈 배열이다 (`ADR-006`) */
+  const stageTemplateByTeam = Object.fromEntries(
+    newTaskTeams.map((teamKey) => [teamKey, stageTemplateFor(teamKey)])
+  );
+
+  /**
+   * 생성 폼이 쓰는 **팀별** 후보. 좁히는 것은 `assignableMembers` 한 함수다 — 화면이 팀으로
+   * 거르면 그 규칙이 두 곳이 된다. 브라우저로 나가는 것은 `{id, name}`뿐이다 (`S6`).
+   */
+  const newTaskCandidates = Object.fromEntries(
+    newTaskTeams.map((teamKey) => [
+      teamKey,
+      assignableMembers(members, teamKey).map((member) => ({ id: member.id, name: member.name })),
+    ])
+  );
 
   /** `member`가 자기 업무를 고르지 않은 상태. 이름을 대신 채워 넣지 않는다 (`UC-14`) */
   const needsOwnerHint = read.role === 'member' && query.owner === null;
@@ -235,20 +299,6 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     switch (key) {
       case 'kpi':
         return <KpiStrip tiles={buildKpiStrip(read.tasks, read.ctx)} />;
-
-      case 'kpi_compact':
-        /*
-         * 10칸을 다시 세지 않고 **`buildKpiStrip`의 결과에서 골라 쓴다** — 화면이 따로 세면
-         * 같은 라벨이 두 값을 갖는다 (`ADR-006`). 순서는 원본 배열 순서 그대로다.
-         */
-        return (
-          <KpiStrip
-            compact
-            tiles={buildKpiStrip(read.tasks, read.ctx).filter((tile) =>
-              COMPACT_KPI_KEYS.includes(tile.key)
-            )}
-          />
-        );
 
       case 'teams':
         return <TeamSummaryTable teams={teams} />;
@@ -291,8 +341,8 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
                 전체 {listed.length}건
               </span>
             </div>
-            {/* 차트 높이가 확정이라 여기서 늘이지 않는다 — 남는 세로는 카드가 그냥 둔다 */}
-            <div className="mt-3">
+            {/* 남는 세로를 차트가 먹는다 — 카드 아래가 희게 남지 않게 (`status-bars.tsx` 머리말) */}
+            <div className="mt-3 flex-1">
               <StatusBars series={toStatusSeries(buildStatusBreakdown(listed))} />
             </div>
           </section>
@@ -306,9 +356,6 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
             mismatchCount={goalStats.warnings.length}
           />
         );
-
-      case 'briefing':
-        return <BriefingCard markdown={briefing} />;
 
       case 'alerts':
         return <AlertPanel groups={alertGroups} titleOf={titleOf} hrefOf={taskHrefOf} />;
@@ -355,7 +402,10 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
                 query={query}
                 pathname={PATHNAME}
                 editableIds={editableIds}
+                hasSession={read.viewer !== null}
+                members={members}
                 statusOptions={STATUS_OPTIONS}
+                enumGroups={enumGroups}
               />
             </div>
             {visible.length === 0 ? (
@@ -384,14 +434,32 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       query={query}
       account={toAccount(view.session)}
     >
-      <h1 className="text-brand text-xl font-semibold">전사 업무 현황판</h1>
+      {/*
+        [＋ 업무 생성]을 **제목 줄에 둔다.** 업무 카드 안이 자연스러워 보이지만 그 자리에는
+        이미 필터가 겹쳐 있고(제목과 같은 격자 칸), 필터를 펼치면 카드 폭 전체를 덮어 버튼이
+        가려진다. 업무 표가 첫 섹션이라(`TASKS_FIRST`) 제목 줄이 바로 그 위다.
 
-      {read.tasks.length === 0 && reason === 'unlinked-member' ? (
+        만들 수 있는 팀이 없으면 컴포넌트가 아무것도 그리지 않는다 — 빈 자리만 남는다.
+      */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-brand text-xl font-semibold">전사 업무 현황판</h1>
+        <TaskCreatePanel
+          teams={newTaskTeams}
+          candidatesByTeam={newTaskCandidates}
+          statusOptions={STATUS_OPTIONS}
+          extraColumnsByTeam={extraColumnsByTeam}
+          stageTemplateByTeam={stageTemplateByTeam}
+          pathname={PATHNAME}
+          query={query}
+        />
+      </div>
+
+      {read.tasks.length === 0 && reason === 'no-team' ? (
         /*
          * 로그인한 부원인데 계정이 담당자에 이어지지 않았다. **진입점을 주지 않는다** —
          * 그 사람이 시트를 올려도 자기 업무는 여전히 보이지 않고, 필요한 것은 계정 연결이다.
          */
-        <EmptyState kind="unlinked-member" />
+        <EmptyState kind="no-team" />
       ) : read.tasks.length === 0 && activeFilters === 0 ? (
         // 빈 상태 화면은 `UI_GUIDE.md`가 중앙 정렬을 금지하면서 **예외로 둔 유일한 자리**다
         <div className="mt-16 flex flex-col items-center gap-4 text-center">
@@ -415,6 +483,10 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
       ) : (
         <div className="mt-4">
           <SectionGrid
+            /*
+             * 배치도 「무엇을 그릴지」도 `lib`이 정한다. 로그인한 부원에게서 전사 비교 둘이
+             * 빠지는 것이 여기 실려 온다 — 화면이 역할을 다시 읽지 않는다 (`ADR-006`).
+             */
             rows={layoutFor(read.role, DASHBOARD_LAYOUT)}
             render={renderSection}
             hint={detailHint}

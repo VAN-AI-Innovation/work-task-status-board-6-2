@@ -79,6 +79,14 @@ export function LoginForm({ error, next }: { error: string | null; next: string 
       >
         로그인
       </button>
+
+      {/* 계정이 없는 사람에게 이 화면은 막다른 길이다 — 가입 화면으로 나가는 문을 둔다 (T11) */}
+      <p className="text-ink-muted text-xs">
+        계정이 없으신가요?{' '}
+        <a href="/signup" className="text-ink hover:text-brand underline-offset-4 hover:underline">
+          회원가입
+        </a>
+      </p>
     </form>
   );
 }

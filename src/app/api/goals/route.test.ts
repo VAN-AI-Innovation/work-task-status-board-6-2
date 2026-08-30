@@ -9,9 +9,24 @@
  * 없는 데이터를 두고 "다를 것"이라고 단정하면 그것은 검증이 아니다.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import type { ViewerContext } from '@/lib/store/viewer-storage';
 
 import { getStorage, resetStorage } from '@/lib/store/store-factory';
+
+/**
+ * 승인 대기 문(T11 step 9 감사)을 재려면 세션을 갈아 끼워야 한다. `null`이면 **진짜
+ * 구현**이 돌아서 기존 테스트가 밟던 경로가 그대로 남는다 (`tasks/[id]`와 같은 모양).
+ */
+let viewerOverride: ViewerContext | null = null;
+
+vi.mock('@/lib/auth/request-viewer', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth/request-viewer')>();
+  return {
+    currentViewerContext: async () => viewerOverride ?? (await actual.currentViewerContext()),
+  };
+});
 
 const { GET } = await import('./route');
 
@@ -58,6 +73,7 @@ async function seedSensitiveMetric(): Promise<void> {
 
 beforeEach(() => {
   process.env.STORAGE_DRIVER = 'memory';
+  viewerOverride = null;
   resetStorage();
 });
 
@@ -124,5 +140,86 @@ describe('GET /api/goals', () => {
     expect(text).not.toContain('at ');
     expect(text).not.toContain('SUPABASE');
     expect(text).not.toContain('KEY');
+  });
+});
+
+/**
+ * 공격 #2 — **승인 대기 계정이 조회 API를 직접 부른다** (T11 step 9 감사).
+ *
+ * 이 라우트들은 화면이 아니라 `fetch`가 부르는 자리라, `pending-gate`가 `deny`를 내고
+ * 그것이 **403 `PENDING_APPROVAL`**로 번역된다. 401이 아닌 이유는 **이 사람이 이미
+ * 로그인했다**는 것이다 — 401을 주면 화면이 로그인 폼을 다시 띄우고 같은 계정으로 들어와
+ * 같은 화면을 본다 (`ARCHITECTURE.md`「에러 처리」).
+ *
+ * **저장소에 닿기 전에 접히는 것까지 잰다.** 문이 열린 뒤에 거르면 그것은 문이 아니다 —
+ * `repo`를 만지는 순간 던지는 것으로 두어, 데이터를 읽고 나서 감추는 구현으로 바뀌면
+ * 이 테스트가 먼저 빨개진다.
+ */
+describe('GET /api/goals — 승인 대기 (공격 #2)', () => {
+  /** 손대면 던진다. 게이트가 먼저 서면 아무도 이걸 부르지 않는다 */
+  const forbiddenRepo = new Proxy(
+    {},
+    {
+      get(_target, prop) {
+        throw new Error(`게이트를 지나기 전에 저장소를 만졌다: ${String(prop)}`);
+      },
+    }
+  ) as never;
+
+  const WAITING = [
+    ['no_profile', { status: 'no_profile', userId: 'user-1', email: 'x@example.com' }],
+    [
+      'pending',
+      {
+        status: 'pending',
+        userId: 'user-1',
+        email: 'x@example.com',
+        teamId: 'edit',
+        displayName: null,
+      },
+    ],
+    [
+      'rejected',
+      {
+        status: 'rejected',
+        userId: 'user-1',
+        email: 'x@example.com',
+        teamId: 'edit',
+        displayName: null,
+      },
+    ],
+  ] as const;
+
+  it.each(WAITING)('%s 계정은 403 PENDING_APPROVAL이고 저장소에 닿지 않는다', async (_label, session) => {
+    viewerOverride = {
+      repo: forbiddenRepo,
+      session: session as never,
+      base: { repo: forbiddenRepo, mode: 'live', readOnly: false } as never,
+    };
+
+    const res = await get();
+    const parsed = (await res.json()) as { error: { code: string; message: string } };
+
+    expect(res.status).toBe(403);
+    expect(parsed.error.code).toBe('PENDING_APPROVAL');
+    // 문구는 사람이 읽는 한국어이고 내부 정보를 담지 않는다 (`X1`)
+    expect(parsed.error.message).toMatch(/[가-힣]/);
+    expect(JSON.stringify(parsed)).not.toContain('user-1');
+  });
+
+  it('?as=admin을 붙여도 대기 계정은 그대로 403이다 — URL이 세션을 이기지 않는다', async () => {
+    viewerOverride = {
+      repo: forbiddenRepo,
+      session: {
+        status: 'pending',
+        userId: 'user-1',
+        email: 'x@example.com',
+        teamId: 'edit',
+        displayName: null,
+      } as never,
+      base: { repo: forbiddenRepo, mode: 'live', readOnly: false } as never,
+    };
+
+    expect((await get('?as=admin')).status).toBe(403);
   });
 });

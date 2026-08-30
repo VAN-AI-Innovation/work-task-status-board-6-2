@@ -24,11 +24,11 @@
  * ## 섹션 순서는 `/`와 같은 표를 본다
  *
  * `sectionsFor(role)`가 정한다 (완료 기준 7). 다만 이 화면에 **없는 섹션은 건너뛴다** —
- * 팀 요약표·완료율 바(`teams`)·승인 대기함(`approvals`)·주간 브리핑(`briefing`)은 위 이유로
+ * 팀 요약표·완료율 바(`teams`)·승인 대기함(`approvals`)은 위 이유로
  * `/`가 지기 때문이고, 순서 표를 팀 화면용으로 따로 만들면 두 화면의 역할 규칙이 갈라진다.
  */
 
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 import type { ReactNode } from 'react';
 
@@ -44,15 +44,19 @@ import { TaskPanelSlot } from '@/components/tasks/task-panel-slot';
 import { TaskTable } from '@/components/tasks/task-table';
 import { buildReadContext, parseTaskQuery } from '@/lib/api/read-context';
 import { toGoalResponse, toTaskListResponse } from '@/lib/api/task-response';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
+import { canSeeTeam } from '@/lib/domain/team-visibility';
 import { toAccount } from '@/lib/auth/viewer-session';
 import { collectAlerts } from '@/lib/domain/alert-rules';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip } from '@/lib/domain/progress-stats';
+import { teamEnumGroups } from '@/lib/domain/team-enum-groups';
 import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
-import { scopeTasks } from '@/lib/domain/viewer-scope';
+import { scopeEditableTasks } from '@/lib/domain/viewer-scope';
 import { groupAlerts } from '@/lib/view/alert-groups';
 import { buildStatusBreakdown, toStatusSeries } from '@/lib/view/chart-series';
+import { withoutTeamTiles } from '@/lib/view/kpi-groups';
 import {
   applyDisplayFilter,
   buildHref,
@@ -64,7 +68,6 @@ import {
 import { emptyReason } from '@/lib/view/empty-reason';
 import { toGoalRows } from '@/lib/view/goal-view';
 import {
-  COMPACT_KPI_KEYS,
   layoutFor,
   TEAM_PAGE_LAYOUT,
   type SectionKey,
@@ -88,6 +91,11 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
 
   /* 이 화면의 링크가 돌아올 자리. `teamSlug` 원문이 아니라 정규화한 슬러그를 쓴다 */
   const pathname = `/teams/${toTeamSlug(teamKey)}`;
+
+  // 승인을 기다리는 계정은 여기서 `/pending`으로 간다 (T11 · `pending-gate.ts`)
+  const gate = gateForSession(view.session, pathname);
+  if (gate.kind === 'redirect') redirect(gate.to);
+
   // `team`을 비운다 — 경로가 이미 팀이므로 링크가 그것을 다시 실으면 두 소스가 된다
   const query = { ...parseDashboardQuery(sp), team: [] };
 
@@ -110,7 +118,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   const editableIds =
     read.viewer === null
       ? new Set<string>()
-      : new Set(scopeTasks(read.tasks, read.viewer).map((task) => task.id));
+      : new Set(scopeEditableTasks(read.tasks, read.viewer).map((task) => task.id));
 
   /* `/`와 같은 규칙이다 — 이름은 화면이 자기 목록에서 붙이고, 못 붙이는 항목은 빼낸다 (`S6`) */
   const titles = new Map(visible.map((task) => [task.id, task.title ?? task.sourceKey]));
@@ -120,31 +128,52 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
   );
 
   // 성과 행에도 담당자·채널이 섞여 들어온다. `toGoalResponse`를 거른다 (`S6`)
+  /*
+   * **남의 팀 화면은 없는 것으로 둔다** (`team-visibility.ts`). 사이드바가 항목을 감추는
+   * 것과 **같은 함수**를 쓴다 — 두 곳이 각자 판단하면 목록에는 없는데 주소로는 열리는 날이 온다.
+   *
+   * 403이 아니라 404인 이유는 `/members`와 같다: 「그 팀 화면은 있지만 당신 것이 아니다」가
+   * 곧 정보다. 데이터는 이미 RLS가 막고 있어 열려도 빈 화면이지만, **빈 화면은 「데이터가
+   * 없다」와 구분되지 않는다** — 그것이 이 줄이 없애는 헛걸음이다.
+   */
+  if (!canSeeTeam(read.role, read.viewer?.teamId ?? null, read.viewer !== null, teamKey)) {
+    notFound();
+  }
+
   const goalStats = summarizeGoals(await view.repo.listGoalMetrics({ teamKeys: [teamKey] }));
   const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
+
+  /*
+   * **패널이 열려 있을 때만 명부를 읽는다.** 담당자 후보 말고는 이 화면이 명부를 쓰지 않는데,
+   * 늘 읽으면 표만 보고 나가는 대부분의 방문에 조회가 하나 더 붙는다 (`/members`가 고른
+   * 사람이 있을 때만 업무를 읽는 것과 같은 판단이다).
+   */
+  const members = query.task === null ? [] : await view.repo.listMembers();
+
+  /**
+   * 팀 전용 칸의 드롭다운이 쓸 값 목록 (`설정` 탭). **명부와 같은 조건으로 읽는다** — 쓰는
+   * 곳이 패널의 수정 폼 하나라, 표만 보고 나가는 방문에 조회를 하나 더 붙일 이유가 없다.
+   * 갈라내는 것은 도메인이 한다 (`teamEnumGroups`).
+   */
+  const enumGroups =
+    query.task === null ? [] : teamEnumGroups(await view.repo.listEnumOptions());
 
   /** `/`와 같다 — `member`가 자기 업무를 고르지 않은 상태. 이름을 대신 채워 넣지 않는다 */
   const needsOwnerHint = read.role === 'member' && query.owner === null;
 
   /**
-   * 이 화면이 그리는 섹션. **`/`가 지기로 한 것(`teams`·`approvals`·`briefing`)은 `null`이라
+   * 이 화면이 그리는 섹션. **`/`가 지기로 한 것(`teams`·`approvals`)은 `null`이라
    * 순서 배열에서 조용히 빠진다** — 역할 표는 하나이고 화면마다 있는 섹션만 다르다.
    */
   const renderSection = (key: SectionKey): ReactNode => {
     switch (key) {
       case 'kpi':
-        return <KpiStrip tiles={buildKpiStrip(read.tasks, read.ctx)} />;
-
-      case 'kpi_compact':
-        // 10칸을 다시 세지 않고 `buildKpiStrip`의 결과에서 골라 쓴다 (`ADR-006`)
-        return (
-          <KpiStrip
-            compact
-            tiles={buildKpiStrip(read.tasks, read.ctx).filter((tile) =>
-              COMPACT_KPI_KEYS.includes(tile.key)
-            )}
-          />
-        );
+        /*
+         * **팀별 진행 셋을 뺀다** (`withoutTeamTiles`). 경로가 이미 팀을 좁혔으므로 이 화면의
+         * 「촬영·기획팀 진행」은 늘 0이고, 늘 0인 칸은 정보가 아니라 읽는 사람이 매번 지나쳐야
+         * 하는 상자다. 남은 일곱 칸은 대시보드와 **같은 묶음**으로 선다.
+         */
+        return <KpiStrip tiles={withoutTeamTiles(buildKpiStrip(read.tasks, read.ctx))} />;
 
       case 'charts':
         /*
@@ -158,8 +187,8 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
               <span className="text-ink-muted text-xs tabular-nums">전체 {listed.length}건</span>
             </div>
             <p className="text-ink-muted mt-1 text-xs">지연이 다른 상태를 덮어쓴다</p>
-            {/* 차트 높이가 확정이라 여기서 늘이지 않는다 (`status-bars.tsx` 머리말) */}
-            <div className="mt-3">
+            {/* 남는 세로를 차트가 먹는다 (`status-bars.tsx` 머리말) */}
+            <div className="mt-3 flex-1">
               <StatusBars series={toStatusSeries(buildStatusBreakdown(listed))} />
             </div>
           </section>
@@ -209,7 +238,10 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
                 query={query}
                 pathname={pathname}
                 editableIds={editableIds}
+                hasSession={read.viewer !== null}
+                members={members}
                 statusOptions={STATUS_OPTIONS}
+                enumGroups={enumGroups}
               />
             </div>
             {visible.length === 0 ? (
@@ -245,7 +277,6 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
       case 'teams':
       case 'completion':
       case 'approvals':
-      case 'briefing':
         return null;
     }
   };

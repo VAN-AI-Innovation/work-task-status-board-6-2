@@ -6,6 +6,9 @@ import { resolveSession, toAccount } from '@/lib/auth/viewer-session';
 interface ProfileRow {
   role: unknown;
   team_id: unknown;
+  /** 없으면 가짜가 `'active'`로 채운다 — DB 컬럼이 `not null default 'active'`라 행에는 언제나 값이 있다 */
+  status?: unknown;
+  display_name?: unknown;
 }
 
 interface FakeSpec {
@@ -22,6 +25,8 @@ interface FakeSpec {
 /** 부른 쿼리를 기록한다 — 「무엇을 읽었나」가 이 파일에서 재는 것 중 하나다 */
 interface FakeCalls {
   tables: string[];
+  /** `.select()`에 넘긴 컬럼 목록. 「왕복을 늘리지 않고 컬럼만 더했나」를 잰다 */
+  selects: string[];
   memberOrder: string[];
   memberLimit: number[];
   getSession: ReturnType<typeof vi.fn>;
@@ -34,6 +39,7 @@ interface FakeCalls {
 function fakeClient(spec: FakeSpec): { client: SupabaseClient; calls: FakeCalls } {
   const calls: FakeCalls = {
     tables: [],
+    selects: [],
     memberOrder: [],
     memberLimit: [],
     getSession: vi.fn(() => {
@@ -43,7 +49,10 @@ function fakeClient(spec: FakeSpec): { client: SupabaseClient; calls: FakeCalls 
 
   const builder = (table: string) => {
     const chain = {
-      select: () => chain,
+      select: (columns: string) => {
+        calls.selects.push(columns);
+        return chain;
+      },
       eq: () => chain,
       order: (column: string) => {
         calls.memberOrder.push(column);
@@ -55,9 +64,12 @@ function fakeClient(spec: FakeSpec): { client: SupabaseClient; calls: FakeCalls 
       },
       maybeSingle: async () => {
         if (table === 'profiles') {
+          // 실제 행에는 status가 반드시 있다 (`not null default 'active'`). 가짜도 그렇게 둔다 —
+          // 명시적으로 넘긴 값은 스프레드가 그대로 이긴다(`status: undefined`도 포함).
+          const row = spec.profile ? { status: 'active', display_name: null, ...spec.profile } : null;
           return spec.profileError
             ? { data: null, error: { message: spec.profileError } }
-            : { data: spec.profile ?? null, error: null };
+            : { data: row, error: null };
         }
         return spec.memberError
           ? { data: null, error: { message: spec.memberError } }
@@ -175,6 +187,7 @@ describe('resolveSession — 정상 갈래', () => {
         role: 'lead',
         teamId: 'edit',
         memberId: 'm-1',
+        memberName: null,
       },
     });
   });
@@ -243,6 +256,98 @@ describe('resolveSession — 정상 갈래', () => {
   });
 });
 
+/**
+ * T11이 더한 상태 축. T8까지 사람은 「역할」만 가졌고, 여기서 「승인되었는가」가 붙는다
+ * (`0005_signup_approval.sql` 1절). DB에서는 `my_role()`·`my_team()`·`my_member_id()` 셋이
+ * `status = 'active'`를 요구해 전부 `null`이 되고, 이 파일은 앱 쪽에서 같은 사실을 말한다.
+ */
+describe('resolveSession — 상태 갈래 (pending · rejected)', () => {
+  it('status가 pending이면 pending이다 — 팀과 표시 이름을 함께 싣는다 (대기 화면이 그것을 부른다)', async () => {
+    const { client } = fakeClient({
+      user: LEAD,
+      profile: { role: 'member', team_id: 'marketing', status: 'pending', display_name: '홍길동' },
+    });
+    await expect(resolveSession(client)).resolves.toEqual({
+      status: 'pending',
+      userId: 'u-1',
+      email: 'lead@example.com',
+      teamId: 'marketing',
+      displayName: '홍길동',
+    });
+  });
+
+  it('status가 rejected면 rejected다', async () => {
+    const { client } = fakeClient({
+      user: LEAD,
+      profile: { role: 'member', team_id: 'edit', status: 'rejected', display_name: null },
+    });
+    await expect(resolveSession(client)).resolves.toEqual({
+      status: 'rejected',
+      userId: 'u-1',
+      email: 'lead@example.com',
+      teamId: 'edit',
+      displayName: null,
+    });
+  });
+
+  it.each(['suspended', '', 'ACTIVE', ' active', null, undefined, 7])(
+    '알 수 없는 status %s은 가장 좁은 쪽(pending)으로 접는다 — ok로 흘려보내면 나중에 상태를 더한 날 이 파일을 고치지 않은 사람이 정지된 계정을 통과시킨다',
+    async (status) => {
+      const { client } = fakeClient({
+        user: LEAD,
+        profile: { role: 'admin', team_id: 'edit', status },
+      });
+      await expect(resolveSession(client)).resolves.toMatchObject({
+        status: 'pending',
+        userId: 'u-1',
+      });
+    }
+  );
+
+  it('알 수 없는 역할이 상태보다 먼저 걸린다 — 「프로필이 없다」와 「대기 중이다」는 다른 사고다', async () => {
+    const { client } = fakeClient({
+      user: LEAD,
+      profile: { role: 'owner', team_id: 'edit', status: 'pending' },
+    });
+    await expect(resolveSession(client)).resolves.toMatchObject({ status: 'no_profile' });
+  });
+
+  it.each(['pending', 'rejected'])('%s이면 members를 읽으러 가지 않는다 — 승인 전에는 붙은 구성원이 없어 왕복이 순수한 낭비다', async (status) => {
+    const { client, calls } = fakeClient({
+      user: LEAD,
+      profile: { role: 'member', team_id: 'edit', status },
+      member: { id: 'm-1' },
+    });
+    await resolveSession(client);
+    expect(calls.tables).toEqual(['profiles']);
+  });
+
+  it.each(['', 'design', 'EDIT', null, undefined])(
+    'team_id가 TeamKey 셋 중 하나가 아니면(%s) pending의 teamId도 null이다',
+    async (teamId) => {
+      const { client } = fakeClient({
+        user: LEAD,
+        profile: { role: 'member', team_id: teamId, status: 'pending' },
+      });
+      await expect(resolveSession(client)).resolves.toMatchObject({
+        status: 'pending',
+        teamId: null,
+      });
+    }
+  );
+
+  it.each(['', 123, {}])('display_name이 문자열이 아니면(%s) null이다', async (displayName) => {
+    const { client } = fakeClient({
+      user: LEAD,
+      profile: { role: 'member', team_id: 'edit', status: 'pending', display_name: displayName },
+    });
+    await expect(resolveSession(client)).resolves.toMatchObject({
+      status: 'pending',
+      displayName: null,
+    });
+  });
+});
+
 describe('resolveSession — 무엇을 읽는가', () => {
   const okSpec: FakeSpec = {
     user: LEAD,
@@ -254,6 +359,16 @@ describe('resolveSession — 무엇을 읽는가', () => {
     const { client, calls } = fakeClient(okSpec);
     await resolveSession(client);
     expect(calls.tables).toEqual(['profiles', 'members']);
+  });
+
+  it('profiles 한 번에 status·display_name까지 읽는다 — 상태를 알려고 왕복을 더 돌지 않는다', async () => {
+    const { client, calls } = fakeClient(okSpec);
+    await resolveSession(client);
+    expect(calls.selects).toHaveLength(2);
+    const profileSelect = calls.selects[0];
+    for (const column of ['role', 'team_id', 'status', 'display_name']) {
+      expect(profileSelect).toContain(column);
+    }
   });
 
   it('members는 order(id) + limit(1)이다 — my_member_id()와 같은 결정 규칙이어야 한다', async () => {
@@ -288,6 +403,21 @@ describe('toAccount', () => {
     });
   });
 
+  it.each(['pending', 'rejected'] as const)(
+    '%s도 계정이다 — 로그인은 됐으므로 로그아웃 버튼이 필요하고, 역할은 null이다',
+    (status) => {
+      expect(
+        toAccount({
+          status,
+          userId: 'u-3',
+          email: 'waiting@van.test',
+          teamId: 'marketing',
+          displayName: '홍길동',
+        })
+      ).toEqual({ email: 'waiting@van.test', role: null });
+    }
+  );
+
   /** `userId`·`teamId`·`memberId`는 내려보내지 않는다 — 화면이 쓰지 않는 값이다 (`S6`) */
   it('정상 세션에서 이메일과 역할만 뽑는다', () => {
     expect(
@@ -299,6 +429,7 @@ describe('toAccount', () => {
           role: 'lead',
           teamId: 'edit',
           memberId: 'm-1',
+          memberName: null,
         },
       })
     ).toEqual({ email: 'lead@van.test', role: 'lead' });

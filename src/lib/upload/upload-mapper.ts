@@ -18,7 +18,7 @@ import type { TabParseResult, TeamKey } from '@/types/task';
 /**
  * 팀 → 부서. `supabase/migrations/0002_seed_reference.sql`의 `teams.department_id`와 **같아야 한다**
  * (다르면 `tasks.department_id` 외래키가 거부한다). 지금은 세 팀 모두 한 부서라 표가 한 줄이면
- * 충분하지만, 부서가 늘면 DB가 진실이 되므로 T8에서 조회로 바뀔 수 있다.
+ * 충분하다. 부서가 늘면 DB가 진실이 되므로 그때 조회로 바꾼다 — T8·T11에서는 바뀌지 않았다.
  */
 export const TEAM_DEPARTMENT: Readonly<Record<TeamKey, string>> = {
   edit: 'contents-marketing',

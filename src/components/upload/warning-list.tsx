@@ -40,8 +40,8 @@ export function WarningList({ warnings }: { warnings: readonly PreviewWarning[] 
             <th className="px-3 py-2 text-left">코드</th>
             <th className="px-3 py-2 text-left">설명</th>
             <th className="px-3 py-2 text-left">시트</th>
-            <th className="px-3 py-2 text-right">건수</th>
-            <th className="px-3 py-2 text-right">첫 행</th>
+            <th className="px-3 py-2 text-left">건수</th>
+            <th className="px-3 py-2 text-left">첫 행</th>
           </tr>
         </thead>
         <tbody>
@@ -55,10 +55,10 @@ export function WarningList({ warnings }: { warnings: readonly PreviewWarning[] 
                 {WARNING_LABELS[warning.code] ?? warning.code}
               </td>
               <td className="px-3 py-2 text-ink-body">{warning.sheet || '—'}</td>
-              <td className="px-3 py-2 text-right tabular-nums text-ink">
+              <td className="px-3 py-2 text-left tabular-nums text-ink">
                 {warning.count}
               </td>
-              <td className="px-3 py-2 text-right tabular-nums text-ink-muted">
+              <td className="px-3 py-2 text-left tabular-nums text-ink-muted">
                 {warning.firstRow ?? '—'}
               </td>
             </tr>

@@ -13,7 +13,7 @@ import type { TaskRepository } from '@/lib/store/task-repository';
 import { createMemoryUploadStore } from '@/lib/store/upload-record-store';
 import type { ViewerContext } from '@/lib/store/viewer-storage';
 import type { SessionOutcome } from '@/lib/auth/viewer-session';
-import type { TaskPatch, Viewer } from '@/types/auth';
+import type { TaskPatch, TaskStagePatch, Viewer } from '@/types/auth';
 import type { Task } from '@/types/task';
 
 /**
@@ -29,7 +29,7 @@ vi.mock('@/lib/auth/request-viewer', async (importOriginal) => {
   };
 });
 
-const { GET, PATCH } = await import('./route');
+const { DELETE, GET, PATCH } = await import('./route');
 
 const ORIGINAL_DRIVER = process.env.STORAGE_DRIVER;
 
@@ -164,6 +164,7 @@ function viewer(overrides: Partial<Viewer> = {}): Viewer {
     role: 'member',
     teamId: 'edit',
     memberId: 'member-1',
+    memberName: '담당자1',
     ...overrides,
   };
 }
@@ -178,14 +179,23 @@ function handle(readOnly = false): StorageHandle {
   };
 }
 
-/** 세션·저장소를 손으로 짜 넣고 `updateTask` 호출을 기록한다 */
+/** `updateStages`에 실제로 실린 것. 단계 저장이 저장소까지 갔는지 재는 데 쓴다 */
+interface StageCall {
+  taskId: string;
+  patches: readonly TaskStagePatch[];
+}
+
+/** 세션·저장소를 손으로 짜 넣고 `updateTask`·`updateStages` 호출을 기록한다 */
 function stubContext(options: {
   session: SessionOutcome;
   /** `getTask`가 돌려줄 값. RLS가 거른 상태를 흉내 내려면 `null` */
   found?: Task | null;
   /** `updateTask`가 돌려줄 값. DB가 막은 상태를 흉내 내려면 `null` */
   updated?: Task | null;
+  /** `updateStages`가 **바꿨다고** 답할 줄 수. 정책이 막은 상태를 흉내 내려면 0 */
+  stagesChanged?: number;
   readOnly?: boolean;
+  stageCalls?: StageCall[];
 }): UpdateCall[] {
   const calls: UpdateCall[] = [];
   const base = handle(options.readOnly ?? false);
@@ -197,6 +207,23 @@ function stubContext(options: {
     updateTask: async (id, patch, updatedAt) => {
       calls.push({ id, patch, updatedAt });
       return options.updated ?? null;
+    },
+    updateStages: async (taskId, patches) => {
+      options.stageCalls?.push({ taskId, patches });
+      const changed = options.stagesChanged ?? patches.length;
+      // 내용은 재지 않는다 — 개수가 곧 「몇 줄이 실제로 바뀌었나」다 (라우트의 판정 기준)
+      return Array.from({ length: changed }, (_, index) => ({
+        id: patches[index]?.id ?? 'stage',
+        taskId,
+        seq: index,
+        stageKey: 'concept',
+        stageLabel: '단계',
+        plannedDate: null,
+        actualDate: null,
+        content: null,
+        confirmStatus: null,
+        slaDays: null,
+      }));
     },
   };
 
@@ -232,6 +259,30 @@ async function errorCode(res: Response): Promise<string> {
 
 const TASK_ID = 'aaaaaaaa-0000-4000-8000-000000000001';
 
+/**
+ * **조회도 같은 문을 지난다** (T11). `GET`이 404로 답하면 승인 대기 계정은 「그런 업무가
+ * 없다」고 읽고 링크를 의심한다 — 원인은 그 사람의 계정 상태다.
+ */
+describe('GET /api/tasks/[id] — 승인 대기', () => {
+  it('대기 계정에게는 404가 아니라 403 PENDING_APPROVAL이다', async () => {
+    stubContext({
+      session: {
+        status: 'pending',
+        userId: 'user-1',
+        email: 'x@example.com',
+        teamId: 'edit',
+        displayName: null,
+      },
+      found: makeTask(),
+    });
+
+    const res = await get(TASK_ID);
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('PENDING_APPROVAL');
+  });
+});
+
 describe('PATCH /api/tasks/[id] — 인증', () => {
   it('로그인하지 않았으면 401이고 저장소에 쓰지 않는다', async () => {
     const calls = stubContext({ session: { status: 'anonymous' }, found: makeTask() });
@@ -242,17 +293,45 @@ describe('PATCH /api/tasks/[id] — 인증', () => {
     expect(calls).toHaveLength(0);
   });
 
-  it('프로필이 없는 세션도 401이다 — 역할이 없으면 범위를 정할 수 없다', async () => {
-    const calls = stubContext({
-      session: { status: 'no_profile', userId: 'user-1', email: 'x@example.com' },
-      found: makeTask(),
-    });
-    const res = await patch(TASK_ID, { progress: 50 });
+  /**
+   * **셋 다 401이 아니라 403 `PENDING_APPROVAL`이다** (T11). 이 사람들은 **이미 로그인했다** —
+   * 401을 주면 화면이 로그인 폼을 다시 띄우고, 같은 계정으로 다시 들어와 같은 화면을 본다.
+   * 셋은 `status !== 'ok'`라 아래 401 판정에도 걸리므로, **순서가 곧 문구다**
+   * (`route.ts`의 1번 주석 · `pending-gate.ts`).
+   */
+  it.each([
+    ['no_profile', { status: 'no_profile', userId: 'user-1', email: 'x@example.com' }],
+    [
+      'pending',
+      {
+        status: 'pending',
+        userId: 'user-1',
+        email: 'x@example.com',
+        teamId: 'edit',
+        displayName: null,
+      },
+    ],
+    [
+      'rejected',
+      {
+        status: 'rejected',
+        userId: 'user-1',
+        email: 'x@example.com',
+        teamId: 'edit',
+        displayName: null,
+      },
+    ],
+  ] as [string, SessionOutcome][])(
+    '%s 세션은 403 PENDING_APPROVAL이고 저장소에 쓰지 않는다',
+    async (_label, session) => {
+      const calls = stubContext({ session, found: makeTask() });
+      const res = await patch(TASK_ID, { progress: 50 });
 
-    expect(res.status).toBe(401);
-    expect(await errorCode(res)).toBe('UNAUTHENTICATED');
-    expect(calls).toHaveLength(0);
-  });
+      expect(res.status).toBe(403);
+      expect(await errorCode(res)).toBe('PENDING_APPROVAL');
+      expect(calls).toHaveLength(0);
+    }
+  );
 });
 
 describe('PATCH /api/tasks/[id] — 저장소 상태', () => {
@@ -282,7 +361,11 @@ describe('PATCH /api/tasks/[id] — 본문 검증', () => {
 
   it.each([
     ['모르는 키', { status: '완료', titel: '오타' }],
-    ['허용하지 않는 필드', { note: '메모' }],
+    // `note`·`extras`는 이제 열려 있다 (`0013`·`0014`). 여전히 닫힌 것은 시트 원본·감사 칸과
+    // **민감 키**다 — 연락처·계정이 화면 입력으로 들어오는 길은 그대로 막혀 있다
+    ['민감한 팀 전용 칸', { extras: { '출연자 연락처 (내부용)': '010-0000-0000' } }],
+    ['감사 칸', { sourceSheetTab: '01_편집팀' }],
+    ['팀 바꾸기', { teamId: 'shoot' }],
     ['빈 객체', {}],
     ['범위를 넘는 진행률', { progress: 101 }],
     ['정수가 아닌 진행률', { progress: 1.5 }],
@@ -314,6 +397,55 @@ describe('PATCH /api/tasks/[id] — 권한 (완료 기준 2)', () => {
     expect(res.status).toBe(403);
     expect(await errorCode(res)).toBe('FORBIDDEN');
     expect(calls).toHaveLength(0);
+  });
+
+  /**
+   * **역할이 못 고치는 칸** (`lockedTaskFields`). 이 축에는 DB 정책이 없어 라우트가 유일한
+   * 자물쇠다 — 화면에서 잠그는 것으로 갈음하지 않는다.
+   */
+  it.each([
+    ['마감', { dueAt: '2026-09-01' }],
+    ['우선순위', { priority: '높음' }],
+    ['리스크', { riskStatus: '주의' }],
+    ['승인', { approvalStatus: '승인' }],
+    ['배정일', { assignedAt: '2026-08-01' }],
+    ['업무명', { title: '새 이름' }],
+    ['다음 조치 담당', { nextActionOwner: '담당자2' }],
+  ])('member가 %s를 고치려 하면 403이고 쓰기가 나가지 않는다', async (_label, body) => {
+    const calls = stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      updated: makeTask(),
+    });
+    const res = await patch(TASK_ID, body);
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('FORBIDDEN');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('member도 진행을 적는 칸은 고친다 — 막으면 그 화면은 읽기 전용이다', async () => {
+    const calls = stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      updated: makeTask({ progress: 50 }),
+    });
+
+    expect((await patch(TASK_ID, { progress: 50, delayReason: '장비 대여 지연' })).status).toBe(200);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('lead·admin은 같은 칸을 고친다', async () => {
+    for (const role of ['lead', 'admin'] as const) {
+      const calls = stubContext({
+        session: { status: 'ok', viewer: viewer({ role }) },
+        found: makeTask(),
+        updated: makeTask({ dueAt: '2026-09-01' }),
+      });
+
+      expect((await patch(TASK_ID, { dueAt: '2026-09-01' })).status).toBe(200);
+      expect(calls).toHaveLength(1);
+    }
   });
 
   it('없는 id도 403이다 — 존재 여부를 구분해 답하지 않는다 (`S6`)', async () => {
@@ -413,5 +545,289 @@ describe('PATCH /api/tasks/[id] — 성공 응답', () => {
 
     expect(text).not.toContain('"raw"');
     expect(text).not.toContain('업무명');
+  });
+});
+
+/**
+ * 단계 (`stages`). **업무 칸과 같은 요청에** 실린다 — 화면의 「저장」이 하나이기 때문이다
+ * (`task-patch-schema.ts` 머리말).
+ *
+ * 여기서 재는 것은 넷이다 — 저장소까지 그대로 가는가 · 업무 칸 없이도 되는가 ·
+ * **부원이 계획일을 못 옮기는가**(`lockedStageFields`) · **못 바꾼 줄을 성공으로 답하지
+ * 않는가.**
+ */
+describe('PATCH /api/tasks/[id] — 단계', () => {
+  const STAGE_A = 'bbbbbbbb-0000-4000-8000-000000000001';
+  const STAGE_B = 'bbbbbbbb-0000-4000-8000-000000000002';
+
+  it('단계만 보내도 200이고, 업무 칸은 건드리지 않는다', async () => {
+    const stageCalls: StageCall[] = [];
+    const calls = stubContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: makeTask(),
+      stageCalls,
+    });
+
+    const res = await patch(TASK_ID, {
+      stages: [{ id: STAGE_A, actualDate: '2026-08-30' }],
+    });
+
+    expect(res.status).toBe(200);
+    expect(stageCalls).toEqual([
+      { taskId: TASK_ID, patches: [{ id: STAGE_A, actualDate: '2026-08-30' }] },
+    ]);
+    // 빈 패치로 `updated_at`만 밀어 올리지 않는다
+    expect(calls).toEqual([]);
+  });
+
+  it('업무 칸과 함께 보내면 둘 다 간다 — 요청 하나가 곧 저장 하나다', async () => {
+    const stageCalls: StageCall[] = [];
+    const calls = stubContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: makeTask(),
+      updated: makeTask({ progress: 60 }),
+      stageCalls,
+    });
+
+    expect(
+      (await patch(TASK_ID, { progress: 60, stages: [{ id: STAGE_A, content: '초안' }] })).status
+    ).toBe(200);
+    expect(calls[0].patch).toEqual({ progress: 60 });
+    expect(stageCalls[0].patches).toEqual([{ id: STAGE_A, content: '초안' }]);
+  });
+
+  it('부원은 계획일을 옮기지 못한다 — 업무의 마감과 같은 선이다', async () => {
+    const stageCalls: StageCall[] = [];
+    stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      stageCalls,
+    });
+
+    const res = await patch(TASK_ID, { stages: [{ id: STAGE_A, plannedDate: '2026-09-01' }] });
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('FORBIDDEN');
+    // 문 앞에서 막는다 — 저장소까지 가지 않는다
+    expect(stageCalls).toEqual([]);
+  });
+
+  it('부원도 실제일·확인 상태·내용은 고친다', async () => {
+    const stageCalls: StageCall[] = [];
+    stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      stageCalls,
+    });
+
+    expect(
+      (
+        await patch(TASK_ID, {
+          stages: [{ id: STAGE_A, actualDate: '2026-08-30', confirmStatus: 'true', content: '완료' }],
+        })
+      ).status
+    ).toBe(200);
+    expect(stageCalls).toHaveLength(1);
+  });
+
+  it('한 줄이라도 잠긴 칸이 있으면 요청 전체를 막는다 — 일부 반영은 더 나쁘다', async () => {
+    const stageCalls: StageCall[] = [];
+    stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      stageCalls,
+    });
+
+    const res = await patch(TASK_ID, {
+      stages: [
+        { id: STAGE_A, content: '괜찮은 줄' },
+        { id: STAGE_B, plannedDate: '2026-09-01' },
+      ],
+    });
+
+    expect(res.status).toBe(403);
+    expect(stageCalls).toEqual([]);
+  });
+
+  /**
+   * **못 바꾼 것을 바꿨다고 답하지 않는다.** 저장소는 「이 업무의 단계가 아니다」와
+   * 「정책이 막았다」를 똑같이 0행으로 돌려주고, 둘 다 여기서는 403이다 (`S6`).
+   */
+  it('저장소가 바꾼 줄이 요청보다 적으면 403이다', async () => {
+    stubContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: makeTask(),
+      stagesChanged: 1,
+    });
+
+    const res = await patch(TASK_ID, {
+      stages: [
+        { id: STAGE_A, content: 'a' },
+        { id: STAGE_B, content: 'b' },
+      ],
+    });
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('FORBIDDEN');
+  });
+
+  it('보이지 않는 업무면 단계도 손대지 않는다 — 대상 확인이 먼저다', async () => {
+    const stageCalls: StageCall[] = [];
+    stubContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: null,
+      stageCalls,
+    });
+
+    expect((await patch(TASK_ID, { stages: [{ id: STAGE_A, content: 'x' }] })).status).toBe(403);
+    expect(stageCalls).toEqual([]);
+  });
+});
+
+/**
+ * 삭제는 **되돌릴 수 없다.** 그래서 문이 둘이고(역할·행 범위), 실패 갈래를 전부 403으로
+ * 접는다 — 「그 id는 있는데 당신 것이 아니다」는 부원에게 전사 업무의 개수를 알려 준다
+ * (`S6`).
+ */
+describe('DELETE /api/tasks/[id]', () => {
+  /** `stubContext`는 `deleteTask`를 재지 않는다 — 이 자리에서만 필요한 기록기다 */
+  function deleteContext(options: {
+    session: SessionOutcome;
+    found?: Task | null;
+    removed?: boolean;
+    readOnly?: boolean;
+  }): string[] {
+    const calls: string[] = [];
+    const base = handle(options.readOnly ?? false);
+    const memory = createMemoryTaskStore();
+
+    const repo: TaskRepository = {
+      ...memory,
+      getTask: async () => options.found ?? null,
+      deleteTask: async (id) => {
+        calls.push(id);
+        return options.removed ?? true;
+      },
+    };
+
+    viewerOverride = { repo, session: options.session, base };
+    return calls;
+  }
+
+  function remove(id: string): Promise<Response> {
+    return DELETE(new Request(`http://localhost/api/tasks/${id}`, { method: 'DELETE' }), {
+      params: Promise.resolve({ id }),
+    });
+  }
+
+  const OWN = makeTask({ id: TASK_ID, teamId: 'edit', ownerMemberId: 'member-1' });
+
+  it('팀장이 자기 팀 업무를 지우면 204이고 본문이 없다', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead' }) },
+      found: OWN,
+    });
+
+    const res = await remove(TASK_ID);
+
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe('');
+    expect(calls).toEqual([TASK_ID]);
+  });
+
+  it('어드민은 남의 팀 업무도 지운다', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: makeTask({ id: TASK_ID, teamId: 'shoot', ownerMemberId: 'member-9' }),
+    });
+
+    expect((await remove(TASK_ID)).status).toBe(204);
+    expect(calls).toEqual([TASK_ID]);
+  });
+
+  it('부원은 자기 업무여도 못 지운다 → 403이고 쓰기가 나가지 않는다', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: OWN,
+    });
+
+    const res = await remove(TASK_ID);
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('FORBIDDEN');
+    expect(calls).toHaveLength(0);
+  });
+
+  /** 팀장이 전 팀을 **보게** 된 뒤로 「보이는데 못 지우는」 업무가 생겼다 (`0012`) */
+  it('팀장은 남의 팀 업무를 보더라도 지우지 못한다 → 403', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'lead', teamId: 'edit' }) },
+      found: makeTask({ id: TASK_ID, teamId: 'shoot', ownerMemberId: 'member-9' }),
+    });
+
+    expect((await remove(TASK_ID)).status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('없는 업무도 403이다 — 없는 것과 못 지우는 것을 갈라 답하지 않는다 (`S6`)', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: null,
+    });
+
+    expect((await remove(TASK_ID)).status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('DB가 0행을 지웠으면 403이다 — 화면이 지우지 못한 것을 지웠다고 말하지 않는다', async () => {
+    deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: OWN,
+      removed: false,
+    });
+
+    expect((await remove(TASK_ID)).status).toBe(403);
+  });
+
+  it('읽기 전용에서는 저장소를 건드리기 전에 503이다 (`ADR-005`)', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: OWN,
+      readOnly: true,
+    });
+
+    const res = await remove(TASK_ID);
+
+    expect(res.status).toBe(503);
+    expect(await errorCode(res)).toBe('STORAGE_READONLY');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('로그인하지 않았으면 401이다', async () => {
+    const calls = deleteContext({ session: { status: 'anonymous' }, found: OWN });
+
+    const res = await remove(TASK_ID);
+
+    expect(res.status).toBe(401);
+    expect(await errorCode(res)).toBe('UNAUTHENTICATED');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('출처가 다르면 403이다 — 남의 페이지의 요청으로 업무가 사라지지 않는다', async () => {
+    const calls = deleteContext({
+      session: { status: 'ok', viewer: viewer({ role: 'admin', teamId: null }) },
+      found: OWN,
+    });
+
+    const res = await DELETE(
+      new Request(`http://localhost/api/tasks/${TASK_ID}`, {
+        method: 'DELETE',
+        headers: { origin: 'https://evil.example', host: 'localhost' },
+      }),
+      { params: Promise.resolve({ id: TASK_ID }) }
+    );
+
+    expect(res.status).toBe(403);
+    expect(calls).toHaveLength(0);
   });
 });

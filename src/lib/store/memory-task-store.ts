@@ -18,17 +18,21 @@ import {
   matchesTaskEventFilter,
   matchesTaskFilter,
   taskUpsertKey,
+  MANUAL_ROW_INDEX,
+  MANUAL_SHEET_TAB,
   type GoalMetricUpsertInput,
   type GoalMetricUpsertResult,
   type TaskEventFilter,
   type TaskFilter,
+  type TaskCreateInput,
   type TaskRepository,
   type TaskUpsertInput,
   type UpsertOptions,
   type UpsertResult,
 } from '@/lib/store/task-repository';
-import type { MemberRecord, TaskPatch } from '@/types/auth';
+import type { MemberRecord, TaskPatch, TaskStagePatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
+import type { EnumOptionEntry } from '@/types/sheet';
 import type { Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
 
 function clone<T>(value: T): T {
@@ -60,6 +64,8 @@ export function createMemoryTaskStore(seed?: {
   // 구성원은 시드로만 들어온다 — 만드는 메서드가 계약에 없다 (시드 스크립트가 채운다).
   let members: MemberRecord[] = clone([...(seed?.members ?? [])]);
   let events: TaskEvent[] = [];
+  /** `설정` 탭의 enum 목록. 업로드 확정이 채운다 */
+  let enumOptions: EnumOptionEntry[] = [];
   let lastSyncedAt: string | null = null;
 
   /** 정렬은 결정적으로: 팀 → 자연키. 입력 순서에 화면이 흔들리면 안 된다 */
@@ -234,8 +240,27 @@ export function createMemoryTaskStore(seed?: {
       // `patch`에 **있는 키만** 옮긴다. `undefined`까지 대입하면 「안 줬다」가 「지워라」가
       // 되어, `progress: null`(빈 셀)과 `progress` 미지정의 구분이 사라진다.
       const merged: Task = clone(existing);
+      if (patch.title !== undefined) merged.title = patch.title;
       if (patch.status !== undefined) merged.status = patch.status;
       if (patch.progress !== undefined) merged.progress = patch.progress;
+      // 아래 아홉은 `0013`이 컬럼 GRANT로 연 칸들이다. 전부 `null`이 「비운다」다
+      if (patch.priority !== undefined) merged.priority = patch.priority;
+      if (patch.riskStatus !== undefined) merged.riskStatus = patch.riskStatus;
+      if (patch.approvalStatus !== undefined) merged.approvalStatus = patch.approvalStatus;
+      if (patch.assignedAt !== undefined) merged.assignedAt = patch.assignedAt;
+      if (patch.dueAt !== undefined) merged.dueAt = patch.dueAt;
+      if (patch.nextAction !== undefined) merged.nextAction = patch.nextAction;
+      if (patch.nextActionOwner !== undefined) merged.nextActionOwner = patch.nextActionOwner;
+      if (patch.nextActionDue !== undefined) merged.nextActionDue = patch.nextActionDue;
+      if (patch.delayReason !== undefined) merged.delayReason = patch.delayReason;
+      if (patch.note !== undefined) merged.note = patch.note;
+      // 담당자 둘은 라우트가 **짝으로** 넘긴다. 여기서 이름을 지어내지 않는다
+      if (patch.ownerMemberId !== undefined) merged.ownerMemberId = patch.ownerMemberId;
+      if (patch.ownerNameRaw !== undefined) merged.ownerNameRaw = patch.ownerNameRaw;
+      // 배열은 **사본으로** 넣는다. 호출자가 들고 있는 배열을 저장소가 참조하면 밖에서 바뀐다
+      if (patch.coOwnerNames !== undefined) merged.coOwnerNames = [...patch.coOwnerNames];
+      // 객체도 같은 이유로 사본이다. 합치기는 라우트가 끝냈고 여기서는 통째로 바꾼다
+      if (patch.extras !== undefined) merged.extras = { ...patch.extras };
 
       // `lastProgressAt`은 손대지 않는다 — 사람이 화면에서 고친 것은 업로드가 아니다.
       //
@@ -253,8 +278,118 @@ export function createMemoryTaskStore(seed?: {
       return clone(merged);
     },
 
+    /**
+     * 사람이 화면에서 만드는 업무 한 건. **`upsertTasks`를 부르지 않는다** — 그쪽은 자연키가
+     * 겹치면 덮고 이벤트를 남긴다 (`TaskRepository` 주석).
+     *
+     * 감사 칸은 여기서 채운다: 시트에서 오지 않았으므로 탭 이름과 행 번호가 상수이고
+     * (`MANUAL_SHEET_TAB`·`MANUAL_ROW_INDEX`), `extras`·`raw`는 비어 있다 — 원본 행이라는
+     * 것이 존재하지 않는다.
+     */
+    async createTask(input: TaskCreateInput, createdAt: string): Promise<Task> {
+      const created: Task = {
+        id: crypto.randomUUID(),
+        teamId: input.teamId,
+        departmentId: null,
+        sourceKey: input.sourceKey,
+        title: input.title,
+        ownerMemberId: input.ownerMemberId,
+        ownerNameRaw: input.ownerNameRaw,
+        coOwnerNames: [...input.coOwnerNames],
+        status: input.status,
+        approvalStatus: null,
+        priority: input.priority,
+        riskStatus: null,
+        progress: input.progress,
+        assignedAt: input.assignedAt,
+        dueAt: input.dueAt,
+        nextAction: input.nextAction,
+        nextActionOwner: input.nextActionOwner,
+        nextActionDue: input.nextActionDue,
+        delayReason: null,
+        note: input.note,
+        extras: { ...input.extras },
+        raw: {},
+        // 만든 시각이 이 행의 값이 마지막으로 정해진 시각이다 — null로 두면 만들자마자
+        // 「장기 미갱신」으로 잡힌다
+        lastProgressAt: createdAt,
+        sourceUploadId: null,
+        sourceSheetTab: MANUAL_SHEET_TAB,
+        sourceRowIndex: MANUAL_ROW_INDEX,
+      };
+
+      tasks.push(created);
+      /*
+       * 단계도 **같은 자리에서** 넣는다. 태스크만 만들고 단계를 호출자가 따로 넣게 두면
+       * 그 사이에 「단계 없는 업무」인 상태가 생기고, supabase 쪽은 그 둘이 다른 요청이라
+       * 실패하면 실제로 그 상태로 남는다 (`upsertTasks`가 둘을 함께 다루는 이유와 같다).
+       */
+      for (const stage of input.stages) {
+        stages.push({ ...clone(stage), id: crypto.randomUUID(), taskId: created.id });
+      }
+      sortTasks();
+      return clone(created);
+    },
+
+    /**
+     * 단계 줄의 부분 수정. **그 업무의 것만** 바꾸고, 바꾼 줄만 돌려준다 (인터페이스 머리말).
+     * 없는 id·남의 업무 id는 조용히 건너뛴다 — 개수 차이로 호출자가 알아본다.
+     */
+    async updateStages(taskId: string, patches: readonly TaskStagePatch[]): Promise<TaskStage[]> {
+      const changed: TaskStage[] = [];
+
+      for (const patch of patches) {
+        const index = stages.findIndex(
+          (stage) => stage.id === patch.id && stage.taskId === taskId,
+        );
+        if (index < 0) continue;
+
+        // 키 없음은 「안 건드린다」다 — `undefined`를 얹으면 있는 값이 지워진다.
+        // `id`는 바꾸는 대상이지 바뀌는 값이 아니라 여기서 건너뛴다
+        const next = { ...stages[index]! };
+        for (const [key, value] of Object.entries(patch)) {
+          if (key === 'id' || value === undefined) continue;
+          (next as Record<string, unknown>)[key] = value;
+        }
+
+        stages[index] = next;
+        changed.push(clone(next));
+      }
+
+      return changed;
+    },
+
+    /**
+     * 단계도 이력도 **함께** 지운다. supabase 쪽은 FK의 `on delete cascade`가 같은 일을
+     * 하므로 두 구현의 결과가 같다 — 계약이 그것을 잰다.
+     */
+    async deleteTask(id: string): Promise<boolean> {
+      const index = tasks.findIndex((task) => task.id === id);
+      if (index < 0) return false;
+
+      tasks.splice(index, 1);
+      stages = stages.filter((stage) => stage.taskId !== id);
+      events = events.filter((event) => event.taskId !== id);
+      return true;
+    },
+
     async listMembers(): Promise<MemberRecord[]> {
       return clone(members);
+    },
+
+    async listEnumOptions(): Promise<EnumOptionEntry[]> {
+      return clone(enumOptions);
+    },
+
+    /** `(groupKey, value)`가 키다. 같은 값이 다시 오면 순서만 갱신된다 */
+    async upsertEnumOptions(entries: readonly EnumOptionEntry[]): Promise<void> {
+      for (const entry of entries) {
+        const found = enumOptions.find(
+          (option) => option.groupKey === entry.groupKey && option.value === entry.value
+        );
+        if (found === undefined) enumOptions.push({ ...entry });
+        else found.sortOrder = entry.sortOrder;
+      }
     },
 
     /**
@@ -271,6 +406,7 @@ export function createMemoryTaskStore(seed?: {
         goalMetrics: clone(goalMetrics),
         members: clone(members),
         events: clone(events),
+        enumOptions: clone(enumOptions),
         lastSyncedAt,
       };
       try {
@@ -281,6 +417,7 @@ export function createMemoryTaskStore(seed?: {
         goalMetrics = snapshot.goalMetrics;
         members = snapshot.members;
         events = snapshot.events;
+        enumOptions = snapshot.enumOptions;
         lastSyncedAt = snapshot.lastSyncedAt;
         throw error;
       }
@@ -292,6 +429,7 @@ export function createMemoryTaskStore(seed?: {
       goalMetrics = [];
       members = [];
       events = [];
+      enumOptions = [];
       lastSyncedAt = null;
     },
   };

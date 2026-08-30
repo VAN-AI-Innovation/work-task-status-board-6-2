@@ -4,8 +4,11 @@ export const runtime = 'nodejs';
 import { errorResponse, toApiErrorCode } from '@/lib/api/api-error';
 import { buildReadContext } from '@/lib/api/read-context';
 import { loadPeriodEvents, parseReportQuery } from '@/lib/api/report-context';
+import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { resolveReportPeriod } from '@/lib/domain/report-period';
+import { reportTeams, scopeReportInputs } from '@/lib/domain/report-scope';
+import { canReadWeeklyReport } from '@/lib/domain/staff-tools';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 
 /**
@@ -28,20 +31,43 @@ export async function GET(request: Request): Promise<Response> {
 
   try {
     const view = await currentViewerContext();
+    // 승인 대기 계정은 403이다 (T11 · `pending-gate.ts`). 401이 아닌 이유는 이미 로그인했다는 것
+    const gate = gateForSession(view.session, url.pathname);
+    if (gate.kind === 'deny') return errorResponse('PENDING_APPROVAL');
+
     const read = await buildReadContext(view, new Date(), {
       as: url.searchParams.get('as'),
       filter: {},
     });
 
+    /*
+     * 부원에게는 이 도구가 없다 (`staff-tools.ts`). **화면의 404가 아니라 여기가 진짜 문이다** —
+     * 주소를 직접 쳐도 이 줄에 걸린다. 세션이 없으면 좁히지 않는다(데모).
+     */
+    if (!canReadWeeklyReport(read.role, read.viewer !== null)) return errorResponse('FORBIDDEN');
+
     const period = resolveReportPeriod(read.ctx.today, parseReportQuery(url.searchParams));
+
+    /*
+     * **보는 범위와 보고 범위가 다르다.** 팀장이 읽는 것은 전사이지만(`0012`) 그 사람의
+     * 보고서는 자기 팀이다 — 화면(`src/app/report/page.tsx`)이 같은 두 함수를 부른다.
+     */
+    const reportScope = reportTeams(read.role, read.viewer?.teamId ?? null, read.viewer !== null);
+    const scoped = scopeReportInputs(reportScope, {
+      tasks: read.tasks,
+      stages: read.stages,
+      goals: await view.repo.listGoalMetrics(),
+      events: await loadPeriodEvents(view.repo, period),
+    });
 
     return Response.json({
       markdown: buildWeeklyReport({
-        tasks: read.tasks,
-        stages: read.stages,
-        goals: await view.repo.listGoalMetrics(),
+        teams: reportScope ?? undefined,
+        tasks: scoped.tasks,
+        stages: scoped.stages,
+        goals: scoped.goals,
         period,
-        events: await loadPeriodEvents(view.repo, period),
+        events: scoped.events,
         ctx: read.ctx,
       }),
       /*

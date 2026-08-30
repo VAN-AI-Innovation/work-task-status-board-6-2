@@ -11,7 +11,10 @@
 
 import type { ExtraValue } from '@/types/task';
 
-/** 인증은 T8이다. 그때까지 이 값은 `?as=`에서 온다 (`lib/api/viewer-role.ts`) */
+/**
+ * 로그인한 사람의 역할은 **세션**에서 온다. `?as=`가 이 값을 정하는 것은 세션이 없는
+ * 데모·폴백뿐이다 (`lib/api/viewer-role.ts` · `ADR-026`).
+ */
 export type ViewerRole = 'admin' | 'lead' | 'member';
 
 /**
