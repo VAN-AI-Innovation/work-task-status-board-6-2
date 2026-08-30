@@ -9,13 +9,17 @@ describe('visibleTeamKeys — 로그인했을 때', () => {
   });
 
   /*
-   * **팀장도 전부 본다** (`0012_lead_org_read.sql`). 열람 범위가 전사로 넓어졌으므로
-   * (`viewer-scope.ts`) 팀 메뉴만 하나로 두면 사이드바에 없는 화면의 데이터를 대시보드에서
-   * 보는 상태가 된다 — 그 화면은 「왜 이건 보이고 저건 못 여는가」를 설명하지 못한다.
+   * 한동안 팀장에게도 세 탭을 열어 뒀다 (`ADR-040`). **지금은 자기 팀 하나다** — 팀 화면은
+   * 「자기 팀을 관리하는 자리」이고 남의 팀 탭은 열어도 하나도 고칠 수 없다(`taskEditable`).
+   * 열람 범위(`0012`)와 전사 대시보드는 그대로 두므로, 좁아지는 것은 탭 목록뿐이다.
    */
-  it('팀장도 전부 본다 — 어드민과 같은 현황판을 본다', () => {
-    expect(visibleTeamKeys('lead', 'edit', true)).toEqual(TEAM_KEYS);
-    expect(visibleTeamKeys('lead', null, true)).toEqual(TEAM_KEYS);
+  it('팀장은 자기 팀 하나다 — 부원과 같은 규칙이다', () => {
+    expect(visibleTeamKeys('lead', 'edit', true)).toEqual(['edit']);
+    expect(visibleTeamKeys('lead', 'shoot', true)).toEqual(['shoot']);
+  });
+
+  it('팀을 모르는 팀장은 하나도 못 본다 — 「모른다」를 「전부」로 접지 않는다', () => {
+    expect(visibleTeamKeys('lead', null, true)).toEqual([]);
   });
 
   it('부원도 자기 팀 하나만 본다 — 팀장과 같은 규칙이다', () => {
@@ -50,9 +54,14 @@ describe('canSeeTeam', () => {
     expect(canSeeTeam('member', 'edit', true, 'shoot')).toBe(false);
   });
 
-  it('대표·실장·팀장에게는 전부 열린다', () => {
+  it('대표·실장에게는 전부 열린다', () => {
     expect(canSeeTeam('admin', null, true, 'shoot')).toBe(true);
-    expect(canSeeTeam('lead', 'edit', true, 'shoot')).toBe(true);
+  });
+
+  /** 주소를 직접 쳐도 열리지 않는다 — 사이드바에서 감추는 것으로 갈음하지 않는다 */
+  it('팀장에게 남의 팀 화면은 없다', () => {
+    expect(canSeeTeam('lead', 'edit', true, 'edit')).toBe(true);
+    expect(canSeeTeam('lead', 'edit', true, 'shoot')).toBe(false);
   });
 
   it('데모에서는 전부 열린다', () => {

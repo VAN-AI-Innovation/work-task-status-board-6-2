@@ -562,3 +562,26 @@ describe('픽스처 통합 — 스냅샷', () => {
     `);
   });
 });
+
+/**
+ * **팀별 현황 표에 세울 팀.** 팀장의 보고서는 자기 팀만 담으므로(`report-scope.ts`) 남의 팀
+ * 줄은 전부 0이 되는데, 표의 `0`은 「그 팀이 이번 주에 아무 일도 안 했다」로 읽힌다 —
+ * 없는 것보다 나쁜 거짓말이라 줄 자체를 뺀다.
+ */
+describe('buildWeeklyReport — 팀 범위', () => {
+  it('`teams`를 주면 그 팀만 표에 선다', () => {
+    const markdown = buildWeeklyReport({ ...input(), teams: ['edit'] });
+
+    expect(markdown).toContain('편집팀');
+    expect(markdown).not.toContain('촬영·기획팀');
+    expect(markdown).not.toContain('마케팅·관리팀');
+  });
+
+  it('주지 않으면 전부 선다 — 어드민의 보고서가 그렇다', () => {
+    const markdown = buildWeeklyReport(input());
+
+    expect(markdown).toContain('편집팀');
+    expect(markdown).toContain('촬영·기획팀');
+    expect(markdown).toContain('마케팅·관리팀');
+  });
+});

@@ -25,13 +25,20 @@
  * 좁은 쪽으로 접는다 — `viewer-scope.ts`의 null 가드와 같은 판단이고, 그쪽도 같은 이유로
  * `viewer.teamId !== null`을 판정보다 **먼저** 세운다.
  *
- * ## 팀장은 전 팀 화면을 갖는다
+ * ## 팀장의 팀 탭은 **자기 팀 하나다**
  *
- * `0012_lead_org_read.sql`이 팀장의 **열람 범위**를 전사로 넓혔다 (`viewer-scope.ts`).
- * 여기를 따라 넓히지 않으면 팀장의 대시보드에는 세 팀의 숫자가 다 뜨는데 사이드바에는 팀
- * 메뉴가 하나뿐인 화면이 된다 — 그 화면은 「왜 이건 보이고 저건 못 여는가」를 설명하지
- * 못한다. **좁히는 것은 여전히 `taskEditable`이 진다**: 남의 팀 화면을 열어도 고칠 수 있는
- * 업무는 하나도 없다.
+ * 한동안 팀장에게도 세 탭을 열어 뒀다. `0012_lead_org_read.sql`이 팀장의 **열람 범위**를
+ * 전사로 넓혔으니 화면도 따라가야 한다는 판단이었다 (`ADR-040`).
+ *
+ * **그 판단을 좁힌다.** 팀 화면(`/teams/*`)은 「그 팀을 이끄는 사람이 자기 팀을 관리하는
+ * 자리」이고, 팀장에게 남의 팀 탭은 **열어도 하나도 고칠 수 없는 화면**이다
+ * (`taskEditable`은 여전히 자기 팀뿐이다). 매일 쓰는 메뉴에 그런 항목이 둘 서 있으면
+ * 「내 것이 아닌 곳」을 매번 지나치게 된다.
+ *
+ * ⚠ **전사 대시보드(`/`)는 그대로 열린다** (`canSeeOrgDashboard`). 팀장이 조직 전체가 어디쯤
+ * 왔는지 아는 것과, 남의 팀 업무 표를 여는 것은 다른 물음이다 — `0012`가 넓힌 열람 범위도
+ * 손대지 않는다(`taskInScope`). 좁아지는 것은 **탭 목록과 주간 보고**뿐이다
+ * (`report-scope.ts`).
  */
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
@@ -46,8 +53,9 @@ export function visibleTeamKeys(
   hasSession: boolean
 ): readonly TeamKey[] {
   if (!hasSession) return TEAM_KEYS;
-  if (role === 'admin' || role === 'lead') return TEAM_KEYS;
+  if (role === 'admin') return TEAM_KEYS;
 
+  // 팀장도 부원과 같다 — 팀 탭은 「내 팀」 하나다 (머리말)
   return teamId === null ? [] : [teamId];
 }
 

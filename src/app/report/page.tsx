@@ -39,6 +39,7 @@ import { currentSessionClient, currentViewerContext } from '@/lib/auth/request-v
 import { toAccount } from '@/lib/auth/viewer-session';
 import { TEAM_KEYS } from '@/lib/domain/progress-stats';
 import { resolveReportPeriod } from '@/lib/domain/report-period';
+import { reportTeams, scopeReportInputs } from '@/lib/domain/report-scope';
 import { canReviewReport, canSubmitReport } from '@/lib/domain/report-submission';
 import { canReadWeeklyReport } from '@/lib/domain/staff-tools';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
@@ -90,12 +91,29 @@ export default async function ReportPage({ searchParams }: PageProps<'/report'>)
    * 이력을 **읽지 못한 것**과 0건은 다르다. `loadPeriodEvents`가 `null`을 주면 보고서가
    * 「집계되지 않음」이라 적고, 빈 배열이면 「0건」이라 적는다 (T9 step 3·4).
    */
-  const markdown = buildWeeklyReport({
+  /*
+   * **보는 범위와 보고 범위가 다르다.** 팀장의 `read.tasks`는 전사이지만(`0012`), 자기
+   * 이름으로 나가는 문서에는 자기 팀만 담는다 — 남의 팀 숫자가 섞인 보고서는 어드민이
+   * 병합할 때 같은 업무를 두 번 세게 만든다 (`report-scope.ts` 머리말).
+   *
+   * `GET /api/report/weekly`가 **같은 두 함수**를 부른다. 화면과 API가 각자 좁히면 같은 주의
+   * 보고서가 두 자리에서 다른 숫자를 낸다.
+   */
+  const reportScope = reportTeams(read.role, read.viewer?.teamId ?? null, read.viewer !== null);
+  const scoped = scopeReportInputs(reportScope, {
     tasks: read.tasks,
     stages: read.stages,
     goals: await view.repo.listGoalMetrics(),
-    period,
     events: await loadPeriodEvents(view.repo, period),
+  });
+
+  const markdown = buildWeeklyReport({
+    teams: reportScope ?? undefined,
+    tasks: scoped.tasks,
+    stages: scoped.stages,
+    goals: scoped.goals,
+    period,
+    events: scoped.events,
     ctx: read.ctx,
   });
 

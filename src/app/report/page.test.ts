@@ -68,23 +68,15 @@ function findComponent(tree: unknown, name: string): Element | null {
   return found;
 }
 
-/** 트리에 남은 글자 전부. `<a href>`는 여기 없으므로 링크는 props로 따로 본다 */
-function textOf(tree: unknown): string {
-  const parts: string[] = [];
-  const collect = (node: unknown): void => {
-    if (typeof node === 'string' || typeof node === 'number') {
-      parts.push(String(node));
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (const child of node) collect(child);
-      return;
-    }
-    if (node === null || typeof node !== 'object') return;
-    collect((node as Element).props?.children);
+function lead(teamId: Viewer['teamId']): Viewer {
+  return {
+    userId: 'u1',
+    email: 'lead@example.com',
+    role: 'lead',
+    teamId,
+    memberId: 'm1',
+    memberName: null,
   };
-  collect(tree);
-  return parts.join(' ');
 }
 
 function props(searchParams: Record<string, string | string[]> = {}) {
@@ -185,22 +177,40 @@ describe('/report', () => {
     });
   });
 
-  it('팀장은 자기 범위의 보고서를 받는다 — 범위는 데이터가 자른다', async () => {
-    const viewer: Viewer = {
-      userId: 'u1',
-      email: 'lead@example.com',
-      role: 'lead',
-      teamId: 'edit',
-      memberId: 'm1',
-      memberName: null,
-    };
-    session = { status: 'ok', viewer };
+  /**
+   * **보는 범위와 보고 범위가 다르다.** 팀장의 열람은 `0012` 이후 전사인데, 그 사람 이름으로
+   * 나가는 문서에는 자기 팀만 담긴다 (`report-scope.ts`) — 남의 팀 숫자가 섞이면 어드민이
+   * 병합할 때 같은 업무를 두 번 센다.
+   *
+   * 재는 자리는 **팀 요약 절**이다. 보고 본문이 팀별 줄을 세우므로(`weekly-report.ts`),
+   * 거기 남의 팀 이름이 있으면 범위가 안 좁혀진 것이다.
+   */
+  it('팀장의 보고서에는 자기 팀만 담긴다', async () => {
+    session = { status: 'ok', viewer: lead('edit') };
     await seed();
 
-    const tree = await ReportPage(props());
-    expect(findComponent(tree, 'PageShell')).not.toBeNull();
-    expect(textOf(tree)).toContain('주간 보고');
+    const body = String(findComponent(await ReportPage(props()), 'ReportComposer')?.props?.computed);
+
+    expect(body).toContain('편집팀');
+    expect(body).not.toContain('촬영·기획팀');
+    expect(body).not.toContain('마케팅·관리팀');
   });
+
+  it('팀이 바뀌면 담기는 팀도 바뀐다 — 팀을 못박아 두지 않았다', async () => {
+    session = { status: 'ok', viewer: lead('shoot') };
+    await seed();
+
+    const body = String(findComponent(await ReportPage(props()), 'ReportComposer')?.props?.computed);
+
+    expect(body).toContain('촬영·기획팀');
+    expect(body).not.toContain('편집팀');
+  });
+
+  /*
+   * 어드민이 좁혀지지 않는 것은 여기서 재지 않는다 — 그 화면의 본문은 계산본이 아니라
+   * **제출 병합 문서**라(`mergeTeamReports`) 팀 요약 절이 애초에 없다. 그 갈래는
+   * `report-scope.test.ts`(판정)와 `api/report/weekly`(계산본)가 진다.
+   */
 
   /** 데모(세션 없음)에서는 좁히지 않는다 — `.env` 없이 클론한 심사자가 이 화면을 본다 */
   it('로그인 전에는 막지 않는다', async () => {

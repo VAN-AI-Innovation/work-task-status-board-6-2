@@ -7,6 +7,7 @@ import { loadPeriodEvents, parseReportQuery } from '@/lib/api/report-context';
 import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { resolveReportPeriod } from '@/lib/domain/report-period';
+import { reportTeams, scopeReportInputs } from '@/lib/domain/report-scope';
 import { canReadWeeklyReport } from '@/lib/domain/staff-tools';
 import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 
@@ -47,13 +48,26 @@ export async function GET(request: Request): Promise<Response> {
 
     const period = resolveReportPeriod(read.ctx.today, parseReportQuery(url.searchParams));
 
+    /*
+     * **보는 범위와 보고 범위가 다르다.** 팀장이 읽는 것은 전사이지만(`0012`) 그 사람의
+     * 보고서는 자기 팀이다 — 화면(`src/app/report/page.tsx`)이 같은 두 함수를 부른다.
+     */
+    const reportScope = reportTeams(read.role, read.viewer?.teamId ?? null, read.viewer !== null);
+    const scoped = scopeReportInputs(reportScope, {
+      tasks: read.tasks,
+      stages: read.stages,
+      goals: await view.repo.listGoalMetrics(),
+      events: await loadPeriodEvents(view.repo, period),
+    });
+
     return Response.json({
       markdown: buildWeeklyReport({
-        tasks: read.tasks,
-        stages: read.stages,
-        goals: await view.repo.listGoalMetrics(),
+        teams: reportScope ?? undefined,
+        tasks: scoped.tasks,
+        stages: scoped.stages,
+        goals: scoped.goals,
         period,
-        events: await loadPeriodEvents(view.repo, period),
+        events: scoped.events,
         ctx: read.ctx,
       }),
       /*

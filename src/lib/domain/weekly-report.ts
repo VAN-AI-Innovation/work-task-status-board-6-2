@@ -62,6 +62,14 @@ export interface WeeklyReportInput {
    */
   events: readonly TaskEvent[] | null;
   ctx: AlertContext;
+  /**
+   * 「팀별 현황」 표에 세울 팀. 없으면 전부다 (어드민·데모).
+   *
+   * **0으로 세우지 않고 아예 빼는 것이 요점이다.** 팀장의 보고서는 자기 팀만 담으므로
+   * (`report-scope.ts`) 남의 팀 줄은 전부 0이 되는데, 표의 `0`은 「그 팀이 이번 주에 아무
+   * 일도 안 했다」로 읽힌다 — 없는 것보다 나쁜 거짓말이다.
+   */
+  teams?: readonly TeamKey[];
 }
 
 /**
@@ -292,7 +300,11 @@ export function buildWeeklyReport(input: WeeklyReportInput): string {
     '',
     summarySection(buildKpiStrip(tasks, withFlags), events),
     '',
-    teamSection(summarizeAllTeams(tasks, withFlags)),
+    teamSection(
+      summarizeAllTeams(tasks, withFlags).filter(
+        (summary) => input.teams === undefined || input.teams.includes(summary.teamKey)
+      )
+    ),
     '',
     overdueSection(tasks, flags),
     '',
