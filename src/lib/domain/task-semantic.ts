@@ -47,6 +47,19 @@ export const STATUS_SEMANTIC_MAP: Readonly<Record<string, TaskSemantic>> = {
  */
 export const STATUS_OPTIONS: readonly string[] = Object.keys(STATUS_SEMANTIC_MAP);
 
+/**
+ * 승인 대기함의 두 조작이 넣는 **상태 원문**. 화면이 한글 상태를 직접 적지 않게 여기 둔다
+ * (`ADR-009`) — 한 글자만 달라도 그 업무의 상태가 조용히 미매핑된다.
+ *
+ * 승인은 시트 순서에서 「승인 대기」 **바로 다음 칸**이다. 결재는 끝났지만 게시·이관이 남은
+ * 상태이며, 단계를 건너뛰어 「완료」로 보내지 않는다. 반려는 「수정 중」으로 되돌린다 —
+ * 「검토 요청」으로 보내면 고치지도 않은 것이 다시 검토 줄에 선다.
+ */
+export const APPROVAL_DECISION_STATUS = {
+  approved: '게시·이관 대기',
+  rejected: '수정 중',
+} as const;
+
 /** 진행형이 아닌 semantic. 완료율 모수·장기 미갱신 판정이 이 셋을 갈라 쓴다 */
 const INACTIVE_SEMANTICS: readonly TaskSemantic[] = ['done', 'hold', 'cancelled'];
 

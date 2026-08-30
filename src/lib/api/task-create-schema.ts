@@ -11,10 +11,11 @@
  * 1. **팀과 업무명이 필수다.** 둘 없이 만들어진 업무는 표에서 어느 줄인지 알 수 없고,
  *    팀이 없으면 어느 화면에도 속하지 않는다. 나머지는 전부 선택이다 — 「일단 이름만 걸어
  *    두고 나중에 채운다」가 회의 자리의 실제 동작이다.
- * 2. **감사 칸을 받지 않는다.** `sourceKey`·`sourceSheetTab`·`sourceRowIndex`·`extras`·`raw`는
+ * 2. **감사 칸을 받지 않는다.** `sourceKey`·`sourceSheetTab`·`sourceRowIndex`·`raw`는
  *    저장소가 채운다 (`task-repository.ts`의 `manualSourceKey`·`MANUAL_SHEET_TAB`). 요청이
  *    그것을 고를 수 있으면 웹에서 만든 업무가 **시트 행인 척**할 수 있고, 그 순간 업무
- *    패널의 「출처」 줄이 거짓말을 한다.
+ *    패널의 「출처」 줄이 거짓말을 한다. `extras`(팀 전용 칸)는 감사 칸이 아니라 **그 팀이
+ *    쓰는 칸**이라 열려 있다 — 만들 때 못 넣으면 촬영팀 업무가 절반만 담긴 채 만들어진다.
  *
  * `.strict()`인 이유는 패치 스키마와 같다: 모르는 키를 조용히 버리면 클라이언트가 잘못된
  * 모양을 보내고도 200을 받는다.
@@ -27,7 +28,7 @@
 
 import { z } from 'zod';
 
-import { TASK_EDITABLE_FIELDS } from '@/lib/api/task-patch-schema';
+import { EXTRAS_FIELD, TASK_EDITABLE_FIELDS } from '@/lib/api/task-patch-schema';
 import { teamIdSchema } from '@/lib/api/signup-schema';
 
 /**
@@ -51,7 +52,11 @@ export const taskCreateSchema = z
     nextAction: TASK_EDITABLE_FIELDS.nextAction.optional(),
     nextActionOwner: TASK_EDITABLE_FIELDS.nextActionOwner.optional(),
     nextActionDue: TASK_EDITABLE_FIELDS.nextActionDue.optional(),
+    riskStatus: TASK_EDITABLE_FIELDS.riskStatus.optional(),
+    approvalStatus: TASK_EDITABLE_FIELDS.approvalStatus.optional(),
     note: TASK_EDITABLE_FIELDS.note.optional(),
+    /** 팀 전용 칸. 패치와 **같은 정의**라 민감 키 차단·상한이 갈리지 않는다 */
+    extras: EXTRAS_FIELD.optional(),
 
     /** 이름이 아니라 id다 — 이름은 라우트가 명부에서 찾아 채운다 (`task-patch-schema.ts`) */
     ownerMemberId: z.uuid().nullable().optional(),

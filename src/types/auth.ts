@@ -7,7 +7,7 @@
  */
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
-import type { TeamKey } from '@/types/task';
+import type { ExtraValue, TeamKey } from '@/types/task';
 
 /** 로그인한 사람 하나. 쿠키 세션을 `src/lib/auth/`가 이 모양으로 푼다 */
 export interface Viewer {
@@ -43,15 +43,15 @@ export interface SessionAccount {
 
 /**
  * `PATCH /api/tasks/[id]`가 저장소에 넘기는 전부. 목록의 근거는 `task-patch-schema.ts`
- * 머리말에 있다 — **`extras`·`raw`·`source_*`는 없다.** 그쪽은 시트 원본과 감사 기록이고,
- * 열면 이 화면이 시트 편집기가 된다.
+ * 머리말에 있다 — **`raw`·`source_*`는 없다.** 그쪽은 시트 원본과 감사 기록이다.
+ * `extras`(팀 전용 칸)는 열려 있고, **라우트가 기존 값에 합쳐서** 넘긴다.
  *
  * `ownerNameRaw`·`coOwnerNames`는 **클라이언트가 보낼 수 없다** (`task-patch-schema.ts`).
  * 라우트가 id에서 **유도해** 채운다 — 둘을 따로 받으면 「담당자는 A인데 이름은 B」인 행이
  * 만들어지고, 그것은 데이터가 틀린 것으로 보인다.
  *
  * ⚠ 여기 있는 칸은 전부 **다음 시트 업로드가 덮어쓴다** (`ADR-001`). 그 사실을 감추지 않고
- *   화면이 말한다 (`task-edit-form.tsx`).
+ *   화면이 말한다 (`task-detail-fields.tsx`).
  */
 export interface TaskPatch {
   /** 업무명. **`null`을 받지 않는다** — 이름 없는 업무를 만들지 않는다 */
@@ -78,6 +78,11 @@ export interface TaskPatch {
    * `tasks_update_scope`의 `with check`가 같은 자리를 막는다 (`0008` 2절).
    */
   ownerMemberId?: string | null;
+  /**
+   * 팀 전용 칸 **전량**. 저장소는 이 객체로 통째 바꾸므로, 보낸 키만 바꾸는 합치기는
+   * 라우트가 이미 끝낸 상태여야 한다 (`app/api/tasks/[id]/route.ts`).
+   */
+  extras?: Record<string, ExtraValue>;
   /** 표와 패널이 읽는 담당자 이름. **라우트만 채운다** (위 주석) */
   ownerNameRaw?: string | null;
   /**
@@ -124,7 +129,11 @@ export interface TaskCreate {
   nextAction: string | null;
   nextActionOwner: string | null;
   nextActionDue: string | null;
+  riskStatus: string | null;
+  approvalStatus: string | null;
   note: string | null;
+  /** 팀 전용 칸. 없으면 빈 객체다 — 시트에서 온 행과 달리 처음에는 비어 있다 */
+  extras: Record<string, ExtraValue>;
   /** 라우트가 id에서 유도해 채운다 (`TaskPatch`와 같은 규칙) */
   ownerMemberId: string | null;
   ownerNameRaw: string | null;

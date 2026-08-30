@@ -17,11 +17,19 @@
  * |---|---|---|---|
  * | `admin` | 전부 | 전부 | 전부 |
  * | `lead` | **전부** | `teamId`가 있고 같은 팀 | **전부** |
- * | `member` | 담당 건 + 공동 담당 건 | 같은 조건 | `teamId`가 있고 같은 팀 |
+ * | `member` | **`teamId`가 있고 같은 팀** | 담당 건 + 공동 담당 건 | `teamId`가 있고 같은 팀 |
  *
- * `member`의 목표 지표만 업무와 규칙이 다르다. **목표 지표에는 담당자 축이 없기 때문이다** —
- * `GoalMetric`은 업무가 아니라 성과 지표이고 팀 단위로 움직인다. 담당자로 걸러 버리면 부원은
- * 「목표 대비 성과」 섹션이 통째로 빈 화면을 본다.
+ * ## 부원의 열람도 팀으로 넓혔다
+ *
+ * 오래도록 부원은 **자기 담당 건만** 봤다. 그래서 막 승인된 사람이 처음 들어오면 대시보드가
+ * 통째로 비고(「아직 데이터가 없습니다」), 그 화면은 **가입이 잘못된 것처럼 보인다.** 배정을
+ * 받기 전까지 이 제품은 그 사람에게 빈 상자다.
+ *
+ * 팀 단위로 넓히면 첫 화면부터 자기 팀이 어디까지 왔는지가 보이고, 목표 지표가 이미 팀 기준
+ * 이었으므로 (아래 문단) 한 화면 안에서 섹션마다 모수가 다른 상태도 사라진다.
+ *
+ * **수정은 넓히지 않는다.** 남의 업무의 진행률을 대신 적는 것은 여전히 그 사람의 일이 아니다 —
+ * 팀장이 전 팀을 보되 자기 팀만 고치는 것과 같은 갈래다 (`0012` · `0015`).
  *
  * ## 공동 담당은 **이름으로** 잰다
  *
@@ -67,9 +75,17 @@ function isCoOwner(task: Task, viewer: Viewer): boolean {
   );
 }
 
-/** `member`의 범위. 열람과 수정이 **같다** — 보는 만큼 고친다 */
+/** `member`의 **수정** 범위. 열람은 이보다 넓다 (머리말) */
 function isOwnTask(task: Task, viewer: Viewer): boolean {
   return isPrimaryOwner(task, viewer) || isCoOwner(task, viewer);
+}
+
+/**
+ * 같은 팀인가. **`teamId`가 없는 계정은 어떤 업무도 보지 못한다** — 「모른다」를 「전부」로
+ * 접지 않는 규율 그대로다 (명부에 안 붙은 계정이 그렇다).
+ */
+function isSameTeam(task: Task, viewer: Viewer): boolean {
+  return viewer.teamId !== null && task.teamId === viewer.teamId;
 }
 
 /**
@@ -83,7 +99,7 @@ export function taskInScope(task: Task, viewer: Viewer): boolean {
     case 'lead':
       return true;
     case 'member':
-      return isOwnTask(task, viewer);
+      return isSameTeam(task, viewer);
   }
 }
 

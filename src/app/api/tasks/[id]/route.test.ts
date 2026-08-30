@@ -335,8 +335,9 @@ describe('PATCH /api/tasks/[id] — 본문 검증', () => {
 
   it.each([
     ['모르는 키', { status: '완료', titel: '오타' }],
-    // `note`는 이제 열려 있다 (`0013`). 여전히 닫힌 것은 시트 원본·감사 칸이다
-    ['허용하지 않는 필드', { extras: { 채널: '인스타' } }],
+    // `note`·`extras`는 이제 열려 있다 (`0013`·`0014`). 여전히 닫힌 것은 시트 원본·감사 칸과
+    // **민감 키**다 — 연락처·계정이 화면 입력으로 들어오는 길은 그대로 막혀 있다
+    ['민감한 팀 전용 칸', { extras: { '출연자 연락처 (내부용)': '010-0000-0000' } }],
     ['감사 칸', { sourceSheetTab: '01_편집팀' }],
     ['팀 바꾸기', { teamId: 'shoot' }],
     ['빈 객체', {}],
@@ -370,6 +371,55 @@ describe('PATCH /api/tasks/[id] — 권한 (완료 기준 2)', () => {
     expect(res.status).toBe(403);
     expect(await errorCode(res)).toBe('FORBIDDEN');
     expect(calls).toHaveLength(0);
+  });
+
+  /**
+   * **역할이 못 고치는 칸** (`lockedTaskFields`). 이 축에는 DB 정책이 없어 라우트가 유일한
+   * 자물쇠다 — 화면에서 잠그는 것으로 갈음하지 않는다.
+   */
+  it.each([
+    ['마감', { dueAt: '2026-09-01' }],
+    ['우선순위', { priority: '높음' }],
+    ['리스크', { riskStatus: '주의' }],
+    ['승인', { approvalStatus: '승인' }],
+    ['배정일', { assignedAt: '2026-08-01' }],
+    ['업무명', { title: '새 이름' }],
+    ['다음 조치 담당', { nextActionOwner: '담당자2' }],
+  ])('member가 %s를 고치려 하면 403이고 쓰기가 나가지 않는다', async (_label, body) => {
+    const calls = stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      updated: makeTask(),
+    });
+    const res = await patch(TASK_ID, body);
+
+    expect(res.status).toBe(403);
+    expect(await errorCode(res)).toBe('FORBIDDEN');
+    expect(calls).toHaveLength(0);
+  });
+
+  it('member도 진행을 적는 칸은 고친다 — 막으면 그 화면은 읽기 전용이다', async () => {
+    const calls = stubContext({
+      session: { status: 'ok', viewer: viewer() },
+      found: makeTask(),
+      updated: makeTask({ progress: 50 }),
+    });
+
+    expect((await patch(TASK_ID, { progress: 50, delayReason: '장비 대여 지연' })).status).toBe(200);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('lead·admin은 같은 칸을 고친다', async () => {
+    for (const role of ['lead', 'admin'] as const) {
+      const calls = stubContext({
+        session: { status: 'ok', viewer: viewer({ role }) },
+        found: makeTask(),
+        updated: makeTask({ dueAt: '2026-09-01' }),
+      });
+
+      expect((await patch(TASK_ID, { dueAt: '2026-09-01' })).status).toBe(200);
+      expect(calls).toHaveLength(1);
+    }
   });
 
   it('없는 id도 403이다 — 존재 여부를 구분해 답하지 않는다 (`S6`)', async () => {

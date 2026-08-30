@@ -44,11 +44,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { CopyButton } from '@/components/tasks/copy-button';
 import { StatusBadge } from '@/components/tasks/status-badge';
-import { OwnerAssignForm, type OwnerCandidate } from '@/components/tasks/owner-assign-form';
+import { ApprovalActions } from '@/components/alerts/approval-actions';
+import { TaskDetailFields, type OwnerCandidate } from '@/components/tasks/task-detail-fields';
 import { TaskDeleteButton } from '@/components/tasks/task-delete-button';
-import { TaskEditForm } from '@/components/tasks/task-edit-form';
+import type { ExtraField } from '@/lib/view/extras-edit';
 import { safeHref, type ExtraCell } from '@/lib/view/extras-render';
-import { EMPTY, formatDate, formatDday, formatPercent } from '@/lib/view/kpi-format';
+import { EMPTY, formatDate } from '@/lib/view/kpi-format';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { TaskResponse } from '@/types/api';
 import type { TaskStage } from '@/types/task';
@@ -129,22 +130,27 @@ export function TaskPanel({
   task,
   stages,
   cells,
+  extraFields,
   closeHref,
   canEdit,
   canAssign,
   canDelete,
   readOnly,
+  readOnlyReason,
   ownerCandidates,
   statusOptions,
+  lockedFields,
 }: {
   task: TaskResponse;
   stages: TaskStage[];
   cells: ExtraCell[];
+  /** 팀 전용 칸 중 **고칠 수 있는 것**. 서버가 골라 넘긴다 (`extras-edit.ts`) */
+  extraFields: readonly ExtraField[];
   closeHref: string;
   /**
    * 범위 판정(`lib/domain/viewer-scope.ts`)의 결과를 **페이지가 계산해 내려 준다.**
    * 이 컴포넌트는 역할을 다시 해석하지 않는다 — 숨김은 방어가 아니고
-   * (`task-edit-form.tsx` 머리말) 실제 거부는 `PATCH`가 한다.
+   * (`task-detail-fields.tsx` 머리말) 실제 거부는 `PATCH`가 한다.
    */
   canEdit: boolean;
   /**
@@ -165,9 +171,13 @@ export function TaskPanel({
    * 판정은 여기서 하지 않고 `task-panel-slot.tsx`가 넘긴다.
    */
   readOnly: boolean;
+  /** 왜 읽기 전용인가. 문구가 둘로 갈린다 (아래) */
+  readOnlyReason: 'other-team' | 'not-mine';
   /** 이 업무의 팀 구성원. 페이지가 `assignableMembers`로 좁혀 넘긴다 */
   ownerCandidates: readonly OwnerCandidate[];
   statusOptions: readonly string[];
+  /** 이 역할이 못 고치는 칸 (`lockedTaskFields`). 페이지가 계산해 넘긴다 */
+  lockedFields: readonly string[];
 }) {
   const router = useRouter();
   const closeRef = useRef<HTMLAnchorElement>(null);
@@ -251,80 +261,45 @@ export function TaskPanel({
         </header>
 
         <div className="space-y-6 px-5 py-4">
-          <section>
-            <h3 className="text-brand text-sm font-semibold">기본</h3>
-            <dl className="mt-2">
-              <Row label="담당자" value={text(task.ownerNameRaw)} />
-              <Row
-                label="공동 담당"
-                value={task.coOwnerNames.length === 0 ? EMPTY : task.coOwnerNames.join(', ')}
-              />
-              {/* 시트 원문 그대로다. 5색은 위 배지가 말한다 (`ADR-009`) */}
-              <Row label="상태 (시트 원문)" value={text(task.status)} />
-              <Row label="승인" value={text(task.approvalStatus)} />
-              <Row label="우선순위" value={text(task.priority)} />
-              <Row label="리스크" value={text(task.riskStatus)} />
-              <Row label="진행률" value={formatPercent(task.progress)} />
-              <Row label="배정일" value={formatDate(task.assignedAt)} />
-              <Row label="마감" value={formatDate(task.dueAt)} />
-              <Row label="D-DAY" value={formatDday(task.flags.dday)} />
-              <Row label="다음 조치" value={text(task.nextAction)} />
-              <Row label="다음 조치 담당" value={text(task.nextActionOwner)} />
-              <Row label="다음 조치 기한" value={formatDate(task.nextActionDue)} />
-              <Row label="지연 사유" value={text(task.delayReason)} />
-              <Row label="비고" value={text(task.note)} />
-            </dl>
-          </section>
+          {/*
+           * **결재는 맨 위다.** 승인 대기함에서 이 패널로 옮긴 것은, 승인하려면 무엇을
+           * 승인하는지 먼저 봐야 하기 때문이다 — 목록의 줄 옆에 버튼이 있으면 제목만 보고
+           * 누르게 된다. 상태가 「승인 대기」인 업무에만, 고칠 수 있는 사람에게만 뜬다.
+           */}
+          {task.flags.semantic === 'approval' && canEdit && (
+            <section className="border-brand bg-brand-soft rounded-md border px-3 py-3">
+              <p className="text-brand text-sm font-semibold">승인 대기 중인 업무입니다</p>
+              <p className="text-ink-body mt-1 text-xs">
+                승인하면 「게시·이관 대기」로, 반려하면 「수정 중」으로 바뀝니다.
+              </p>
+              <div className="mt-2">
+                <ApprovalActions taskId={task.id} defaultReason={task.delayReason ?? ''} />
+              </div>
+            </section>
+          )}
+
+          <TaskDetailFields
+            task={task}
+            cells={cells}
+            extraFields={extraFields}
+            canEdit={canEdit}
+            canAssign={canAssign}
+            statusOptions={statusOptions}
+            ownerCandidates={ownerCandidates}
+            lockedFields={lockedFields}
+          />
 
           {readOnly && (
-            // 색을 주지 않는다 — 문제가 아니라 **사실**이다 (`UI_GUIDE.md`)
+            /*
+             * 색을 주지 않는다 — 문제가 아니라 **사실**이다 (`UI_GUIDE.md`). 사유가 둘이라
+             * 문구도 둘이다: 팀장·어드민에게는 「다른 팀」이고, 부원에게는 「내 담당이 아닌
+             * 팀원의 업무」다 (부원은 팀을 보되 자기 담당만 고친다 · `0015`).
+             */
             <p className="border-line bg-raise text-ink-muted rounded border px-3 py-2 text-xs">
-              다른 팀 업무라 읽기 전용입니다. 고치거나 지우는 것은 {teamLabel(task.teamId)}에서
-              합니다.
+              {readOnlyReason === 'other-team'
+                ? `다른 팀 업무라 읽기 전용입니다. 고치거나 지우는 것은 ${teamLabel(task.teamId)}에서 합니다.`
+                : '내가 담당한 업무가 아니라 읽기 전용입니다. 담당자와 팀장이 고칩니다.'}
             </p>
-          )}
-
-          {canAssign && (
-            <section>
-              <h3 className="text-brand text-sm font-semibold">담당자 지정</h3>
-              <div className="mt-2">
-                <OwnerAssignForm
-                  taskId={task.id}
-                  ownerMemberId={task.ownerMemberId}
-                  coOwnerNames={task.coOwnerNames}
-                  candidates={ownerCandidates}
-                />
-              </div>
-            </section>
-          )}
-
-          {canEdit && (
-            <section>
-              <h3 className="text-brand text-sm font-semibold">수정</h3>
-              {/*
-                열리는 필드 목록은 `task-patch-schema.ts`가 정한다 — 화면이 여기서 따로
-                고르면 서버가 받는 것과 갈라진다. 접혀 있다가 [수정하기]로 열린다.
-              */}
-              <div className="mt-2">
-                <TaskEditForm
-                  taskId={task.id}
-                  values={{
-                    title: task.title,
-                    status: task.status,
-                    progress: task.progress,
-                    priority: task.priority,
-                    assignedAt: task.assignedAt,
-                    dueAt: task.dueAt,
-                    nextAction: task.nextAction,
-                    nextActionOwner: task.nextActionOwner,
-                    nextActionDue: task.nextActionDue,
-                    delayReason: task.delayReason,
-                    note: task.note,
-                  }}
-                  statusOptions={statusOptions}
-                />
-              </div>
-            </section>
           )}
 
           <section>
@@ -358,31 +333,6 @@ export function TaskPanel({
                   </li>
                 ))}
               </ol>
-            )}
-          </section>
-
-          <section>
-            <h3 className="text-brand text-sm font-semibold">
-              팀 전용 필드
-              <span className="text-ink-muted ml-2 text-xs font-normal tabular-nums">
-                {cells.length}칸
-              </span>
-            </h3>
-            {cells.length === 0 ? (
-              <p className="text-ink-muted mt-2 text-xs">팀 전용 필드가 없습니다</p>
-            ) : (
-              // **전량이다.** 개수를 자르면 70컬럼 팀의 데이터가 화면에서 사라진다
-              <dl className="mt-2">
-                {cells.map((cell) => (
-                  <Row
-                    key={cell.label}
-                    label={cell.label}
-                    value={cell.text}
-                    href={cell.href}
-                    faint={cell.masked}
-                  />
-                ))}
-              </dl>
             )}
           </section>
 

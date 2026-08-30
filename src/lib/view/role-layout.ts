@@ -7,18 +7,13 @@
  * 필요한 사람이 스크롤하면 나머지도 다 있다. 삭제는 「권한」이고 그것은 T8이 서버에서 했다 —
  * 화면에서 섹션을 빼는 것으로는 아무것도 막지 못한다(URL 하나로 뚫린다). 지금도 마찬가지다.
  *
- * 그래서 이 파일이 지는 불변식이 둘이다. 테스트가 둘 다 지킨다.
- * - 세 배열이 **서로 다르다** (같으면 이 기능이 존재하지 않는 것이다)
- * - `kpi` ↔ `kpi_compact`를 뺀 나머지 **집합이 같다** (어느 역할도 섹션을 잃지 않는다)
+ * 그래서 이 파일이 지는 불변식은 **집합이 같다**는 것이다 — 어느 역할도 섹션을 잃지 않는다.
+ *
+ * **부원은 팀장과 같은 순서를 쓴다.** 예전에는 셋이 서로 달랐고 부원만 축약 KPI 3칸을 봤는데,
+ * 부원의 화면이 팀 대시보드 하나로 좁혀지면서(`canSeeOrgDashboard`) 그 차이가 **같은 화면이
+ * 계정마다 다른 모양**이라는 뜻이 됐다. 팀장과 부원은 같은 팀 화면을 보고 같은 이야기를 한다.
  *
  * T8에서 진짜 인증이 붙었고 바뀐 것은 「누가 admin인가」뿐이다 — 이 표는 그대로 섰다.
- *
- * ## 화면이 빼는 것은 이 표가 아니다
- *
- * 로그인한 부원의 대시보드에서 전사 비교 둘(`teams`·`completion`)이 빠지는데, 그 판단은
- * 이 표가 아니라 **화면 옵션**(`dashboardLayoutFor`)이 진다. 근거는 그것이 역할의 성질이
- * 아니라 **그 화면에서 그 숫자가 참인가**의 문제이기 때문이다 — 자세한 것은 그 함수의
- * 머리말에 있다.
  *
  * ## 역할을 여기서 판정하지 않는다
  *
@@ -31,9 +26,7 @@ import type { ViewerRole } from '@/lib/domain/extras-visibility';
 
 export type SectionKey =
   | 'kpi'
-  | 'kpi_compact'
   | 'goals'
-  | 'briefing'
   | 'teams'
   | 'completion'
   | 'charts'
@@ -44,59 +37,48 @@ export type SectionKey =
 /**
  * 근거는 페르소나의 첫 질문이다 (`PLAN.md`「사용자 여정」).
  *
- * - `admin` — 「전사가 잘 돌고 있나」. KPI·목표·브리핑이 회의 직전 5분에 쓰이는 것이다
- *   (`UC-07`·`UC-08`·`UC-10`).
+ * - `admin` — 「전사가 잘 돌고 있나」. KPI가 회의 직전 5분에 쓰이는 것이다
+ *   (`UC-07`·`UC-10`). 주간 브리핑은 전용 화면(`/report`)이 진다.
  * - `lead` — 「지금 손대야 할 것」. 알림과 승인 대기가 먼저다 (`UC-12`·`UC-13`).
- * - `member` — 「내 마감」. 진입 3초 안에 자기 업무가 보여야 한다 (`UC-14`).
+ * - `member` — **팀장과 같다.** 부원이 보는 화면은 팀 대시보드 하나이고(`canSeeOrgDashboard`),
+ *   거기서 팀장과 부원이 같은 이야기를 한다. 「내 마감」은 업무 표가 맨 위인 팀 화면 배치
+ *   (`TEAM_PAGE_LAYOUT.first`)가 이미 답한다 (`UC-14`).
+ *
+ * **접히는 카드 둘의 순서는 세 역할이 같다** — 승인 대기함 다음이 목표 대비 성과다. 역할마다
+ * 뒤집으면 같은 사람이 `?as=`로 역할을 옮길 때 두 카드가 자리를 바꾸고, 그 차이를 설명할 수
+ * 있는 사람이 아무도 없다. 역할이 가르는 것은 **위쪽 요약 행의 순서**다.
  */
+/** 팀장·부원이 함께 쓰는 순서. 「지금 손대야 할 것」이 먼저다 */
+const STAFF_ORDER: readonly SectionKey[] = [
+  'alerts',
+  'approvals',
+  'kpi',
+  'teams',
+  'completion',
+  'charts',
+  'tasks',
+  'goals',
+];
+
 export const SECTION_ORDER: Readonly<Record<ViewerRole, readonly SectionKey[]>> = {
   admin: [
     'kpi',
-    'goals',
-    'briefing',
     'teams',
     'completion',
     'charts',
     'alerts',
     'approvals',
-    'tasks',
-  ],
-  lead: [
-    'alerts',
-    'approvals',
-    'kpi',
-    'teams',
-    'completion',
-    'charts',
-    'tasks',
     'goals',
-    'briefing',
-  ],
-  member: [
     'tasks',
-    'kpi_compact',
-    'alerts',
-    'teams',
-    'completion',
-    'charts',
-    'goals',
-    'briefing',
-    'approvals',
   ],
+  lead: STAFF_ORDER,
+  // **같은 배열이다** (머리말). 갈라 적으면 한쪽만 고쳐지는 날이 온다
+  member: STAFF_ORDER,
 };
 
 export function sectionsFor(role: ViewerRole): readonly SectionKey[] {
   return SECTION_ORDER[role];
 }
-
-/**
- * `member`의 축약 KPI에 쓸 타일 키 3개. **여기서 세지 않는다** — `buildKpiStrip`이 낸 배열에서
- * 이 키로 골라 쓴다. 화면이 따로 세면 같은 라벨이 두 값을 갖게 된다 (`ADR-006`).
- *
- * 10칸을 다 보여줘도 부원이 쓰는 것은 이 셋이다. 키가 틀리면 화면에 빈 칸 3개가 뜨므로
- * 테스트가 `buildKpiStrip`의 실제 `key` 값과 대조한다.
- */
-export const COMPACT_KPI_KEYS: readonly string[] = ['active_total', 'due_soon', 'overdue'];
 
 /**
  * ## 배치 — 12열 그리드에 흘려보낸다 (`ADR-019`)
@@ -120,13 +102,11 @@ const COLUMNS = 12;
  */
 export const SECTION_ZONE: Readonly<Record<SectionKey, SectionZone>> = {
   kpi: 'summary',
-  kpi_compact: 'summary',
   charts: 'summary',
   alerts: 'summary',
   teams: 'summary',
   completion: 'summary',
   goals: 'detail',
-  briefing: 'detail',
   approvals: 'detail',
   tasks: 'table',
 };
@@ -137,14 +117,12 @@ export const SECTION_ZONE: Readonly<Record<SectionKey, SectionZone>> = {
  */
 export const SECTION_SPAN: Readonly<Record<SectionKey, number>> = {
   kpi: 12,
-  kpi_compact: 12,
   charts: 7,
   alerts: 5,
   teams: 6,
   completion: 6,
-  goals: 4,
-  briefing: 4,
-  approvals: 4,
+  goals: 6,
+  approvals: 6,
   tasks: 12,
 };
 
@@ -154,15 +132,15 @@ export const SECTION_SPAN: Readonly<Record<SectionKey, number>> = {
  */
 export const DETAIL_LABELS: Readonly<Partial<Record<SectionKey, string>>> = {
   goals: '목표 대비 성과',
-  briefing: '주간 브리핑',
   approvals: '승인 대기함',
 };
 
 /**
- * 세로로 쌓인 칸에서 **남는 높이를 먹지 않는 섹션**. KPI 타일이 옆 카드 높이에 맞춰 늘어나면
- * 숫자 하나만 뜬 빈 상자가 된다 — 남는 세로는 같은 칸에 쌓인 차트가 가져가야 한다.
+ * 옆·아래 카드 높이에 맞춰 **늘어나지 않는 섹션**. KPI 타일이 늘어나면 숫자 하나만 뜬 빈
+ * 상자가 되고 — 남는 세로는 같은 칸에 쌓인 차트가 가져가야 한다 — 알림은 제 묶음 다섯 줄이
+ * 곧 높이다: 옆 칸(축약 KPI + 상태 분포)을 따라 늘어나면 목록 아래가 통째로 희게 남는다.
  */
-export const FIXED_HEIGHT: readonly SectionKey[] = ['kpi', 'kpi_compact'];
+export const FIXED_HEIGHT: readonly SectionKey[] = ['kpi', 'alerts'];
 
 /** 한 칸에 들어갈 것. 배열이면 **세로로 쌓인다** (상태 분포 아래 목표 대비 성과처럼) */
 export type CellSpec = SectionKey | readonly SectionKey[];
@@ -235,8 +213,8 @@ const TASKS_FIRST: readonly SectionKey[] = ['tasks'];
  * 줄을 통째로 썼는데, 그 차이를 설명할 수 있는 사람이 아무도 없었다.
  */
 const SUMMARY_ROW = {
-  spans: { alerts: 6, charts: 6, kpi_compact: 6 },
-  groups: [['alerts', ['kpi_compact', 'charts']]],
+  spans: { alerts: 6, charts: 6 },
+  groups: [['alerts', 'charts']],
 } as const satisfies Pick<ScreenLayout, 'spans' | 'groups'>;
 
 /**
@@ -255,16 +233,9 @@ const SUMMARY_ROW = {
  * 화면과 테스트가 같은 값을 봐야 하기 때문이다.
  */
 export const TEAM_PAGE_LAYOUT: ScreenLayout = {
-  only: ['kpi', 'kpi_compact', 'charts', 'goals', 'alerts', 'tasks'],
+  only: ['kpi', 'charts', 'goals', 'alerts', 'tasks'],
   first: TASKS_FIRST,
   ...SUMMARY_ROW,
-  /*
-   * 목표 대비 성과만 대시보드와 폭이 다르다. **접히는 카드가 팀 화면에는 이것 하나뿐**이라
-   * 기본 4칸으로 두면 넓은 화면에 좁은 줄 하나가 왼쪽에 홀로 남는다. 알림과 같은 6칸으로
-   * 맞추면 위 행의 왼쪽 카드와 세로 선이 이어진다. 대시보드는 접히는 카드가 셋(목표·브리핑·
-   * 승인 대기)이라 4 + 4 + 4로 한 행이 차므로 그대로 둔다.
-   */
-  spans: { ...SUMMARY_ROW.spans, goals: 6 },
 };
 
 /**
@@ -282,33 +253,6 @@ export const DASHBOARD_LAYOUT: ScreenLayout = {
   // 전사 요약표 짝은 대시보드에만 있다 — 팀 화면에는 그 두 섹션 자체가 없다(`only`)
   groups: [['teams', 'completion'], ...SUMMARY_ROW.groups],
 };
-
-/**
- * **로그인한 부원의 대시보드에서 전사 비교 둘을 뺀다** (`teams`·`completion`).
- *
- * 이것은 권한이 아니라 **거짓말을 지우는 것이다.** 부원의 목록은 `viewer-scope.ts`가 이미
- * 자기 업무만 남겨서, 팀별 현황표와 팀별 완료율은 「우리 팀 몇 건, 남의 팀 0건」이라는 표가
- * 된다. 0은 화면에서 「없다」로 읽히므로 그 표는 남의 팀에 대해 **틀린 사실**을 말한다.
- * 같은 화면의 `alerts`·`charts`는 그대로 둔다 — 그쪽은 모수가 자기 업무라서 숫자가 참이다.
- *
- * `SECTION_ORDER`를 고치지 않고 여기서 거르는 이유가 둘이다.
- *
- * - **세션이 없으면 좁히지 않는다.** 로그인 전 역할은 `member`가 기본값이라
- *   (`resolveViewerRole`), 역할 표에서 빼면 `.env` 없이 클론한 심사자의 대시보드에서 두
- *   섹션이 사라진다 (`team-visibility.ts`·`staff-tools.ts`와 같은 규칙 · `PRD.md` 성공 기준 1).
- * - 「무엇이 참인가」는 **화면마다 다르다.** 팀 화면에는 애초에 그 두 섹션이 없고, 다음에
- *   생길 화면에서 또 다를 수 있다. 역할 표는 순서만 진다.
- */
-const MEMBER_HIDDEN_ON_DASHBOARD: readonly SectionKey[] = ['teams', 'completion'];
-
-export function dashboardLayoutFor(role: ViewerRole, hasSession: boolean): ScreenLayout {
-  if (!hasSession || role !== 'member') return DASHBOARD_LAYOUT;
-
-  return {
-    ...DASHBOARD_LAYOUT,
-    only: sectionsFor(role).filter((key) => !MEMBER_HIDDEN_ON_DASHBOARD.includes(key)),
-  };
-}
 
 /**
  * 화면이 실제로 그릴 행 목록. 역할별 순서(`sectionsFor`)를 zone 단위로 묶고, 화면이 정한

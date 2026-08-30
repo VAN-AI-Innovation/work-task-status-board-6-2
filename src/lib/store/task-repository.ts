@@ -12,6 +12,7 @@
 
 import type { MemberRecord, TaskCreate, TaskPatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
+import type { EnumOptionEntry } from '@/types/sheet';
 import type { Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
 
 export interface TaskFilter {
@@ -199,6 +200,22 @@ export interface TaskRepository {
    *   그것이 `ADR-001`이고 버그가 아니다 — 시트에서도 지워야 사라진다.
    */
   deleteTask(id: string): Promise<boolean>;
+
+  /**
+   * `설정` 탭의 enum 목록 전량 (`enum_options`). **팀 전용 그룹의 유일한 출처다** —
+   * 팀별 컬럼은 `extras`로 흘러가서 고를 값 목록이 코드 어디에도 없다
+   * (`team-enum-groups.ts`가 이 목록을 화면이 쓸 모양으로 바꾼다).
+   *
+   * 수십 그룹 규모라 필터를 두지 않는다. 갈라내는 것은 도메인 함수가 한다 (`ADR-006`).
+   */
+  listEnumOptions(): Promise<EnumOptionEntry[]>;
+
+  /**
+   * 업로드 확정이 `설정` 탭을 그대로 싣는다. 키는 `(groupKey, value)`이고 **지우지 않는다** —
+   * 시트에서 값 하나가 빠졌다고 예전 업무가 들고 있는 값을 목록에서 없애면, 그 업무의 칸이
+   * 「목록에 없는 값」이 된다. 업로드가 삭제하지 않는다는 규칙 그대로다 (`upload-commit.ts`).
+   */
+  upsertEnumOptions(entries: readonly EnumOptionEntry[]): Promise<void>;
 
   /**
    * 구성원 전량. 시트의 담당자 이름을 계정에 잇는 해석이 볼 표다.

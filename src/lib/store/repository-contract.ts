@@ -192,6 +192,9 @@ export function scopeToContractRows(repo: TaskRepository): TaskRepository {
     // 계약이 재지 않는다(구성원을 만드는 쓰기 메서드가 없다 — 두 구현의 각자 테스트가 잰다).
     // 그래도 위임은 해 둔다: 껍데기가 `TaskRepository`를 만족하지 못하면 타입이 깨진다.
     listMembers: () => repo.listMembers(),
+    // enum 목록도 같은 이유로 위임만 한다 — 계약 행이라는 개념이 없는 전역 표다
+    listEnumOptions: () => repo.listEnumOptions(),
+    upsertEnumOptions: (entries) => repo.upsertEnumOptions(entries),
     upsertGoalMetrics: (metrics, options) => repo.upsertGoalMetrics(metrics, options),
     recordEvents: (events) => repo.recordEvents(events),
   };
@@ -940,6 +943,9 @@ export const REPOSITORY_CONTRACT_CASES: readonly RepositoryContractCase[] = [
         dueAt: '2099-07-31',
         nextAction: '레퍼런스 수집',
         nextActionOwner: '담당자1',
+        riskStatus: null,
+        approvalStatus: null,
+        extras: {},
         nextActionDue: '2099-07-25',
         note: '비고',
         ownerMemberId: null,

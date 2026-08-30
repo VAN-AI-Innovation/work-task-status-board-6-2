@@ -22,8 +22,6 @@
  * **증감 배지를 만들지 않는다.** 비교할 직전 값이 우리 데이터에 없다. 없는 숫자를 그리면
  * 대시보드가 그럴듯하게 거짓말한다.
  *
- * `compact`는 `member`의 축약 3칸이다 (`COMPACT_KPI_KEYS`). 셋뿐이라 묶지 않는다 —
- * 묶음 이름표가 타일보다 커진다.
  */
 
 import type { KpiTile } from '@/lib/domain/progress-stats';
@@ -65,22 +63,7 @@ function Tile({ tile }: { tile: KpiTile }) {
   );
 }
 
-export function KpiStrip({ tiles, compact = false }: { tiles: KpiTile[]; compact?: boolean }) {
-  if (compact) {
-    return (
-      <section>
-        <h2 className="sr-only">KPI</h2>
-        <div className="grid grid-cols-3 gap-3">
-          {tiles.map((tile) => (
-            <div key={tile.key} className="border-line bg-panel rounded border px-3 py-2.5">
-              <Tile tile={tile} />
-            </div>
-          ))}
-        </div>
-      </section>
-    );
-  }
-
+export function KpiStrip({ tiles }: { tiles: KpiTile[] }) {
   return (
     <section>
       <h2 className="sr-only">KPI</h2>

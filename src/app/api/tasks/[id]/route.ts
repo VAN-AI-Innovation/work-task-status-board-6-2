@@ -9,7 +9,12 @@ import { gateForSession } from '@/lib/auth/pending-gate';
 import { currentViewerContext } from '@/lib/auth/request-viewer';
 import { deriveTaskFlags } from '@/lib/domain/task-derive';
 import { requestIsSameOrigin } from '@/lib/api/same-origin';
-import { assignableMembers, canAssignOwner, canDeleteTask } from '@/lib/domain/task-authoring';
+import {
+  assignableMembers,
+  canAssignOwner,
+  canDeleteTask,
+  lockedTaskFields,
+} from '@/lib/domain/task-authoring';
 import { taskEditable } from '@/lib/domain/viewer-scope';
 import type { TaskPatch } from '@/types/auth';
 
@@ -149,12 +154,28 @@ export async function PATCH(
     if (!taskEditable(task, viewer)) return errorResponse('FORBIDDEN');
 
     /*
+     * 5-0. **역할이 못 고치는 칸.** 부원은 마감·우선순위·리스크·승인 같은 「조직의 판단」을
+     *      적지 않는다 (`lockedTaskFields`). 화면도 그 칸을 잠그지만 숨김은 방어가 아니고,
+     *      이 축에는 DB 정책이 없어 **여기가 유일한 자물쇠다** (컬럼 GRANT는 역할을 못 가른다).
+     */
+    const locked = lockedTaskFields(viewer.role).filter((field) => field in patch);
+    if (locked.length > 0) return errorResponse('FORBIDDEN');
+
+    /*
      * 5-2. 담당자를 손대는 요청만 역할을 한 번 더 본다 (파일 머리말). **이름을 여기서 붙인다** —
      *      후보를 `assignableMembers`로 좁히므로 팀 밖 구성원은 `undefined`가 되어 403이다.
      *      「없는 id」와 「팀 밖 id」를 갈라 답하지 않는 것은 이 라우트의 규율 그대로다 (`S6`).
      */
-    const { ownerMemberId, coOwnerMemberIds, ...rest } = patch;
+    const { ownerMemberId, coOwnerMemberIds, extras, ...rest } = patch;
     let effective: TaskPatch = rest;
+
+    /*
+     * 5-1. 팀 전용 칸은 **보낸 키만** 바꾼다. 통째로 받으면 화면이 그리지 않은 칸(민감 키 등)이
+     *      요청에서 빠진 채 돌아와 조용히 사라진다. 값이 `null`이면 그 칸을 비운 것이다.
+     */
+    if (extras !== undefined) {
+      effective = { ...effective, extras: { ...task.extras, ...extras } };
+    }
 
     if (ownerMemberId !== undefined || coOwnerMemberIds !== undefined) {
       if (!canAssignOwner(viewer.role)) return errorResponse('FORBIDDEN');

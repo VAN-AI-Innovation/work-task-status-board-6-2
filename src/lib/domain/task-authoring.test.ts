@@ -12,6 +12,7 @@ import {
   canDeleteTask,
   canEditTaskDetails,
   creatableTeams,
+  lockedTaskFields,
 } from '@/lib/domain/task-authoring';
 import type { MemberRecord } from '@/types/auth';
 
@@ -43,6 +44,44 @@ describe('canEditTaskDetails', () => {
     expect(canEditTaskDetails('member')).toBe(true);
     expect(canEditTaskDetails('lead')).toBe(true);
     expect(canEditTaskDetails('admin')).toBe(true);
+  });
+});
+
+/**
+ * **부원에게 닫힌 칸.** 원칙은 하나다 — 부원은 「내가 한 일의 사실」을 적고 「조직의 판단」은
+ * 적지 않는다. 여기서 재는 것은 그 목록이 흔들리지 않는가이고, 실제 거부는 `PATCH`가 한다.
+ */
+describe('lockedTaskFields', () => {
+  it('팀장·어드민에게는 잠긴 칸이 없다', () => {
+    for (const role of ['admin', 'lead'] as const) {
+      expect(lockedTaskFields(role)).toEqual([]);
+    }
+  });
+
+  it('부원은 마감·우선순위·승인·리스크·배정일·업무명·다음 조치 담당을 못 고친다', () => {
+    expect([...lockedTaskFields('member')].sort()).toEqual(
+      [
+        'approvalStatus',
+        'assignedAt',
+        'dueAt',
+        'nextActionOwner',
+        'priority',
+        'riskStatus',
+        'title',
+      ].sort()
+    );
+  });
+
+  it('진행을 적는 칸은 잠기지 않는다 — 그 칸이 막히면 부원에게 이 화면은 읽기 전용이다', () => {
+    for (const field of ['status', 'progress', 'nextAction', 'nextActionDue', 'delayReason', 'note']) {
+      expect(lockedTaskFields('member')).not.toContain(field);
+    }
+  });
+
+  /** 팀 전용 칸(`extras`)은 실무 기록이라 잠그지 않는다 — 담당자 두 칸은 `canAssignOwner`가 진다 */
+  it('팀 전용 칸과 담당자는 이 목록이 다루지 않는다', () => {
+    expect(lockedTaskFields('member')).not.toContain('extras');
+    expect(lockedTaskFields('member')).not.toContain('ownerMemberId');
   });
 });
 

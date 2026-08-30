@@ -254,10 +254,7 @@ describe('POST /api/tasks', () => {
         return {
           id: 'created-1',
           departmentId: null,
-          approvalStatus: null,
-          riskStatus: null,
           delayReason: null,
-          extras: {},
           raw: {},
           lastProgressAt: createdAt,
           sourceUploadId: null,
@@ -397,7 +394,9 @@ describe('POST /api/tasks', () => {
     for (const body of [
       { teamId: 'edit', title: 'x', sourceKey: 'card-a' },
       { teamId: 'edit', title: 'x', sourceSheetTab: '01_편집팀' },
-      { teamId: 'edit', title: 'x', extras: {} },
+      { teamId: 'edit', title: 'x', raw: {} },
+      // 팀 전용 칸은 열려 있지만(`0014`) 민감 키는 그대로 막힌다
+      { teamId: 'edit', title: 'x', extras: { '출연자 연락처 (내부용)': '010' } },
     ]) {
       const res = await post(body);
       expect(res.status).toBe(400);

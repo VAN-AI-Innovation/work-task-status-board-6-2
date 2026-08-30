@@ -77,6 +77,51 @@ export function canEditTaskDetails(role: ViewerRole): boolean {
   }
 }
 
+/**
+ * **부원에게 닫힌 칸.** `canEditTaskDetails`가 「이 역할에게 수정이라는 조작이 있는가」라면,
+ * 이쪽은 「그 조작이 **어느 칸까지** 닿는가」다.
+ *
+ * 가르는 선은 하나다 — 부원은 **자기가 한 일의 사실**을 적고, **조직의 판단**은 적지 않는다.
+ *
+ * - `dueAt`: 자기 마감을 자기가 미루면 지연 판정이 무의미해진다. 이 화면의 절반이 그 위에 선다.
+ * - `priority`·`riskStatus`: 무엇이 급한가·무엇이 위험한가는 팀의 판단이다. 특히 리스크는
+ *   **경고 신호**라, 당사자가 지울 수 있으면 신호가 아니다.
+ * - `approvalStatus`: 결재 결과다. 당사자가 적으면 승인 절차가 없는 것과 같다.
+ * - `assignedAt`: 배정 기록. 사실이 아니라 이력이다.
+ * - `title`: 업무의 정체성이고 시트 자연키의 재료다.
+ * - `nextActionOwner`: 남에게 일을 넘기는 칸이라 배정 쪽에 가깝다.
+ *
+ * 반대로 `status`·`progress`·`nextAction`·`nextActionDue`·`delayReason`·`note`와 팀 전용
+ * 칸(`extras`)은 **열어 둔다.** 그 칸들이 막히면 부원에게 이 화면은 읽기 전용이고, 특히
+ * 지연 사유는 당사자만 아는 값이라 막으면 「지연인데 이유 없음」만 쌓인다.
+ *
+ * 담당자 두 칸은 여기 없다 — `canAssignOwner`가 이미 진다.
+ *
+ * ⚠ **화면에서 잠그는 것으로 갈음하지 않는다.** `PATCH /api/tasks/[id]`가 같은 함수를 불러
+ *   거부한다. DB에는 이 축의 정책이 없다(컬럼 GRANT는 역할이 아니라 칸 단위라 부원과 팀장을
+ *   가르지 못한다) — 그래서 앱 층이 유일한 자물쇠이고, 그만큼 두 곳이 같은 목록을 봐야 한다.
+ */
+export const MEMBER_LOCKED_FIELDS: readonly string[] = [
+  'title',
+  'assignedAt',
+  'dueAt',
+  'priority',
+  'riskStatus',
+  'approvalStatus',
+  'nextActionOwner',
+];
+
+/** 그 역할이 **못 고치는** 칸. 팀장·어드민은 빈 목록이다 */
+export function lockedTaskFields(role: ViewerRole): readonly string[] {
+  switch (role) {
+    case 'admin':
+    case 'lead':
+      return [];
+    case 'member':
+      return MEMBER_LOCKED_FIELDS;
+  }
+}
+
 /** 업무를 만들 수 있는가. **권한이다** (머리말 · `tasks_insert_scope`) */
 export function canCreateTask(role: ViewerRole): boolean {
   switch (role) {

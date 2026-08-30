@@ -1,6 +1,6 @@
 /**
  * **리더 이상이 쓰는 도구가 무엇인가**를 정한다 — 독스→배정표(`/extract`)와
- * 주간 보고(`/report`) 둘.
+ * 주간 보고(`/report`), 그리고 **전사 대시보드**(`/`) 셋.
  *
  * `member-admin.ts`·`join-review.ts`와 나란한 자리이고 같은 규율을 따른다: 판정이라
  * `lib/domain`에 있고(`ADR-006`), 사이드바는 이 값으로 항목을 감추며 화면은 같은 값을
@@ -50,6 +50,29 @@ export function canUseDocExtract(role: ViewerRole, hasSession: boolean): boolean
 
 /** 주간 보고 화면을 열 수 있는가 (`/report`) */
 export function canReadWeeklyReport(role: ViewerRole, hasSession: boolean): boolean {
+  if (!hasSession) return true;
+
+  switch (role) {
+    case 'admin':
+    case 'lead':
+      return true;
+    case 'member':
+      return false;
+  }
+}
+
+/**
+ * 전사 대시보드(`/`)를 열 수 있는가.
+ *
+ * 부원의 열람 범위는 자기 팀이다 (`viewer-scope.ts` · `0015`). 그 사람에게 전사 화면은
+ * **자기 팀 데이터를 「전사」라는 제목으로 다시 보는 자리**이고, 팀별 현황표·팀별 완료율은
+ * 남의 팀을 0건으로 그려 **틀린 사실**을 말한다. 예전에는 그 두 섹션만 빼서 보여 줬는데
+ * (`MEMBER_HIDDEN_ON_DASHBOARD`), 그러면 같은 이름의 화면이 역할마다 다른 모양이 된다.
+ *
+ * 그래서 부원에게는 **팀 대시보드 하나만** 남긴다 — 사이드바에서 빼고, `/`로 들어오면
+ * 자기 팀 화면으로 보낸다. 세션이 없으면 좁히지 않는 규칙은 위 둘과 같다.
+ */
+export function canSeeOrgDashboard(role: ViewerRole, hasSession: boolean): boolean {
   if (!hasSession) return true;
 
   switch (role) {

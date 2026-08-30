@@ -34,6 +34,7 @@ import {
 } from '@/lib/store/task-repository';
 import type { MemberRecord, TaskPatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
+import type { EnumOptionEntry } from '@/types/sheet';
 import type { ExtraValue, Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
 
 /** PostgREST가 돌려주는 `tasks` 행. 컬럼 이름은 `supabase/migrations/0001_init.sql`과 1:1이다 */
@@ -126,6 +127,12 @@ interface EventRow {
   upload_id: string | null;
   changed_fields: string[];
   occurred_at: string;
+}
+
+interface EnumOptionRow {
+  group_key: string;
+  value: string;
+  sort_order: number;
 }
 
 interface MemberRow {
@@ -275,6 +282,8 @@ export function toTaskPatchRow(
   if (patch.nextActionDue !== undefined) row.next_action_due = patch.nextActionDue;
   if (patch.delayReason !== undefined) row.delay_reason = patch.delayReason;
   if (patch.note !== undefined) row.note = patch.note;
+  // `0014`가 연 칸. 합치기는 라우트가 이미 끝냈고 여기서는 통째로 바꾼다
+  if (patch.extras !== undefined) row.extras = patch.extras;
   // 두 칸은 `0008`이 authenticated에게 연 것이다. 정책(`tasks_update_scope`)은 그대로다
   if (patch.ownerMemberId !== undefined) row.owner_member_id = patch.ownerMemberId;
   if (patch.ownerNameRaw !== undefined) row.owner_name_raw = patch.ownerNameRaw;
@@ -753,8 +762,12 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
           owner_name_raw: input.ownerNameRaw,
           co_owner_names: [...input.coOwnerNames],
           status: input.status,
+          approval_status: input.approvalStatus,
+          risk_status: input.riskStatus,
           priority: input.priority,
           progress: input.progress,
+          // `0014`가 insert에도 연 칸. 만들 때는 합칠 기존 값이 없어 그대로 넣는다
+          extras: input.extras,
           assigned_at: input.assignedAt,
           due_at: input.dueAt,
           next_action: input.nextAction,
@@ -801,6 +814,36 @@ export function createSupabaseTaskStore(client: SupabaseClient): TaskRepository 
         .order('name');
       if (error) fail('members', 'select', error);
       return (data as unknown as MemberRow[]).map(toMember);
+    },
+
+    async listEnumOptions(): Promise<EnumOptionEntry[]> {
+      const { data, error } = await client
+        .from('enum_options')
+        .select('group_key,value,sort_order')
+        .order('group_key')
+        .order('sort_order');
+      if (error) fail('enum_options', 'select', error);
+
+      return (data as unknown as EnumOptionRow[]).map((row) => ({
+        groupKey: row.group_key,
+        value: row.value,
+        sortOrder: row.sort_order,
+      }));
+    },
+
+    /** `(group_key, value)`가 unique다 — 같은 값이 다시 오면 순서만 갱신된다 */
+    async upsertEnumOptions(entries: readonly EnumOptionEntry[]): Promise<void> {
+      if (entries.length === 0) return;
+
+      const { error } = await client.from('enum_options').upsert(
+        entries.map((entry) => ({
+          group_key: entry.groupKey,
+          value: entry.value,
+          sort_order: entry.sortOrder,
+        })),
+        { onConflict: 'group_key,value' }
+      );
+      if (error) fail('enum_options', 'upsert', error);
     },
 
     async getLastSyncedAt(): Promise<string | null> {

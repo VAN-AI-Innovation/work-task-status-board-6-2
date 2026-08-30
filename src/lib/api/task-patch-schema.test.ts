@@ -1,9 +1,9 @@
 /**
  * 이 스키마가 지는 계약은 셋이다.
  *
- * 1. **허용 필드가 열거돼 있다** — 업무 패널이 여는 칸과 DB의 컬럼 GRANT(`0013` 5절)가
- *    같은 목록이다. `extras`·`raw`·`source_*`는 열지 않는다: 열면 이 화면이 시트 편집기가
- *    된다.
+ * 1. **허용 필드가 열거돼 있다** — 업무 패널이 여는 칸과 DB의 컬럼 GRANT(`0013` 5절 ·
+ *    `0014`)가 같은 목록이다. `raw`·`source_*`는 열지 않는다: 그쪽은 시트 원본과 감사
+ *    기록이다. `extras`(팀 전용 칸)는 열려 있고 민감 키만 막힌다.
  * 2. **모르는 키는 던진다.** 조용히 버리면 `{"titel": "..."}` 오타가 200으로 돌아와
  *    「저장됐다」로 보인다.
  * 3. **`null`(값을 지운다)과 키 없음(안 건드린다)이 다르다.** 둘을 뭉개면 빈 셀과 0의
@@ -135,7 +135,6 @@ describe('taskPatchSchema — 통과하는 모양', () => {
 describe('taskPatchSchema — 거부하는 모양', () => {
   it('모르는 키는 던진다 (`.strict()`)', () => {
     expect(parse({ status: '완료', titel: '오타' }).success).toBe(false);
-    expect(parse({ extras: {} }).success).toBe(false);
     expect(parse({ raw: {} }).success).toBe(false);
     expect(parse({ sourceSheetTab: '01_편집팀' }).success).toBe(false);
     expect(parse({ teamId: 'shoot' }).success).toBe(false);
@@ -221,5 +220,32 @@ describe('taskPatchSchema — 거부하는 모양', () => {
     expect(parse(null).success).toBe(false);
     expect(parse('진행 중').success).toBe(false);
     expect(parse([{ status: '완료' }]).success).toBe(false);
+  });
+});
+
+/**
+ * 팀 전용 칸 (`extras`). 오래 닫혀 있던 자리라 **여는 조건**을 여기서 못박는다 — 민감 키는
+ * 여전히 못 쓰고, 값은 문자열이나 `null`뿐이다 (`S6` · 스키마 머리말).
+ */
+describe('taskPatchSchema — 팀 전용 칸', () => {
+  it('키·값을 그대로 받고, 빈 문자열은 `null`(비운다)이 된다', () => {
+    const parsed = parse({ extras: { '콘텐츠 유형': '릴스', '섭외 결과': '' } });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.extras).toEqual({
+      '콘텐츠 유형': '릴스',
+      '섭외 결과': null,
+    });
+  });
+
+  it('연락처·계정이 든 칸은 거부한다 — 화면 입력으로 들어오는 길을 막는다', () => {
+    expect(parse({ extras: { '출연자 연락처 (내부용)': '010-0000-0000' } }).success).toBe(false);
+    expect(parse({ extras: { '계정·문의자': '@someone' } }).success).toBe(false);
+    expect(parse({ extras: { Email: 'a@b.c' } }).success).toBe(false);
+  });
+
+  it('하이퍼링크 객체·숫자는 받지 않는다 — 그 모양은 시트만 만든다', () => {
+    expect(parse({ extras: { 링크: { text: 'a', hyperlink: 'https://x' } } }).success).toBe(false);
+    expect(parse({ extras: { 조회수: 12 } }).success).toBe(false);
   });
 });

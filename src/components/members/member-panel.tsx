@@ -42,8 +42,12 @@ import type { Task } from '@/types/task';
 /** 서버가 `{error:{code,message}}`를 주지 못했을 때(네트워크 끊김 등)만 쓰는 한 문장 */
 const UNREACHABLE_MESSAGE = '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
 
-/** 팀을 바꾸지 않는다는 뜻. 「팀을 지운다」가 아니다 — 그 길은 이 화면에 없다 */
-const KEEP_TEAM = '';
+/**
+ * 팀이 아직 없는 사람(명부에 안 붙은 계정)의 자리값. **「팀 유지」가 아니다** — 드롭다운은
+ * 지금 소속 팀으로 열리므로 「바꾸지 않는다」는 선택지가 따로 필요 없고, 목록에 그 줄이 있으면
+ * 무엇이 지금 팀인지 화면이 말해 주지 않는다. 「팀을 지운다」는 길은 이 화면에 없다.
+ */
+const NO_TEAM = '';
 
 export function MemberPanel({
   node,
@@ -68,7 +72,8 @@ export function MemberPanel({
   const [refreshing, startTransition] = useTransition();
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [team, setTeam] = useState(KEEP_TEAM);
+  // 드롭다운은 **지금 소속 팀**으로 열린다. 다른 팀을 고르면 그때 [팀 변경]이 살아난다
+  const [team, setTeam] = useState<string>(node.teamId ?? NO_TEAM);
   const [role, setRoleChoice] = useState<'lead' | 'member'>(node.role === 'lead' ? 'lead' : 'member');
   /** 확인을 기다리는 동작. `null`이면 대화상자가 닫혀 있다 */
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -207,11 +212,12 @@ export function MemberPanel({
                 value={team}
                 onChange={setTeam}
                 options={[
-                  { value: KEEP_TEAM, label: '팀 유지' },
+                  // 팀이 없는 사람에게만 서는 자리. 팀이 있으면 고를 수 없는 줄을 두지 않는다
+                  ...(node.teamId === null ? [{ value: NO_TEAM, label: '팀 없음' }] : []),
                   ...TEAM_KEYS.map((teamKey) => ({ value: teamKey, label: teamLabel(teamKey) })),
                 ]}
                 action="팀 변경"
-                disabled={busy || team === KEEP_TEAM || team === node.teamId}
+                disabled={busy || team === NO_TEAM || team === node.teamId}
                 onSubmit={() =>
                   setPending({ kind: 'team', teamId: team as (typeof TEAM_KEYS)[number] })
                 }

@@ -35,7 +35,7 @@ export function TeamSummaryTable({ teams }: { teams: TeamSummary[] }) {
           <tr className="bg-brand-soft text-brand text-xs font-medium">
             <th className="px-3 py-2 text-left">팀</th>
             {COLUMNS.map((column) => (
-              <th key={column.label} className="px-3 py-2 text-right">
+              <th key={column.label} className="px-3 py-2 text-left">
                 {column.label}
               </th>
             ))}
@@ -48,7 +48,7 @@ export function TeamSummaryTable({ teams }: { teams: TeamSummary[] }) {
               {COLUMNS.map((column) => (
                 <td
                   key={column.label}
-                  className={`px-3 py-2 text-right tabular-nums ${
+                  className={`px-3 py-2 text-left tabular-nums ${
                     column.label === '지연' && summary.overdue > 0 ? 'text-late' : 'text-ink'
                   }`}
                 >

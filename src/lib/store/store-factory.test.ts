@@ -336,7 +336,7 @@ describe('uploads — 모드별 구현 (ADR-008)', () => {
     teamKeys: ['edit'],
   };
 
-  const PAYLOAD = { tasks: [TASK], goalMetrics: [], teamKeys: ['edit' as const] };
+  const PAYLOAD = { tasks: [TASK], goalMetrics: [], teamKeys: ['edit' as const], enums: [] };
 
   it('demo는 메모리 업로드 저장소를 쓴다', async () => {
     expect(isMemoryUploads(await createStorage(MEMORY))).toBe(true);

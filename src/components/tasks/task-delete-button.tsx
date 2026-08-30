@@ -19,7 +19,7 @@
  *
  * 지운 업무의 패널이 남아 있으면 화면이 「있는데 없는」 상태가 된다. 서버 응답을 받은 뒤에
  * 닫는 주소로 이동하고 그다음 새로 그린다 — 순서가 반대면 거부당한 삭제가 성공처럼 보인다
- * (`task-edit-form.tsx`와 같은 규칙).
+ * (`task-detail-fields.tsx`와 같은 규칙).
  */
 
 import { useRouter } from 'next/navigation';
@@ -91,11 +91,11 @@ export function TaskDeleteButton({
   return (
     <div className="border-late-line bg-late-bg rounded border px-3 py-3">
       <p className="text-late text-sm font-medium">
-        「{title ?? '이름 없는 업무'}」를 지웁니다
+        「{title ?? '이름 없는 업무'}」를 삭제합니다
       </p>
       <p className="text-ink-body mt-1 text-xs">
         단계와 변경 이력도 함께 사라지고 되돌릴 수 없습니다. 시트에서 온 업무라면 다음 업로드가
-        다시 만듭니다 — 시트에서도 지워야 사라집니다.
+        다시 만듭니다 — 시트에서도 삭제해야 사라집니다.
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
@@ -103,10 +103,12 @@ export function TaskDeleteButton({
           onClick={() => void remove()}
           disabled={busy}
           className={`border-late-line text-late rounded border px-4 py-2 text-sm ${
-            busy ? 'cursor-not-allowed opacity-50' : 'hover:bg-panel'
+            busy
+              ? 'cursor-not-allowed opacity-50'
+              : 'hover:bg-late/10 hover:text-late-line hover:border-late-line'
           }`}
         >
-          {busy ? '지우는 중…' : '지웁니다'}
+          {busy ? '삭제 중…' : '삭제'}
         </button>
         <button
           type="button"

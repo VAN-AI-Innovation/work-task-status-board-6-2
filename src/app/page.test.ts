@@ -12,8 +12,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionOutcome } from '@/lib/auth/viewer-session';
 import { DISPLAY_STATUS_LABELS } from '@/lib/domain/display-status';
 import { buildKpiStrip, type KpiTile, type TeamSummary } from '@/lib/domain/progress-stats';
-import { resolveReportPeriod } from '@/lib/domain/report-period';
-import { buildWeeklyReport } from '@/lib/domain/weekly-report';
 import { kstToday } from '@/lib/domain/kst-today';
 import { buildSemanticIndex, STATUS_OPTIONS } from '@/lib/domain/task-semantic';
 import { createMemoryTaskStore } from '@/lib/store/memory-task-store';
@@ -26,7 +24,6 @@ import type { GoalRow } from '@/lib/view/goal-view';
 import type { ExtraCell } from '@/lib/view/extras-render';
 import type { DashboardQuery } from '@/lib/view/dashboard-query';
 import {
-  COMPACT_KPI_KEYS,
   DASHBOARD_LAYOUT,
   layoutFor,
   SECTION_ORDER,
@@ -726,9 +723,10 @@ describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
     expect(await second('lead')).toBe('alerts');
     expect(await second('member')).toBe('alerts');
 
-    // 그 알림 행 안에서 갈린다 — 부원만 축약 KPI가 함께 선다 (`COMPACT_KPI_KEYS`)
-    expect(sectionKeys(await Home(props({ as: 'member' })))).toContain('kpi_compact');
-    expect(sectionKeys(await Home(props({ as: 'lead' })))).not.toContain('kpi_compact');
+    // 팀장과 부원은 **같은 순서**다 — 부원의 화면이 팀 대시보드 하나로 좁혀진 뒤의 규칙이다
+    expect(sectionKeys(await Home(props({ as: 'member' })))).toEqual(
+      sectionKeys(await Home(props({ as: 'lead' })))
+    );
   });
 
   it('그린 순서가 `layoutFor`가 정한 그대로다 — 화면이 표를 다시 짜지 않는다', async () => {
@@ -768,23 +766,18 @@ describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
     expect(sectionKeys(await Home(props()))).toEqual(placedKeys('member'));
   });
 
-  it('`member`의 KPI는 축약 3칸이고, 그 값은 10칸에서 골라 온 것이다', async () => {
+  it('세 역할이 같은 10칸 KPI를 본다 — 축약 3칸은 없앴다', async () => {
     await seed();
 
-    const compact = findComponent(await Home(props({ as: 'member' })), 'KpiStrip')?.props;
-    const full = findComponent(await Home(props({ as: 'admin' })), 'KpiStrip')?.props
-      ?.tiles as KpiTile[];
+    const keysOf = async (as: string): Promise<string[]> =>
+      ((findComponent(await Home(props({ as })), 'KpiStrip')?.props?.tiles as KpiTile[]) ?? []).map(
+        (tile) => tile.key
+      );
 
-    const tiles = compact?.tiles as KpiTile[];
-    expect(compact?.compact).toBe(true);
-    expect(tiles.map((tile) => tile.key)).toEqual([...COMPACT_KPI_KEYS]);
-    // 화면이 따로 세지 않았다 — 같은 키의 값이 10칸과 같다
-    for (const tile of tiles) {
-      expect(tile.value).toBe(full.find((entry) => entry.key === tile.key)?.value);
-    }
+    expect(await keysOf('member')).toEqual(await keysOf('admin'));
+    expect(await keysOf('lead')).toEqual(await keysOf('admin'));
   });
 
-  /** 그 사람이 누군지 우리는 모른다. 이름을 대신 채워 넣지 않고 **묻는다** (`UC-14`) */
   it('`member`가 담당자를 고르지 않았을 때만 안내가 뜬다', async () => {
     await seed();
 
@@ -796,51 +789,12 @@ describe('/ — 역할별 진입 화면 (완료 기준 7)', () => {
   });
 });
 
-describe('/ — 주간 브리핑 카드 (`UC-08` · 완료 기준 9)', () => {
-  it('마크다운 문자열을 그대로 넘긴다 — 화면이 다시 만들지 않는다', async () => {
-    await seed();
-    await seedGoals();
-
-    const tasks = await handle.repo.listTasks();
-    const period = resolveReportPeriod(kstToday(new Date()), null);
-    const markdown = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard')?.props
-      ?.markdown as string;
-
-    expect(markdown).toBe(
-      buildWeeklyReport({
-        tasks,
-        stages: await handle.repo.listStages(tasks.map((task) => task.id)),
-        goals: await handle.repo.listGoalMetrics(),
-        period,
-        events: await handle.repo.listEvents({ since: period.since, until: period.until }),
-        ctx: { today: kstToday(new Date()), semanticIndex: buildSemanticIndex(null) },
-      })
-    );
-  });
-
-  /** 이 문자열은 복사돼 회의록으로 나간다. `extras`가 한 값도 실리면 안 된다 (`S6`) */
-  it('연락처·계정이 실리지 않는다', async () => {
+describe('/ — 주간 브리핑 (`UC-08`)', () => {
+  /** 브리핑은 전용 화면(`/report`)이 진다. 대시보드가 같은 문서를 한 번 더 그리지 않는다 */
+  it('대시보드에 브리핑 카드가 없다', async () => {
     await seed();
 
-    const markdown = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard')?.props
-      ?.markdown as string;
-
-    expect(markdown).not.toContain('연락처');
-    expect(markdown).not.toContain('계정');
-  });
-
-  /**
-   * T9 step 4에서 이력 조회 경로(`listEvents`)가 생겨 **각주가 회수됐다.** 「집계되지 않음」은
-   * 이제 저장소가 이력을 읽지 못한 경우에만 나오고, 0건은 0건이라고 말한다.
-   */
-  it('변경 건수를 실제로 세고, 「집계되지 않음」 각주를 달지 않는다', async () => {
-    await seed();
-
-    const card = findComponent(await Home(props({ as: 'admin' })), 'BriefingCard');
-
-    expect(card?.props?.note).toBeUndefined();
-    expect(card?.props?.markdown as string).toContain('- 이번 주 변경: 0건');
-    expect(card?.props?.markdown as string).not.toContain('집계되지 않음');
+    expect(textOf(await Home(props({ as: 'admin' })))).not.toContain('주간 브리핑');
   });
 });
 
@@ -918,14 +872,14 @@ describe('/ — 로그인 상태 (T8 완료 기준 1·6)', () => {
   });
 });
 
-describe('/ — 담당자 미연결 (`PLAN.md` 결정 D)', () => {
-  it('계정이 담당자에 안 붙은 부원에게는 원인을 말하고 업로드로 보내지 않는다', async () => {
+describe('/ — 팀 미배정', () => {
+  it('팀이 없는 부원에게는 원인을 말하고 업로드로 보내지 않는다', async () => {
     await seed();
-    session = { status: 'ok', viewer: viewer({ role: 'member', memberId: null }) };
+    session = { status: 'ok', viewer: viewer({ role: 'member', teamId: null, memberId: null }) };
 
     const tree = await Home(props());
-    expect(findComponent(tree, 'EmptyState')?.props?.kind).toBe('unlinked-member');
-    // 시트를 올려도 그 사람의 업무는 여전히 보이지 않는다 — 필요한 것은 계정 연결이다
+    expect(findComponent(tree, 'EmptyState')?.props?.kind).toBe('no-team');
+    // 시트를 올려도 그 사람에게는 여전히 아무것도 안 보인다 — 필요한 것은 팀 배정이다
     expect(findComponent(tree, 'SeedButton')).toBeNull();
   });
 

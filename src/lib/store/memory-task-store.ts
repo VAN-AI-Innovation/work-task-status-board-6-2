@@ -32,6 +32,7 @@ import {
 } from '@/lib/store/task-repository';
 import type { MemberRecord, TaskPatch } from '@/types/auth';
 import type { GoalMetric } from '@/types/goal';
+import type { EnumOptionEntry } from '@/types/sheet';
 import type { Task, TaskEvent, TaskStage, TeamKey } from '@/types/task';
 
 function clone<T>(value: T): T {
@@ -63,6 +64,8 @@ export function createMemoryTaskStore(seed?: {
   // 구성원은 시드로만 들어온다 — 만드는 메서드가 계약에 없다 (시드 스크립트가 채운다).
   let members: MemberRecord[] = clone([...(seed?.members ?? [])]);
   let events: TaskEvent[] = [];
+  /** `설정` 탭의 enum 목록. 업로드 확정이 채운다 */
+  let enumOptions: EnumOptionEntry[] = [];
   let lastSyncedAt: string | null = null;
 
   /** 정렬은 결정적으로: 팀 → 자연키. 입력 순서에 화면이 흔들리면 안 된다 */
@@ -256,6 +259,8 @@ export function createMemoryTaskStore(seed?: {
       if (patch.ownerNameRaw !== undefined) merged.ownerNameRaw = patch.ownerNameRaw;
       // 배열은 **사본으로** 넣는다. 호출자가 들고 있는 배열을 저장소가 참조하면 밖에서 바뀐다
       if (patch.coOwnerNames !== undefined) merged.coOwnerNames = [...patch.coOwnerNames];
+      // 객체도 같은 이유로 사본이다. 합치기는 라우트가 끝냈고 여기서는 통째로 바꾼다
+      if (patch.extras !== undefined) merged.extras = { ...patch.extras };
 
       // `lastProgressAt`은 손대지 않는다 — 사람이 화면에서 고친 것은 업로드가 아니다.
       //
@@ -303,7 +308,7 @@ export function createMemoryTaskStore(seed?: {
         nextActionDue: input.nextActionDue,
         delayReason: null,
         note: input.note,
-        extras: {},
+        extras: { ...input.extras },
         raw: {},
         // 만든 시각이 이 행의 값이 마지막으로 정해진 시각이다 — null로 두면 만들자마자
         // 「장기 미갱신」으로 잡힌다
@@ -336,6 +341,21 @@ export function createMemoryTaskStore(seed?: {
       return clone(members);
     },
 
+    async listEnumOptions(): Promise<EnumOptionEntry[]> {
+      return clone(enumOptions);
+    },
+
+    /** `(groupKey, value)`가 키다. 같은 값이 다시 오면 순서만 갱신된다 */
+    async upsertEnumOptions(entries: readonly EnumOptionEntry[]): Promise<void> {
+      for (const entry of entries) {
+        const found = enumOptions.find(
+          (option) => option.groupKey === entry.groupKey && option.value === entry.value
+        );
+        if (found === undefined) enumOptions.push({ ...entry });
+        else found.sortOrder = entry.sortOrder;
+      }
+    },
+
     /**
      * 스냅샷 → 실행 → 실패하면 교체. **메모리 드라이버의 원자성이 이것이다** (`X4`).
      *
@@ -350,6 +370,7 @@ export function createMemoryTaskStore(seed?: {
         goalMetrics: clone(goalMetrics),
         members: clone(members),
         events: clone(events),
+        enumOptions: clone(enumOptions),
         lastSyncedAt,
       };
       try {
@@ -360,6 +381,7 @@ export function createMemoryTaskStore(seed?: {
         goalMetrics = snapshot.goalMetrics;
         members = snapshot.members;
         events = snapshot.events;
+        enumOptions = snapshot.enumOptions;
         lastSyncedAt = snapshot.lastSyncedAt;
         throw error;
       }
@@ -371,6 +393,7 @@ export function createMemoryTaskStore(seed?: {
       goalMetrics = [];
       members = [];
       events = [];
+      enumOptions = [];
       lastSyncedAt = null;
     },
   };

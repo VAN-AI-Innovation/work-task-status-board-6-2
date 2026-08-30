@@ -139,5 +139,6 @@ export function buildSeedPayload(): CommitPayload {
 
   // `upload-preview.ts`와 **같은 방식**으로 만든다 — 순서가 `TEAM_KEYS`를 따라야 화면의
   // 팀 나열이 업로드 경로와 시드 경로에서 갈라지지 않는다
-  return { tasks, goalMetrics, teamKeys: TEAM_KEYS.filter((key) => touched.has(key)) };
+  // 시드에는 `설정` 탭이 없다 — 값 목록은 실제 워크북 업로드가 채운다
+  return { tasks, goalMetrics, teamKeys: TEAM_KEYS.filter((key) => touched.has(key)), enums: [] };
 }

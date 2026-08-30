@@ -24,7 +24,7 @@
  * ## 섹션 순서는 `/`와 같은 표를 본다
  *
  * `sectionsFor(role)`가 정한다 (완료 기준 7). 다만 이 화면에 **없는 섹션은 건너뛴다** —
- * 팀 요약표·완료율 바(`teams`)·승인 대기함(`approvals`)·주간 브리핑(`briefing`)은 위 이유로
+ * 팀 요약표·완료율 바(`teams`)·승인 대기함(`approvals`)은 위 이유로
  * `/`가 지기 때문이고, 순서 표를 팀 화면용으로 따로 만들면 두 화면의 역할 규칙이 갈라진다.
  */
 
@@ -51,6 +51,7 @@ import { toAccount } from '@/lib/auth/viewer-session';
 import { collectAlerts } from '@/lib/domain/alert-rules';
 import { summarizeGoals } from '@/lib/domain/goal-stats';
 import { buildKpiStrip } from '@/lib/domain/progress-stats';
+import { teamEnumGroups } from '@/lib/domain/team-enum-groups';
 import { STATUS_OPTIONS } from '@/lib/domain/task-semantic';
 import { scopeEditableTasks } from '@/lib/domain/viewer-scope';
 import { groupAlerts } from '@/lib/view/alert-groups';
@@ -67,7 +68,6 @@ import {
 import { emptyReason } from '@/lib/view/empty-reason';
 import { toGoalRows } from '@/lib/view/goal-view';
 import {
-  COMPACT_KPI_KEYS,
   layoutFor,
   TEAM_PAGE_LAYOUT,
   type SectionKey,
@@ -150,11 +150,19 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
    */
   const members = query.task === null ? [] : await view.repo.listMembers();
 
+  /**
+   * 팀 전용 칸의 드롭다운이 쓸 값 목록 (`설정` 탭). **명부와 같은 조건으로 읽는다** — 쓰는
+   * 곳이 패널의 수정 폼 하나라, 표만 보고 나가는 방문에 조회를 하나 더 붙일 이유가 없다.
+   * 갈라내는 것은 도메인이 한다 (`teamEnumGroups`).
+   */
+  const enumGroups =
+    query.task === null ? [] : teamEnumGroups(await view.repo.listEnumOptions());
+
   /** `/`와 같다 — `member`가 자기 업무를 고르지 않은 상태. 이름을 대신 채워 넣지 않는다 */
   const needsOwnerHint = read.role === 'member' && query.owner === null;
 
   /**
-   * 이 화면이 그리는 섹션. **`/`가 지기로 한 것(`teams`·`approvals`·`briefing`)은 `null`이라
+   * 이 화면이 그리는 섹션. **`/`가 지기로 한 것(`teams`·`approvals`)은 `null`이라
    * 순서 배열에서 조용히 빠진다** — 역할 표는 하나이고 화면마다 있는 섹션만 다르다.
    */
   const renderSection = (key: SectionKey): ReactNode => {
@@ -166,17 +174,6 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
          * 하는 상자다. 남은 일곱 칸은 대시보드와 **같은 묶음**으로 선다.
          */
         return <KpiStrip tiles={withoutTeamTiles(buildKpiStrip(read.tasks, read.ctx))} />;
-
-      case 'kpi_compact':
-        // 10칸을 다시 세지 않고 `buildKpiStrip`의 결과에서 골라 쓴다 (`ADR-006`)
-        return (
-          <KpiStrip
-            compact
-            tiles={buildKpiStrip(read.tasks, read.ctx).filter((tile) =>
-              COMPACT_KPI_KEYS.includes(tile.key)
-            )}
-          />
-        );
 
       case 'charts':
         /*
@@ -190,8 +187,8 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
               <span className="text-ink-muted text-xs tabular-nums">전체 {listed.length}건</span>
             </div>
             <p className="text-ink-muted mt-1 text-xs">지연이 다른 상태를 덮어쓴다</p>
-            {/* 차트 높이가 확정이라 여기서 늘이지 않는다 (`status-bars.tsx` 머리말) */}
-            <div className="mt-3">
+            {/* 남는 세로를 차트가 먹는다 (`status-bars.tsx` 머리말) */}
+            <div className="mt-3 flex-1">
               <StatusBars series={toStatusSeries(buildStatusBreakdown(listed))} />
             </div>
           </section>
@@ -244,6 +241,7 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
                 hasSession={read.viewer !== null}
                 members={members}
                 statusOptions={STATUS_OPTIONS}
+                enumGroups={enumGroups}
               />
             </div>
             {visible.length === 0 ? (
@@ -279,7 +277,6 @@ export default async function TeamPage({ params, searchParams }: PageProps<'/tea
       case 'teams':
       case 'completion':
       case 'approvals':
-      case 'briefing':
         return null;
     }
   };

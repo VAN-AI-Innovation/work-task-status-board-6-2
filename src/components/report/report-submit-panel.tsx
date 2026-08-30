@@ -32,7 +32,7 @@
  * 있고 내용이 다른 것은 「어느 쪽이 올라가는가」를 눌러 봐야 아는 상태다.
  *
  * **낙관적 업데이트를 하지 않는다.** 서버 응답을 받은 뒤에야 `router.refresh()`한다
- * (`task-edit-form.tsx`와 같은 규칙).
+ * (`task-detail-fields.tsx`와 같은 규칙).
  */
 
 import { useRouter } from 'next/navigation';
@@ -107,9 +107,12 @@ export function ReportSubmitPanel({
 
   return (
     <section className="border-line bg-panel rounded-md border p-4 print:hidden">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline gap-2">
         <h2 className="text-brand text-sm font-semibold">어드민에게 보고</h2>
-        <StatusLine stage={stage} submittedOn={submittedOn} />
+        <StatusBadge stage={stage} />
+        {submittedOn !== null && (
+          <span className="text-ink-faint text-xs tabular-nums">{submittedOn}</span>
+        )}
       </div>
 
       {stage === 'rejected' && (
@@ -118,9 +121,10 @@ export function ReportSubmitPanel({
          * 사유를 못 본 채 같은 내용을 다시 보내게 된다.
          */
         <div className="border-late-line bg-late-bg mt-3 rounded border px-3 py-2">
-          <p className="text-late text-sm font-medium">반려되었습니다</p>
+          <p className="text-late text-sm font-medium">주간 보고 반려</p>
           {/* 사유는 반려일 때 반드시 있다. 그래도 없는 값을 지어내지 않는다 */}
           <p className="text-ink-body mt-1 text-sm [overflow-wrap:anywhere]">
+            <span className="text-ink font-medium">반려 사유: </span>
             {reviewNote ?? '사유가 기록되지 않았습니다.'}
           </p>
         </div>
@@ -186,7 +190,7 @@ export function ReportSubmitPanel({
             busy || body.trim() === '' ? 'cursor-not-allowed opacity-50' : 'hover:bg-brand-strong'
           }`}
         >
-          {busy ? '보내는 중…' : stage === 'draft' ? '보고 보내기' : '고쳐서 다시 보내기'}
+          {busy ? '보내는 중…' : stage === 'draft' ? '보고 전송' : '보고 재전송'}
         </button>
         <span className="text-ink-muted text-xs">
           {stage === 'accepted'
@@ -200,24 +204,20 @@ export function ReportSubmitPanel({
   );
 }
 
-/** 상태를 **낱말로** 적는다. 색은 반려 하나뿐이다 (`UI_GUIDE.md`) */
-function StatusLine({
-  stage,
-  submittedOn,
-}: {
-  stage: ReturnType<typeof submissionStage>;
-  submittedOn: string | null;
-}) {
-  const when = submittedOn === null ? '' : ` · ${submittedOn}`;
-
+/** 상태를 **제목 옆 태그로** 적는다. 배지는 무채색이고 색은 손댈 것이 있는 상태에만 (`ADR-020`) */
+function StatusBadge({ stage }: { stage: ReturnType<typeof submissionStage> }) {
   switch (stage) {
     case 'draft':
-      return <span className="text-ink-muted text-xs">아직 보내지 않았습니다</span>;
+      return (
+        <span className="border-line-strong text-ink-muted rounded-full border px-2 py-0.5 text-xs">
+          미제출
+        </span>
+      );
     case 'waiting':
-      return <span className="text-ink-muted text-xs">검토 대기{when}</span>;
+      return <span className="bg-warn-bg text-warn rounded-full px-2 py-0.5 text-xs">검토 대기</span>;
     case 'accepted':
-      return <span className="text-ink-muted text-xs">승인됨{when}</span>;
+      return <span className="bg-raise text-ink-body rounded-full px-2 py-0.5 text-xs">승인됨</span>;
     case 'rejected':
-      return <span className="text-late text-xs">반려됨{when}</span>;
+      return <span className="bg-late-bg text-late rounded-full px-2 py-0.5 text-xs">반려됨</span>;
   }
 }

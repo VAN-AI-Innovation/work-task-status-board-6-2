@@ -3,8 +3,9 @@
  * (`TASK_EDITABLE_FIELDS`), 다른 것은 두 가지다.
  *
  * 1. **팀과 업무명이 필수다.** 둘 없이 만들어진 업무는 표에서 어느 줄인지 알 수 없다.
- * 2. **감사 칸을 받지 않는다.** `sourceKey`·`sourceSheetTab`·`extras`는 저장소가 채운다 —
- *    요청이 그것을 고를 수 있으면 웹에서 만든 업무가 시트 행인 척할 수 있다.
+ * 2. **감사 칸을 받지 않는다.** `sourceKey`·`sourceSheetTab`·`raw`는 저장소가 채운다 —
+ *    요청이 그것을 고를 수 있으면 웹에서 만든 업무가 시트 행인 척할 수 있다. `extras`(팀
+ *    전용 칸)는 감사 칸이 아니라서 열려 있다.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -90,7 +91,6 @@ describe('taskCreateSchema — 거부하는 모양', () => {
     expect(parse({ ...MINIMAL, sourceKey: 'manual::x' }).success).toBe(false);
     expect(parse({ ...MINIMAL, sourceSheetTab: '01_편집팀' }).success).toBe(false);
     expect(parse({ ...MINIMAL, sourceRowIndex: 3 }).success).toBe(false);
-    expect(parse({ ...MINIMAL, extras: {} }).success).toBe(false);
     expect(parse({ ...MINIMAL, raw: {} }).success).toBe(false);
     expect(parse({ ...MINIMAL, id: MEMBER_ID }).success).toBe(false);
   });
@@ -112,5 +112,22 @@ describe('taskCreateSchema — 거부하는 모양', () => {
   it('객체가 아닌 본문은 거부한다', () => {
     expect(parse(null).success).toBe(false);
     expect(parse([MINIMAL]).success).toBe(false);
+  });
+});
+
+/**
+ * 팀 전용 칸 (`extras`). 감사 칸이 아니라 **그 팀이 쓰는 칸**이라 만들 때도 열려 있다 —
+ * 다만 민감 키는 패치와 **같은 정의**로 막힌다 (`EXTRAS_FIELD`).
+ */
+describe('taskCreateSchema — 팀 전용 칸', () => {
+  it('받는다 — 만들 때 못 넣으면 절반만 담긴 업무가 만들어진다', () => {
+    const parsed = parse({ ...MINIMAL, extras: { '콘텐츠 유형': '릴스' } });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.extras).toEqual({ '콘텐츠 유형': '릴스' });
+  });
+
+  it('연락처·계정이 든 칸은 여기서도 거부한다', () => {
+    expect(parse({ ...MINIMAL, extras: { '출연자 연락처 (내부용)': '010' } }).success).toBe(false);
   });
 });

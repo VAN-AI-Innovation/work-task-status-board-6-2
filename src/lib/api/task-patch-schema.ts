@@ -11,13 +11,23 @@
  * 그 근거는 **여전히 참이지만 결론이 바뀌었다.** 회의 중에 마감을 하루 미루고 다음 조치를
  * 고쳐 적는 일이 실제로 일어나는데, 그때마다 시트를 열어 고치고 다시 업로드하는 것은
  * 「시트 업로드만으로 통합 조회」라는 이 제품의 약속과 어긋난다. 그래서 **덮어쓴다는 사실을
- * 감추는 대신 화면이 말한다** (`task-edit-form.tsx`가 「다음 시트 업로드가 덮어씁니다」를
+ * 감추는 대신 화면이 말한다** (`task-detail-fields.tsx`가 「다음 시트 업로드가 덮어씁니다」를
  * 폼 안에 적는다).
  *
  * 그래도 여는 기준은 그대로다: 「사람이 오늘 바꾸는 것」과 「다음 업로드가 가져오는 것」이
- * 겹치는 자리인가. 그래서 **`extras`·`raw`·`source_*`는 열지 않는다** — 그쪽은 시트 원본과
- * 감사 기록이고, 열면 이 화면이 시트 편집기가 된다. DB의 컬럼 GRANT가 같은 목록을 진다
- * (`0013_task_authoring.sql` 5절).
+ * 겹치는 자리인가. **`raw`·`source_*`는 열지 않는다** — 그쪽은 시트 원본과 감사 기록이다.
+ * DB의 컬럼 GRANT가 같은 목록을 진다 (`0013_task_authoring.sql` 5절 · `0014`).
+ *
+ * ## `extras`는 **팀 전용 칸이라서** 열었다
+ *
+ * 오래 닫아 두었고 근거는 「열면 이 화면이 시트 편집기가 된다」였다. 뒤집은 이유는 팀 전용
+ * 컬럼(`콘텐츠 유형`·`섭외 상태` …)이 **전부 그 안에 있기 때문이다** — 공통 13칸만 열어 두면
+ * 촬영팀 사람이 자기 업무의 절반을 화면에서 못 고친다. 대신 셋을 지킨다.
+ *
+ * - **키를 새로 만들 수는 있어도 민감 키는 못 쓴다** (`isSensitiveExtraKey`). 연락처·계정이
+ *   화면 입력으로 들어오는 길을 막는다 (`S6`).
+ * - **값은 문자열이나 `null`뿐이다.** 하이퍼링크 객체(`{text,hyperlink}`)는 시트만 만든다.
+ * - **덮어쓰지 않고 합친다.** 보낸 키만 바뀐다 — 라우트가 기존 `extras`에 얹는다.
  *
  * ## 담당자는 **id만** 받는다
  *
@@ -40,6 +50,8 @@
  */
 
 import { z } from 'zod';
+
+import { isSensitiveExtraKey } from '@/lib/domain/extras-visibility';
 
 
 /** 상태 원문의 상한. 시트 드롭다운 한 칸이라 이보다 길면 상태가 아니다 */
@@ -155,6 +167,30 @@ const CO_OWNER_MAX = 20;
 
 const coOwnerMemberIdsSchema = z.array(z.uuid()).max(CO_OWNER_MAX);
 
+/** 한 업무의 팀 전용 칸 수. 실제 탭이 20~30컬럼이라 이보다 많으면 시트가 아니다 */
+const EXTRAS_MAX_KEYS = 60;
+
+/**
+ * 팀 전용 칸. **키는 시트 헤더 원문**이고 값은 문자열이나 `null`(비운다)뿐이다.
+ * 민감 키는 문 앞에서 막는다 — 판정은 다시 쓰지 않고 도메인 것을 부른다 (`S6`).
+ */
+export const EXTRAS_FIELD = z
+  .record(
+    z.string().trim().min(1).max(TASK_LABEL_MAX_LENGTH),
+    z
+      .string()
+      .trim()
+      .max(TASK_TEXT_MAX_LENGTH)
+      .nullable()
+      .transform((value) => (value === null || value === '' ? null : value))
+  )
+  .refine((extras) => Object.keys(extras).length <= EXTRAS_MAX_KEYS, {
+    message: '한 번에 바꿀 수 있는 칸 수를 넘었습니다.',
+  })
+  .refine((extras) => !Object.keys(extras).some(isSensitiveExtraKey), {
+    message: '연락처·계정이 든 칸은 화면에서 고칠 수 없습니다.',
+  });
+
 /**
  * 키가 하나도 없는 본문(`{}`)은 거부한다. 아무것도 안 바꾸는 요청에 200을 주면 클라이언트
  * 버그가 **성공으로 보인다** — 사용자는 저장됐다고 믿고 화면을 닫는다.
@@ -180,6 +216,7 @@ export const taskPatchSchema = z
     note: TASK_EDITABLE_FIELDS.note.optional(),
     ownerMemberId: ownerMemberIdSchema.optional(),
     coOwnerMemberIds: coOwnerMemberIdsSchema.optional(),
+    extras: EXTRAS_FIELD.optional(),
   })
   .strict()
   .refine((patch) => Object.keys(patch).length > 0, {

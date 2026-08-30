@@ -142,6 +142,10 @@ export async function POST(request: Request): Promise<Response> {
       status: body.status ?? null,
       progress: body.progress ?? null,
       priority: body.priority ?? null,
+      riskStatus: body.riskStatus ?? null,
+      approvalStatus: body.approvalStatus ?? null,
+      // 팀 전용 칸. 만들 때는 합칠 기존 값이 없어서 그대로 싣는다 (`PATCH`는 합친다)
+      extras: body.extras ?? {},
       assignedAt: body.assignedAt ?? null,
       dueAt: body.dueAt ?? null,
       nextAction: body.nextAction ?? null,

@@ -113,8 +113,11 @@ function ReviewItem({ row, weekStart }: { row: ReviewRow; weekStart: string }) {
           <span className="text-ink-faint text-xs tabular-nums">{row.submittedOn}</span>
         )}
 
-        {/* 미제출 팀에는 버튼이 없다 — 없는 보고를 받거나 돌려보낼 수 없다 */}
-        {stage !== 'draft' && (
+        {/*
+          * 미제출 팀에는 버튼이 없다 — 없는 보고를 받거나 돌려보낼 수 없다.
+          * 반려한 줄에도 없다: 판단은 이미 끝났고, 다음 차례는 팀장의 재전송이다.
+          */}
+        {(stage === 'waiting' || stage === 'accepted') && (
           <div className="ml-auto flex items-center gap-2">
             <button
               type="button"
@@ -184,7 +187,7 @@ function ReviewItem({ row, weekStart }: { row: ReviewRow; weekStart: string }) {
   );
 }
 
-/** 손댈 것이 있는 줄만 색을 갖는다 — 승인은 색이 없다 (`UI_GUIDE.md`) */
+/** 손댈 것이 있는 줄만 색을 갖는다 — 승인 태그는 무채색이다 (`UI_GUIDE.md`) */
 function StatusBadge({ stage }: { stage: ReturnType<typeof submissionStage> }) {
   switch (stage) {
     case 'draft':
@@ -196,7 +199,7 @@ function StatusBadge({ stage }: { stage: ReturnType<typeof submissionStage> }) {
     case 'waiting':
       return <span className="bg-warn-bg text-warn rounded-full px-2 py-0.5 text-xs">검토 대기</span>;
     case 'accepted':
-      return <span className="text-ink-muted text-xs">승인됨</span>;
+      return <span className="bg-raise text-ink-body rounded-full px-2 py-0.5 text-xs">승인됨</span>;
     case 'rejected':
       return <span className="bg-late-bg text-late rounded-full px-2 py-0.5 text-xs">반려됨</span>;
   }

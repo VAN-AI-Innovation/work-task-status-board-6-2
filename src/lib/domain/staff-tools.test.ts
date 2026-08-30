@@ -7,7 +7,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { canReadWeeklyReport, canUseDocExtract } from '@/lib/domain/staff-tools';
+import {
+  canReadWeeklyReport,
+  canSeeOrgDashboard,
+  canUseDocExtract,
+} from '@/lib/domain/staff-tools';
 
 describe('canUseDocExtract', () => {
   it('대표·실장은 참이다', () => {
@@ -64,5 +68,24 @@ describe('두 도구의 문턱', () => {
     for (const role of ['admin', 'lead', 'member'] as const) {
       expect(canUseDocExtract(role, true)).toBe(canReadWeeklyReport(role, true));
     }
+  });
+});
+
+/**
+ * 전사 대시보드. 위 둘과 같은 물음이라 같은 파일에 있지만, 근거는 「도구」가 아니라
+ * **범위**다 — 부원이 보는 전사 화면은 자기 팀을 전사라는 이름으로 다시 보는 자리다.
+ */
+describe('canSeeOrgDashboard', () => {
+  it('팀장·어드민은 연다', () => {
+    expect(canSeeOrgDashboard('admin', true)).toBe(true);
+    expect(canSeeOrgDashboard('lead', true)).toBe(true);
+  });
+
+  it('부원은 못 연다 — 팀 대시보드 하나만 남는다', () => {
+    expect(canSeeOrgDashboard('member', true)).toBe(false);
+  });
+
+  it('세션이 없으면 좁히지 않는다 — 데모에서 화면이 사라지면 안 된다', () => {
+    expect(canSeeOrgDashboard('member', false)).toBe(true);
   });
 });

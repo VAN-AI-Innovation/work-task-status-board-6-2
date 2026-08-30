@@ -97,6 +97,8 @@ function toReadOnly(repo: TaskRepository): TaskRepository {
     getLastSyncedAt: () => repo.getLastSyncedAt(),
     /** **읽기다.** 구성원 목록은 막을 이유가 없다 — 폴백은 조회 불가가 아니라 읽기 전용이다 */
     listMembers: () => repo.listMembers(),
+    /** 같은 이유로 읽기다. 값 목록이 없으면 수정 폼의 드롭다운이 통째로 사라진다 */
+    listEnumOptions: () => repo.listEnumOptions(),
 
     async upsertTasks() {
       throw new StorageReadOnlyError();
@@ -105,6 +107,9 @@ function toReadOnly(repo: TaskRepository): TaskRepository {
       throw new StorageReadOnlyError();
     },
     async recordEvents() {
+      throw new StorageReadOnlyError();
+    },
+    async upsertEnumOptions() {
       throw new StorageReadOnlyError();
     },
     /**

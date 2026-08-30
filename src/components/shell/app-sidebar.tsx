@@ -31,7 +31,7 @@ import type { ReactNode } from 'react';
 
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
 import { canViewMembers } from '@/lib/domain/member-admin';
-import { canReadWeeklyReport, canUseDocExtract } from '@/lib/domain/staff-tools';
+import { canReadWeeklyReport, canSeeOrgDashboard, canUseDocExtract } from '@/lib/domain/staff-tools';
 import { visibleTeamKeys } from '@/lib/domain/team-visibility';
 import { teamLabel, toTeamSlug } from '@/lib/view/team-slug';
 import type { TeamKey } from '@/types/task';
@@ -190,9 +190,13 @@ function navItemsFor(role: ViewerRole | null, teamId: TeamKey | null, hasSession
   const effective = role ?? 'member';
 
   const items: NavItem[] = [
-    { href: '/', label: '대시보드', icon: <DashboardIcon /> },
-    // 대시보드 바로 아래다. 둘 다 **읽고 가져가는** 화면이고, 브리핑 카드를 눌러 넘어오는
-    // 곳이기도 하다 (`UC-08`). 데이터를 넣는 두 화면(업로드·추출)은 팀 탭 아래에 모여 있다.
+    // 부원에게는 없다 — 그 사람의 열람 범위는 자기 팀이라, 전사 화면은 같은 데이터를
+    // 「전사」라는 제목으로 다시 보는 자리가 된다 (`canSeeOrgDashboard` · `0015`)
+    ...(canSeeOrgDashboard(effective, hasSession)
+      ? [{ href: '/', label: '대시보드', icon: <DashboardIcon /> }]
+      : []),
+    // 대시보드 바로 아래다. 둘 다 **읽고 가져가는** 화면이고, 주간 보고 문서가 서는 자리는
+    // 이제 여기뿐이다 (`UC-08`). 데이터를 넣는 두 화면(업로드·추출)은 팀 탭 아래에 모여 있다.
     // 부원에게는 없다 — 회의에 들고 가는 문서다 (`canReadWeeklyReport`)
     ...(canReadWeeklyReport(effective, hasSession)
       ? [{ href: '/report', label: '주간 보고', icon: <ReportIcon /> }]

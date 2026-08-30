@@ -184,87 +184,52 @@ describe('taskEditable — 수정 범위는 열람보다 좁다', () => {
     expect(taskEditable(orphan as unknown as Task, LEAD_EDIT)).toBe(false);
   });
 
-  it('member의 수정 범위는 열람 범위와 같다 — 보는 만큼 고친다', () => {
+  it('member는 팀을 보되 자기 담당만 고친다', () => {
     const mine = task({ id: 't6', teamId: 'edit', ownerMemberId: 'm-1' });
     const co = task({ id: 't7', teamId: 'edit', ownerMemberId: 'm-2', coOwnerNames: ['담당자1'] });
     const other = task({ id: 't8', teamId: 'edit', ownerMemberId: 'm-2' });
 
-    for (const item of [mine, co, other]) {
-      expect(taskEditable(item, MEMBER)).toBe(taskInScope(item, MEMBER));
-    }
+    // **열람보다 좁다.** 같은 팀 남의 업무는 보이지만 고치지 못한다 (`0015`)
     expect(taskEditable(mine, MEMBER)).toBe(true);
     expect(taskEditable(co, MEMBER)).toBe(true);
     expect(taskEditable(other, MEMBER)).toBe(false);
+    expect(taskInScope(other, MEMBER)).toBe(true);
   });
 });
 
 describe('taskInScope — member', () => {
-  it('본인 건만 본다', () => {
+  it('자기 팀 업무를 본다 — 담당이 아니어도', () => {
     expect(taskInScope(task({ id: 't1', teamId: 'edit', ownerMemberId: 'm-1' }), MEMBER)).toBe(true);
+    expect(taskInScope(task({ id: 't2', teamId: 'edit', ownerMemberId: 'm-2' }), MEMBER)).toBe(true);
   });
 
-  it('같은 팀이지만 남의 건은 못 본다', () => {
-    expect(taskInScope(task({ id: 't2', teamId: 'edit', ownerMemberId: 'm-2' }), MEMBER)).toBe(
+  /**
+   * 배정을 아직 못 받은 사람도 팀 화면을 본다. 예전에는 담당 건만 보여서, 막 승인된 계정의
+   * 대시보드가 통째로 비었고 그 화면은 **가입이 잘못된 것처럼** 보였다.
+   */
+  it('담당자 미상 업무도 같은 팀이면 본다', () => {
+    expect(taskInScope(task({ id: 't3', teamId: 'edit', ownerMemberId: null }), MEMBER)).toBe(true);
+  });
+
+  it('명부에 안 붙은 계정도 팀이 있으면 본다 — 팀이 범위의 축이다', () => {
+    expect(
+      taskInScope(task({ id: 't4', teamId: 'edit', ownerMemberId: 'm-1' }), MEMBER_UNLINKED)
+    ).toBe(true);
+  });
+
+  it('다른 팀 업무는 못 본다', () => {
+    expect(taskInScope(task({ id: 't5', teamId: 'shoot', ownerMemberId: 'm-1' }), MEMBER)).toBe(
       false
     );
   });
 
-  it('ownerMemberId === null 인 업무는 못 본다 (unknown_owner — 결정 D)', () => {
-    expect(taskInScope(task({ id: 't3', teamId: 'edit', ownerMemberId: null }), MEMBER)).toBe(false);
-  });
+  /** 「모른다」를 「전부」로 접지 않는다 — 팀 없는 계정에는 어떤 업무도 열리지 않는다 */
+  it('팀이 없는 계정에는 아무것도 열리지 않는다', () => {
+    const noTeam = viewer({ role: 'member', memberId: 'm-1', memberName: '담당자1' });
 
-  it('계정이 연결되지 않은 member에게 담당자 미상 업무가 열리지 않는다 (null === null 금지)', () => {
-    expect(
-      taskInScope(task({ id: 't4', teamId: 'edit', ownerMemberId: null }), MEMBER_UNLINKED)
-    ).toBe(false);
-  });
-
-  it('계정이 연결되지 않은 member는 담당자가 있는 업무도 못 본다', () => {
-    expect(
-      taskInScope(task({ id: 't5', teamId: 'edit', ownerMemberId: 'm-1' }), MEMBER_UNLINKED)
-    ).toBe(false);
-  });
-
-  /*
-   * **공동 담당에 이름이 있으면 본다** (`0013_task_authoring.sql`). 예전에는 주 담당 하나만
-   * 봤고, 그래서 공동 담당으로 지정된 사람의 화면에는 그 업무가 뜨지 않았다 —
-   * 지정 폼이 「이름으로만 남습니다」라고 적어 둔 자리다.
-   */
-  it('공동 담당에 내 이름이 있으면 남의 건도 본다', () => {
-    expect(
-      taskInScope(
-        task({ id: 't6', teamId: 'edit', ownerMemberId: 'm-2', coOwnerNames: ['담당자1'] }),
-        MEMBER
-      )
-    ).toBe(true);
-  });
-
-  it('공동 담당에 없는 이름이면 못 본다', () => {
-    expect(
-      taskInScope(
-        task({ id: 't7', teamId: 'edit', ownerMemberId: 'm-2', coOwnerNames: ['담당자9'] }),
-        MEMBER
-      )
-    ).toBe(false);
-  });
-
-  /** 동명이인 방어. `members`의 유니크가 `(team_id, name)`이라 팀이 다르면 같은 이름이 선다 */
-  it('다른 팀 업무의 공동 담당에 같은 이름이 있어도 못 본다', () => {
-    expect(
-      taskInScope(
-        task({ id: 't8', teamId: 'shoot', ownerMemberId: 'm-2', coOwnerNames: ['담당자1'] }),
-        MEMBER
-      )
-    ).toBe(false);
-  });
-
-  it('명부 이름이 없는(memberName=null) 계정에게는 공동 담당이 열리지 않는다', () => {
-    expect(
-      taskInScope(
-        task({ id: 't9', teamId: 'edit', ownerMemberId: 'm-2', coOwnerNames: ['담당자1'] }),
-        MEMBER_UNLINKED
-      )
-    ).toBe(false);
+    expect(taskInScope(task({ id: 't6', teamId: 'edit', ownerMemberId: 'm-1' }), noTeam)).toBe(
+      false
+    );
   });
 });
 
@@ -326,8 +291,9 @@ describe('scopeTasks', () => {
   it('열람은 admin·lead가 같고 member만 좁다 (`0012`)', () => {
     expect(scopeTasks(tasks, ADMIN).map((t) => t.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
     expect(scopeTasks(tasks, LEAD_EDIT).map((t) => t.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
-    // `c`가 남는 것이 요점 — member는 팀이 아니라 담당자로 본다. 다른 팀의 본인 건도 자기 것이다
-    expect(scopeTasks(tasks, MEMBER).map((t) => t.id)).toEqual(['a', 'c']);
+    // member는 **자기 팀 전부**다 — 담당이 아닌 `b`와 담당자 미상인 `e`가 함께 남고,
+    // 다른 팀의 본인 건(`c`)은 빠진다. 고칠 수 있는 것은 그중 담당 건뿐이다 (아래 케이스)
+    expect(scopeTasks(tasks, MEMBER).map((t) => t.id)).toEqual(['a', 'b', 'e']);
   });
 
   it('수정 범위는 세 역할이 서로 다르다 — 갈리는 자리가 여기다', () => {
@@ -346,7 +312,7 @@ describe('scopeTasks', () => {
   it('순서를 바꾸지 않는다', () => {
     const reversed = [...tasks].reverse();
     expect(scopeTasks(reversed, ADMIN).map((t) => t.id)).toEqual(['e', 'd', 'c', 'b', 'a']);
-    expect(scopeTasks(reversed, MEMBER).map((t) => t.id)).toEqual(['c', 'a']);
+    expect(scopeTasks(reversed, MEMBER).map((t) => t.id)).toEqual(['e', 'b', 'a']);
   });
 
   it('빈 배열은 빈 배열이다', () => {

@@ -26,17 +26,23 @@
  * `query`라는 **값**을 받고 `buildHref`를 여기서 부른다 — 링크를 짓는 규칙은 여전히
  * `lib/view/dashboard-query.ts` 한 곳이라, 걸어 둔 필터가 그대로 따라간다.
  *
- * **낙관적 업데이트를 하지 않는다** (`task-edit-form.tsx`와 같은 규칙).
+ * **낙관적 업데이트를 하지 않는다** (`task-detail-fields.tsx`와 같은 규칙).
  */
 
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
-import type { OwnerCandidate } from '@/components/tasks/owner-assign-form';
+import type { OwnerCandidate } from '@/components/tasks/task-detail-fields';
 import { buildHref, type DashboardQuery } from '@/lib/view/dashboard-query';
 import { teamLabel } from '@/lib/view/team-slug';
 import type { ApiErrorBody } from '@/types/api';
 import type { TeamKey } from '@/types/task';
+
+/** 팀 전용 칸 하나. `TeamEnumGroup`에서 화면이 쓰는 둘만 남긴 모양이다 */
+export interface TeamExtraGroup {
+  name: string;
+  values: readonly string[];
+}
 
 const UNREACHABLE_MESSAGE = '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
 
@@ -79,6 +85,7 @@ export function TaskCreatePanel({
   teams,
   candidatesByTeam,
   statusOptions,
+  extraGroupsByTeam,
   pathname,
   query,
 }: {
@@ -93,6 +100,11 @@ export function TaskCreatePanel({
    */
   candidatesByTeam: Readonly<Partial<Record<TeamKey, readonly OwnerCandidate[]>>>;
   statusOptions: readonly string[];
+  /**
+   * 팀별 전용 칸과 고를 값 (`설정` 탭). 팀을 고르면 그 팀 것만 선다 — 촬영팀 업무를 만들면서
+   * 편집팀 칸을 채우게 두면 다음 업로드가 그 칸을 통째로 지운다.
+   */
+  extraGroupsByTeam: Readonly<Partial<Record<TeamKey, readonly TeamExtraGroup[]>>>;
   /** 만든 뒤 열 주소를 여기서 짓는다 (머리말의 ⚠). 둘 다 **값**이라 직렬화된다 */
   pathname: string;
   query: DashboardQuery;
@@ -103,6 +115,8 @@ export function TaskCreatePanel({
   const [sending, setSending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(teams[0] ?? 'edit'));
+  /** 팀 전용 칸. 키가 팀마다 달라 `Draft`에 못박지 못한다 (수정 폼과 같은 이유) */
+  const [extras, setExtras] = useState<Record<string, string>>({});
 
   // 만들 수 있는 팀이 없으면 버튼도 없다 — 눌러도 400이 나는 버튼을 두지 않는다
   if (teams.length === 0) return null;
@@ -113,6 +127,7 @@ export function TaskCreatePanel({
 
   function close(): void {
     setDraft(emptyDraft(teams[0] ?? 'edit'));
+    setExtras({});
     setMessage(null);
     setOpen(false);
   }
@@ -144,6 +159,10 @@ export function TaskCreatePanel({
       if (draft[key].trim() !== '') body[key] = draft[key];
     }
     if (draft.progress.trim() !== '') body.progress = Number(draft.progress);
+    // 팀 전용 칸도 **적은 것만** 싣는다. 빈 칸을 `null`로 보내면 안 적은 것이 「비웠다」가 된다
+    const filled = Object.entries(extras).filter(([, value]) => value.trim() !== '');
+    if (filled.length > 0) body.extras = Object.fromEntries(filled);
+
     if (draft.ownerMemberId !== '') body.ownerMemberId = draft.ownerMemberId;
     if (draft.coOwnerMemberIds.length > 0) body.coOwnerMemberIds = draft.coOwnerMemberIds;
 
@@ -231,14 +250,15 @@ export function TaskCreatePanel({
             <Field label="팀">
               <select
                 value={draft.teamId}
-                onChange={(event) =>
-                  // 팀이 바뀌면 담당자 후보가 통째로 바뀐다 — 고른 사람을 함께 비운다
+                onChange={(event) => {
+                  // 팀이 바뀌면 담당자 후보도 팀 전용 칸도 통째로 바뀐다 — 고른 값을 함께 비운다
+                  setExtras({});
                   set({
                     teamId: event.target.value as TeamKey,
                     ownerMemberId: '',
                     coOwnerMemberIds: [],
-                  })
-                }
+                  });
+                }}
                 disabled={busy || teams.length === 1}
                 className={FIELD}
               >
@@ -394,6 +414,38 @@ export function TaskCreatePanel({
                 className={FIELD}
               />
             </Field>
+
+            {/*
+             * 고른 팀의 전용 칸. 목록은 시트 「설정」 탭에서 오고, 없으면 이 자리도 없다 —
+             * 빈 제목만 남기면 「설정 탭을 아직 안 올렸다」와 「그 팀은 전용 칸이 없다」가
+             * 화면에서 같아진다.
+             */}
+            {(extraGroupsByTeam[draft.teamId] ?? []).length > 0 && (
+              <>
+                <p className="text-ink-muted mt-1 text-xs sm:col-span-2">
+                  팀 전용 칸 — 고를 값은 시트 「설정」 탭에서 옵니다
+                </p>
+                {(extraGroupsByTeam[draft.teamId] ?? []).map((group) => (
+                  <Field key={group.name} label={group.name}>
+                    <select
+                      value={extras[group.name] ?? ''}
+                      onChange={(event) =>
+                        setExtras((prev) => ({ ...prev, [group.name]: event.target.value }))
+                      }
+                      disabled={busy}
+                      className={FIELD}
+                    >
+                      <option value="">선택 안 함</option>
+                      {group.values.map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ))}
+              </>
+            )}
           </div>
 
           <div className="border-line flex flex-wrap items-center gap-3 border-t px-5 py-4">

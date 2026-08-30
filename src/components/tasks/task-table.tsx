@@ -21,15 +21,15 @@ import { rowClassOf } from '@/lib/view/status-badge';
 import type { TaskResponse } from '@/types/api';
 
 /** 컬럼 확정값 (`ARCHITECTURE.md`「부서별 탭」의 공통 8~10컬럼) */
-const COLUMNS: readonly { label: string; numeric?: true }[] = [
-  { label: '상태' },
-  { label: '팀' },
-  { label: '업무명' },
-  { label: '담당자' },
-  { label: '마감', numeric: true },
-  { label: 'D-DAY', numeric: true },
-  { label: '진행률', numeric: true },
-  { label: '다음 조치' },
+const COLUMNS: readonly string[] = [
+  '상태',
+  '팀',
+  '업무명',
+  '담당자',
+  '마감',
+  'D-DAY',
+  '진행률',
+  '다음 조치',
 ];
 
 /**
@@ -74,12 +74,9 @@ export function TaskTable({
       <table className="w-full min-w-[900px] border-collapse text-sm">
         <thead>
           <tr className="bg-brand-soft text-brand sticky top-0 text-xs font-medium">
-            {COLUMNS.map((column) => (
-              <th
-                key={column.label}
-                className={`px-3 py-2 ${column.numeric === true ? 'text-right' : 'text-left'}`}
-              >
-                {column.label}
+            {COLUMNS.map((label) => (
+              <th key={label} className="px-3 py-2 text-left">
+                {label}
               </th>
             ))}
           </tr>
@@ -106,13 +103,13 @@ export function TaskTable({
               </td>
               {/* 이름이 여럿이면 줄바꿈을 허용한다 — `nowrap`이면 긴 목록이 표를 옆으로 민다 */}
               <td className="text-ink-body px-3 py-2">{ownerText(task)}</td>
-              <td className="text-ink px-3 py-2 text-right tabular-nums">
+              <td className="text-ink px-3 py-2 text-left tabular-nums">
                 {formatDate(task.dueAt)}
               </td>
-              <td className={`px-3 py-2 text-right tabular-nums ${ddayClassOf(task)}`}>
+              <td className={`px-3 py-2 text-left tabular-nums ${ddayClassOf(task)}`}>
                 {formatDday(task.flags.dday)}
               </td>
-              <td className="text-ink px-3 py-2 text-right tabular-nums">
+              <td className="text-ink px-3 py-2 text-left tabular-nums">
                 {formatPercent(task.progress)}
               </td>
               <td className="text-ink-body px-3 py-2">{task.nextAction ?? EMPTY}</td>

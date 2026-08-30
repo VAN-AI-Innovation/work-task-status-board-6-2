@@ -46,8 +46,8 @@ const DOWNLOAD_LABELS: Readonly<Record<ActionState, string>> = {
   failed: '내려받기 실패',
 };
 
-/** 오른쪽 정렬은 숫자 칸이다. 문자열을 조립해 만들 수 없다 (Tailwind는 소스를 훑는다) */
-const ALIGN_CLASS = { left: 'text-left', right: 'text-right tabular-nums' } as const;
+/** 칸은 전부 왼쪽 정렬이고, 마크다운의 `right`는 이제 `tabular-nums`만 뜻한다 (숫자 칸) */
+const ALIGN_CLASS = { left: 'text-left', right: 'text-left tabular-nums' } as const;
 
 function Block({ block }: { block: ReportBlock }) {
   switch (block.kind) {

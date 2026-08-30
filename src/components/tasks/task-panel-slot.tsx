@@ -22,11 +22,13 @@ import Link from 'next/link';
 
 import { TaskPanel } from '@/components/tasks/task-panel';
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
+import type { TeamEnumGroup } from '@/lib/domain/team-enum-groups';
 import {
   assignableMembers,
   canAssignOwner,
   canDeleteTask,
   canEditTaskDetails,
+  lockedTaskFields,
 } from '@/lib/domain/task-authoring';
 import {
   buildHref,
@@ -34,6 +36,7 @@ import {
   FILTER_RESET_PATCH,
   type DashboardQuery,
 } from '@/lib/view/dashboard-query';
+import { toExtraFields } from '@/lib/view/extras-edit';
 import { toExtraCells } from '@/lib/view/extras-render';
 import type { TaskResponse } from '@/types/api';
 import type { MemberRecord } from '@/types/auth';
@@ -49,6 +52,7 @@ export function TaskPanelSlot({
   hasSession,
   members,
   statusOptions,
+  enumGroups,
 }: {
   /** **화면에 실제로 보이는 목록.** 칩으로 가린 업무의 패널이 열리면 표와 어긋난다 */
   tasks: TaskResponse[];
@@ -76,6 +80,11 @@ export function TaskPanelSlot({
   members: readonly MemberRecord[];
   /** 상태 드롭다운 목록. 문자열은 `STATUS_SEMANTIC_MAP` 한 곳에서 온다 (`ADR-009`) */
   statusOptions: readonly string[];
+  /**
+   * `설정` 탭의 팀 전용 그룹. 팀 전용 칸의 드롭다운이 여기서 나온다 — 페이지가 저장소에서
+   * 읽어 `teamEnumGroups`로 접은 값이고, 비어 있으면 그 칸들은 자유 입력으로 남는다.
+   */
+  enumGroups: readonly TeamEnumGroup[];
 }) {
   const openId = query.task;
   if (openId === null) return null;
@@ -117,6 +126,11 @@ export function TaskPanelSlot({
         .sort((left, right) => left.seq - right.seq)}
       // 변환은 서버에서 끝낸다 — 패널은 마스킹도 스킴 검사도 다시 하지 않는다 (`S6`·`S7`)
       cells={toExtraCells(task.extras, role)}
+      /*
+       * 고칠 수 있는 팀 전용 칸. **읽기용(`cells`)과 나눠 만든다** — 그쪽은 민감 키를
+       * 「(비공개)」로 남기고, 이쪽은 아예 빼야 한다 (보내면 저장이 통째로 실패한다).
+       */
+      extraFields={toExtraFields(task.extras, task.teamId, enumGroups)}
       closeHref={closeHref}
       /*
        * 판정 결과를 **찾아보기만** 한다. 숨김은 방어가 아니고 거부는 `PATCH`가 한다.
@@ -140,12 +154,16 @@ export function TaskPanelSlot({
        * 없다」이고, 데모 화면에 남의 팀 이야기를 띄울 이유가 없다.
        */
       readOnly={hasSession && !editableIds.has(task.id)}
+      // 부원에게는 같은 팀 남의 업무가, 팀장·어드민에게는 다른 팀 업무가 그 자리다
+      readOnlyReason={role === 'member' ? 'not-mine' : 'other-team'}
       // 브라우저로 나가는 것은 이 둘뿐이다 (`MemberRecord`의 `authUserId`를 싣지 않는다)
       ownerCandidates={assignableMembers(members, task.teamId).map((member) => ({
         id: member.id,
         name: member.name,
       }))}
       statusOptions={statusOptions}
+      // 「이 역할이 어느 칸까지 고치는가」. 라우트도 같은 함수를 부른다 (`task-authoring.ts`)
+      lockedFields={lockedTaskFields(role)}
     />
   );
 }

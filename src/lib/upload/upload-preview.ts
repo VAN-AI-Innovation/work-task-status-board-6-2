@@ -28,7 +28,7 @@ import {
   toGoalMetricUpsertInputs,
   toTaskUpsertInputs,
 } from '@/lib/upload/upload-mapper';
-import type { ParseWarning } from '@/types/sheet';
+import type { EnumOptionEntry, ParseWarning } from '@/types/sheet';
 import type { Task, TabParseResult, TeamKey, WorkbookParseResult } from '@/types/task';
 
 /** 같은 `code + sheet`를 개수로 접은 경고. 값은 담지 않는다 */
@@ -58,6 +58,14 @@ export interface CommitPayload {
   goalMetrics: GoalMetricUpsertInput[];
   /** 이번 업로드가 건드리는 팀. 여기 없는 팀은 확정에서도 손대지 않는다 (`UC-04`) */
   teamKeys: TeamKey[];
+  /**
+   * `설정` 탭의 enum 목록. **팀 전용 컬럼의 값 목록이 여기서만 온다** — 수정 폼의 드롭다운이
+   * 이것을 쓴다 (`team-enum-groups.ts`). 설정 탭이 없는 워크북이면 빈 배열이고, 그때 기존
+   * 목록은 그대로 남는다 (확정은 지우지 않는다).
+   *
+   * ⚠ 이 필드가 생기기 전에 만들어진 업로드 레코드에는 **없다.** 읽는 쪽이 `?? []`로 받는다.
+   */
+  enums: EnumOptionEntry[];
 }
 
 export interface UploadPreview {
@@ -167,6 +175,7 @@ export function buildUploadPreview(
     tasks,
     goalMetrics,
     teamKeys: TEAM_KEYS.filter((teamKey) => touched.has(teamKey)),
+    enums: parsed.settings?.enums ?? [],
   };
 
   const winners = pickWinners(tasks);
