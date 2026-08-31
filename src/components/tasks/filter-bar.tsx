@@ -6,7 +6,7 @@
  * 상대 화면에서 다른 결과를 내고, 뒤로 가기가 필터를 되돌리지 않는다.
  *
  * 입력(담당자·마감 범위·검색)은 **Enter(form submit)에서만** 이동한다. 타이핑 한 글자마다
- * 서버 컴포넌트를 다시 그리면 응답이 오는 사이 입력이 밀려 글자를 놓친다 (`SearchBox`와 같다).
+ * 서버 컴포넌트를 다시 그리면 응답이 오는 사이 입력이 밀려 글자를 놓친다.
  * 값을 상태로 들지 않으므로 `key`를 현재 URL 값으로 두어, 밖에서 URL이 바뀌면 입력이 다시
  * 태어나게 한다.
  *
@@ -214,7 +214,7 @@ export function FilterBar({
             defaultValue={query.dueTo ?? ''}
             className={`${INPUT} tabular-nums`}
           />
-          {/* 상단 바 검색과 같은 `?search=`에 묶인다. 상태는 URL 하나뿐이라 둘이 갈라지지 않는다 */}
+          {/* `?search=`에 묶인다. 화면 상태의 단일 소스는 URL이다 (`dashboard-query.ts`) */}
           <label className="sr-only" htmlFor="filter-search">
             검색
           </label>
