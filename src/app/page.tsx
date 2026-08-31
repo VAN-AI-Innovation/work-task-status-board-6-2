@@ -201,17 +201,6 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
   const waiting = approvalQueue(visible, read.meta.today);
 
 
-  /*
-   * 목표 지표는 업무 필터를 타지 않는다 — 성과 지표는 진행 상태·마감·담당자 축이 아니라
-   * 목표값 대 실적값 축으로 움직인다 (`ADR-002`). `toGoalResponse`를 반드시 거친다:
-   * 성과 행에도 담당자·채널·문의자 계정이 섞여 들어온다 (`S6`).
-   *
-   * 저장소는 **한 번만** 읽는다 — 같은 목록을 목표 섹션과 차트가 함께 본다.
-   */
-  const goals = await view.repo.listGoalMetrics();
-  const goalStats = summarizeGoals(goals);
-  const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
-
   /**
    * **만들 수 있는 팀.** 로그인하지 않았으면(데모) 빈 목록이라 버튼이 뜨지 않는다 —
    * `POST /api/tasks`가 어차피 401을 내는데, 누르면 실패하는 버튼을 두지 않는다.
@@ -221,25 +210,38 @@ export default async function Home({ searchParams }: PageProps<'/'>) {
     read.viewer === null ? [] : creatableTeams(read.role, read.viewer.teamId);
 
   /*
-   * **패널이 열려 있거나 만들 수 있을 때만 명부를 읽는다.** 담당자 후보 말고는 이 화면이
-   * 명부를 쓰지 않는데, 늘 읽으면 표만 보고 나가는 대부분의 방문에 조회가 하나 더 붙는다
-   * (`/members`가 고른 사람이 있을 때만 업무를 읽는 것과 같은 판단이다).
+   * **패널이 열려 있거나 만들 수 있을 때만 명부·enum을 읽는다.** 담당자 후보와 팀 전용 칸의
+   * 드롭다운 말고는 이 화면이 둘을 쓰지 않는데, 늘 읽으면 표만 보고 나가는 대부분의 방문에
+   * 조회가 둘 더 붙는다 (`/members`가 고른 사람이 있을 때만 업무를 읽는 것과 같은 판단이다).
    *
    * 생성 버튼이 있는 사람에게는 늘 읽는다 — 후보 없이 뜨는 폼은 담당자를 못 고르고, 폼을
    * 연 뒤에 명부를 가져오려면 이 화면에 없는 조회 라우트가 하나 필요해진다.
    */
-  const members =
-    query.task === null && newTaskTeams.length === 0 ? [] : await view.repo.listMembers();
+  const needsAuthoring = query.task !== null || newTaskTeams.length > 0;
 
-  /**
-   * 팀 전용 칸의 드롭다운이 쓸 값 목록 (`설정` 탭). **명부와 같은 조건으로 읽는다** — 쓰는
-   * 곳이 패널의 수정 폼 하나라, 표만 보고 나가는 방문에 조회를 하나 더 붙일 이유가 없다.
-   * 갈라내는 것은 도메인이 한다 (`teamEnumGroups`).
+  /*
+   * **셋을 함께 띄운다.** 서로의 결과를 쓰지 않는데 차례로 `await`하면 저장소 왕복이 셋으로
+   * 쌓이고, 그 시간이 그대로 화면이 뜨기까지의 지연이 된다. 안 읽을 때는 빈 배열이 그대로
+   * 지나간다 — `Promise.all`은 값도 받는다.
    */
-  const enumGroups =
-    query.task === null && newTaskTeams.length === 0
-      ? []
-      : teamEnumGroups(await view.repo.listEnumOptions());
+  const [goals, members, enumOptions] = await Promise.all([
+    view.repo.listGoalMetrics(),
+    needsAuthoring ? view.repo.listMembers() : [],
+    needsAuthoring ? view.repo.listEnumOptions() : [],
+  ]);
+
+  /*
+   * 목표 지표는 업무 필터를 타지 않는다 — 성과 지표는 진행 상태·마감·담당자 축이 아니라
+   * 목표값 대 실적값 축으로 움직인다 (`ADR-002`). `toGoalResponse`를 반드시 거친다:
+   * 성과 행에도 담당자·채널·문의자 계정이 섞여 들어온다 (`S6`).
+   *
+   * 저장소는 **한 번만** 읽는다 — 같은 목록을 목표 섹션과 차트가 함께 본다.
+   */
+  const goalStats = summarizeGoals(goals);
+  const goalRows = toGoalRows(toGoalResponse(goalStats.items, read.role));
+
+  /* 갈라내는 것은 도메인이 한다 (`teamEnumGroups`). 안 읽었으면 빈 배열이라 자유 입력이다 */
+  const enumGroups = teamEnumGroups(enumOptions);
 
   /**
    * 생성 폼이 쓰는 **팀별** 전용 칸 전량. 패널이 팀으로 거르지 않게 여기서 갈라 둔다.

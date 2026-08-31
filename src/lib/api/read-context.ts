@@ -173,8 +173,14 @@ export async function buildReadContext(
           })
         );
 
-  const stages = await view.repo.listStages(tasks.map((task) => task.id));
-  const lastSyncedAt = await view.repo.getLastSyncedAt();
+  /*
+   * **둘은 서로를 기다리지 않는다.** 차례로 `await`하면 저장소 왕복이 둘로 쌓이는데,
+   * 「마지막 반영」은 업무 목록과 아무 관계가 없다 — 단계만 좁혀진 목록에 기댄다.
+   */
+  const [stages, lastSyncedAt] = await Promise.all([
+    view.repo.listStages(tasks.map((task) => task.id)),
+    view.repo.getLastSyncedAt(),
+  ]);
 
   /*
    * `NODE_ENV`는 요청이 아니라 프로세스의 성질이라 여기서 읽는다 (`getStorage()`가 같은 이유로
