@@ -73,7 +73,6 @@ type TextKey =
   | 'progress'
   | 'priority'
   | 'riskStatus'
-  | 'approvalStatus'
   | 'assignedAt'
   | 'dueAt'
   | 'nextAction'
@@ -95,7 +94,6 @@ function toDraft(task: TaskResponse): Draft {
     progress: task.progress === null ? '' : String(task.progress),
     priority: task.priority ?? '',
     riskStatus: task.riskStatus ?? '',
-    approvalStatus: task.approvalStatus ?? '',
     assignedAt: task.assignedAt ?? '',
     dueAt: task.dueAt ?? '',
     nextAction: task.nextAction ?? '',
@@ -217,10 +215,10 @@ export function TaskDetailFields({
       patch.progress = draft.progress.trim() === '' ? null : Number(draft.progress);
     }
 
+    // `approvalStatus`는 여기 없다 — 이 표에서 못 고치므로 실을 값도 없다 (결재 버튼이 쓴다)
     for (const key of [
       'priority',
       'riskStatus',
-      'approvalStatus',
       'assignedAt',
       'dueAt',
       'nextAction',
@@ -407,8 +405,25 @@ export function TaskDetailFields({
             )}
           </FieldRow>
 
+          {/*
+            * **「승인」은 손으로 적는 칸이 아니다.** 결재 두 버튼이 채운다
+            * (`APPROVAL_DECISION_APPROVAL`) — 여기서 고칠 수 있으면 승인 절차를 지나지 않고
+            * 「승인 완료」를 적을 수 있고, 그러면 결재라는 것이 없는 것과 같다.
+            *
+            * 부원에게 잠긴 것과는 **다른 축**이다. `lockedTaskFields`는 역할별 권한이라
+            * 서버(`PATCH`)가 같은 목록으로 거부하는데, 이 칸은 팀장·어드민도 **버튼으로는**
+            * 쓴다. 그래서 목록을 늘리지 않고 이 표에서만 읽기로 둔다.
+            */}
           <FieldRow label="승인">
-            {open('approvalStatus') ? textCell('approvalStatus') : <Text value={task.approvalStatus} />}
+            <div>
+              <Text value={task.approvalStatus} />
+              {editing === 'basic' && (
+                <p className="text-ink-muted mt-0.5 text-xs">
+                  결재 결과라 여기서 고치지 않습니다 — 승인 대기 중인 업무의 [승인]·[반려]가
+                  채웁니다.
+                </p>
+              )}
+            </div>
           </FieldRow>
           <FieldRow label="우선순위">
             {open('priority') ? textCell('priority') : <Text value={task.priority} />}
