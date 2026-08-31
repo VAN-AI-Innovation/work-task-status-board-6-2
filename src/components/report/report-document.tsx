@@ -17,12 +17,17 @@
  * **원문은 그대로 남긴다.** 아래 접힌 줄이 그것이고, 복사·내려받기가 내는 것도 화면이 보고
  * 있는 **바로 그 문자열**이다 (결정 O).
  *
- * ## PDF는 브라우저가 만든다
+ * ## PDF는 새 탭에 진짜 파일로 뜬다
  *
- * `window.print()` 하나다. PDF 라이브러리를 넣지 않는 이유는 셋이다 — 한글 폰트를 번들에
- * 실어야 하고, 같은 문서를 만드는 경로가 둘이 되며(화면과 파일이 갈라진다), 무엇보다
- * **브라우저의 「PDF로 저장」이 이미 그 일을 한다.** 인쇄용 규칙은 `globals.css`의
- * `@media print`에 있고 사이드바·상단바·버튼을 걷어낸다.
+ * 예전에는 `window.print()` 하나였고, 「PDF로 저장」을 눌렀는데 인쇄 대화상자가 떠서 대상을
+ * 다시 골라야 했다 — 버튼 이름과 일어나는 일이 달랐다. 이제 `buildReportPdf`가 파일을 만들고
+ * 새 탭이 그것을 편다.
+ *
+ * **문서가 갈라지지 않는 이유는 `toReportBlocks`를 둘이 같이 쓰기 때문이다.** 화면이 그리는
+ * 블록과 PDF가 그리는 블록이 같은 함수에서 나온다 — 마크다운을 두 번 읽지 않는다.
+ *
+ * `@media print` 규칙은 그대로 둔다. 브라우저 인쇄(Ctrl+P)는 여전히 되고, 그때 사이드바·
+ * 상단바·버튼이 걷힌다.
  *
  * 실패를 조용히 삼키지 않는다. `navigator.clipboard`는 비 HTTPS에서 아예 없고, 있어도 권한이
  * 거부될 수 있다. 실패했는데 「복사됨」이 뜨면 사용자는 회의 자리에서 빈 클립보드를 붙여넣는다.
@@ -40,6 +45,13 @@ const COPY_LABELS: Readonly<Record<ActionState, string>> = {
   failed: '복사 실패',
 };
 
+const PDF_LABELS: Readonly<Record<ActionState | 'working', string>> = {
+  idle: 'PDF로 저장',
+  working: 'PDF 만드는 중…',
+  done: '새 탭에 열림',
+  failed: 'PDF 실패',
+};
+
 const DOWNLOAD_LABELS: Readonly<Record<ActionState, string>> = {
   idle: '.md 내려받기',
   done: '내려받음',
@@ -48,6 +60,29 @@ const DOWNLOAD_LABELS: Readonly<Record<ActionState, string>> = {
 
 /** 칸은 전부 왼쪽 정렬이고, 마크다운의 `right`는 이제 `tabular-nums`만 뜻한다 (숫자 칸) */
 const ALIGN_CLASS = { left: 'text-left', right: 'text-left tabular-nums' } as const;
+
+/**
+ * 폰트를 base64로 받아 **탭이 사는 동안 한 번만** 붙든다. 두 번째 [PDF로 저장]에서 2.4MB를
+ * 다시 받으면 눌러 놓고 기다리는 시간이 그대로 두 배가 된다.
+ *
+ * `btoa`는 문자열만 받고, 2.4MB를 `String.fromCharCode(...bytes)` 한 번으로 넘기면 인자
+ * 개수 한계에 걸려 던진다. 그래서 32KB씩 끊는다.
+ */
+let fontCache: string | null = null;
+
+async function loadFont(url: string): Promise<string> {
+  if (fontCache !== null) return fontCache;
+
+  const bytes = new Uint8Array(await (await fetch(url)).arrayBuffer());
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let at = 0; at < bytes.length; at += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + CHUNK));
+  }
+
+  fontCache = btoa(binary);
+  return fontCache;
+}
 
 function Block({ block }: { block: ReportBlock }) {
   switch (block.kind) {
@@ -124,6 +159,7 @@ function Block({ block }: { block: ReportBlock }) {
 export function ReportDocument({ markdown, filename }: { markdown: string; filename: string }) {
   const [copy, setCopy] = useState<ActionState>('idle');
   const [download, setDownload] = useState<ActionState>('idle');
+  const [pdf, setPdf] = useState<ActionState | 'working'>('idle');
   // 언마운트 뒤에 타이머가 살아 있으면 없는 컴포넌트에 setState한다
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -140,6 +176,7 @@ export function ReportDocument({ markdown, filename }: { markdown: string; filen
     timer.current = setTimeout(() => {
       setCopy('idle');
       setDownload('idle');
+      setPdf('idle');
     }, 2000);
   };
 
@@ -150,6 +187,35 @@ export function ReportDocument({ markdown, filename }: { markdown: string; filen
       settle(setCopy, 'done');
     } catch {
       settle(setCopy, 'failed');
+    }
+  };
+
+  const onPdf = async (): Promise<void> => {
+    /*
+     * **탭을 먼저 연다.** 폰트를 받고 문서를 그리는 사이에 클릭의 사용자 제스처가 만료되면
+     * 그 뒤의 `window.open`은 팝업 차단에 걸린다. 빈 탭을 지금 열어 두고 주소만 나중에 넣는다.
+     */
+    const tab = window.open('', '_blank');
+    if (tab === null) {
+      settle(setPdf, 'failed');
+      return;
+    }
+
+    setPdf('working');
+    try {
+      // `jspdf`와 2.4MB 폰트는 **이 버튼을 누른 사람만** 받는다 (`report-pdf.ts` 머리말)
+      const { buildReportPdf, PDF_FONT_URL } = await import('@/lib/view/report-pdf');
+      const blob = await buildReportPdf(toReportBlocks(markdown), await loadFont(PDF_FONT_URL));
+
+      /*
+       * 되돌리지 않는다 — 새 탭이 이 주소를 계속 붙들고 있고, 지우면 새로 고침에서 빈 뷰어가
+       * 뜬다. 탭을 닫으면 브라우저가 함께 거둔다 (`.md` 내려받기와 사정이 다르다).
+       */
+      tab.location.href = URL.createObjectURL(blob);
+      settle(setPdf, 'done');
+    } catch {
+      tab.close();
+      settle(setPdf, 'failed');
     }
   };
 
@@ -184,17 +250,18 @@ export function ReportDocument({ markdown, filename }: { markdown: string; filen
         <div>
           <h2 className="text-brand text-sm font-semibold">보고 본문</h2>
           <p className="text-ink-muted mt-1 text-xs">
-            「PDF로 저장」은 브라우저 인쇄 대화상자를 엽니다 · 원문 마크다운은 아래에 그대로
+            「PDF로 저장」은 PDF를 만들어 새 탭에 엽니다 · 원문 마크다운은 아래에 그대로
             있습니다
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={() => window.print()}
-            className="bg-brand text-canvas hover:bg-brand-strong rounded px-3 py-1.5 text-xs"
+            onClick={() => void onPdf()}
+            disabled={pdf === 'working'}
+            className="bg-brand text-canvas hover:bg-brand-strong rounded px-3 py-1.5 text-xs disabled:opacity-60"
           >
-            PDF로 저장
+            {PDF_LABELS[pdf]}
           </button>
           <button
             type="button"
@@ -213,9 +280,10 @@ export function ReportDocument({ markdown, filename }: { markdown: string; filen
         </div>
       </div>
 
-      {(copy === 'failed' || download === 'failed') && (
+      {(copy === 'failed' || download === 'failed' || pdf === 'failed') && (
         <p className="text-warn mt-3 text-xs print:hidden">
-          브라우저가 거부했습니다 — 아래 원문을 직접 선택해 복사하세요.
+          브라우저가 거부했습니다 — 새 탭이 막혔다면 팝업을 허용하고, 그래도 안 되면 아래
+          원문을 직접 선택해 복사하세요.
         </p>
       )}
 
