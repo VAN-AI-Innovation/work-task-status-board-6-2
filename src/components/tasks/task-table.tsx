@@ -13,8 +13,6 @@
 
 import Link from 'next/link';
 
-import { LinkPendingDot } from '@/components/tasks/link-pending-dot';
-
 import { StatusBadge } from '@/components/tasks/status-badge';
 import { buildHref, type DashboardQuery } from '@/lib/view/dashboard-query';
 import { EMPTY, formatDate, formatDday, formatPercent } from '@/lib/view/kpi-format';
@@ -101,8 +99,6 @@ export function TaskTable({
                   className="text-ink hover:text-brand underline-offset-4 hover:underline"
                 >
                   {task.title ?? EMPTY}
-                  {/* 누른 그 줄에 반응을 둔다 — 패널은 같은 라우트라 골격이 서지 않는다 */}
-                  <LinkPendingDot />
                 </Link>
               </td>
               {/* 이름이 여럿이면 줄바꿈을 허용한다 — `nowrap`이면 긴 목록이 표를 옆으로 민다 */}
