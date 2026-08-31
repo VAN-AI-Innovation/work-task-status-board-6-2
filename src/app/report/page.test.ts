@@ -340,7 +340,8 @@ describe('/report — 제출과 검토', () => {
 
     const composer = findComponent(tree, 'ReportComposer');
     // 계산본은 「되돌리기」의 목적지로 넘어간다. 병합 문서(전사)는 어드민의 것이다
-    expect(String(composer?.props?.computed)).toContain('# 주간 업무 보고 —');
+    // 제목에 팀 이름이 붙는다 — 팀장 문서는 자기 팀만 담으므로 (`weekly-report.ts`)
+    expect(String(composer?.props?.computed)).toContain('# 편집팀 주간 업무 보고 —');
     expect(String(composer?.props?.computed)).not.toContain('(전사)');
     expect(composer?.props?.filename).toBe('weekly-2026-08-24.md');
   });
