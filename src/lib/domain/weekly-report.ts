@@ -296,7 +296,13 @@ export function buildWeeklyReport(input: WeeklyReportInput): string {
   const { weekStart, weekEnd } = period;
 
   return [
-    `# 주간 업무 보고 — ${cell(weekStart)} ~ ${cell(weekEnd)}`,
+    /*
+     * 한 팀만 담은 보고는 **제목이 그 팀 이름으로 시작한다.** 팀장이 내는 문서는 자기 팀만
+     * 담는데(`report-scope.ts`) 제목이 전사 보고와 글자 하나 다르지 않아, 어드민이 받은
+     * 파일 셋을 열어 표를 봐야 어느 팀 것인지 알 수 있었다. 여러 팀·전사는 그대로 둔다 —
+     * 붙일 이름이 하나가 아니다.
+     */
+    `# ${input.teams?.length === 1 ? `${TEAM_LABELS[input.teams[0]!]} ` : ''}주간 업무 보고 — ${cell(weekStart)} ~ ${cell(weekEnd)}`,
     '',
     summarySection(buildKpiStrip(tasks, withFlags), events),
     '',

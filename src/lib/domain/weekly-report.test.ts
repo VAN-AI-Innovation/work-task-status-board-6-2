@@ -218,6 +218,21 @@ describe('문서 뼈대', () => {
     expect(buildWeeklyReport(input())).toContain('# 주간 업무 보고 — 2026-07-20 ~ 2026-07-26');
   });
 
+  it('한 팀만 담은 보고는 제목 앞에 그 팀 이름이 붙는다', () => {
+    expect(
+      buildWeeklyReport(input({ teams: ['edit'] })).startsWith(
+        '# 편집팀 주간 업무 보고 — 2026-07-20 ~ 2026-07-26'
+      )
+    ).toBe(true);
+  });
+
+  it('전사(teams 없음)와 여러 팀은 팀 이름을 붙이지 않는다', () => {
+    expect(buildWeeklyReport(input())).toContain('# 주간 업무 보고 — ');
+    expect(buildWeeklyReport(input({ teams: ['edit', 'shoot'] }))).toContain(
+      '# 주간 업무 보고 — '
+    );
+  });
+
   it('섹션 제목 6개가 전부 있다', () => {
     const report = buildWeeklyReport(input({ tasks: fixtureTasks, goals: fixtureGoals }));
 

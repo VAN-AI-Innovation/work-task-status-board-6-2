@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 상단 바 — 검색 · 「마지막 반영」 · 역할 전환.
+ * 상단 바 — 「마지막 반영」 · 역할 전환.
  *
  * **`layout.tsx`가 아니라 각 페이지가 그린다.** 「마지막 반영」과 역할은 저장소를 읽어야
  * 나오는데, 루트 레이아웃에서 `getStorage()`를 부르면 저장소를 볼 필요가 없는 화면까지
@@ -18,7 +18,6 @@ import { usePathname } from 'next/navigation';
 
 import { RefreshButton } from '@/components/shell/refresh-button';
 import { RoleSwitch } from '@/components/shell/role-switch';
-import { SearchBox } from '@/components/shell/search-box';
 import { SessionBadge } from '@/components/shell/session-badge';
 import { SyncBadge } from '@/components/shell/sync-badge';
 import type { ViewerRole } from '@/lib/domain/extras-visibility';
@@ -44,8 +43,7 @@ export function AppTopbar({
   const pathname = usePathname();
 
   return (
-    <header className="bg-panel border-line relative flex h-14 shrink-0 items-center gap-4 border-b px-6">
-      <SearchBox pathname={pathname} query={query} />
+    <header className="bg-panel border-line relative flex h-14 shrink-0 items-center justify-end gap-4 border-b px-6">
       <SyncBadge freshness={freshness} />
       <RefreshButton />
       {/*
