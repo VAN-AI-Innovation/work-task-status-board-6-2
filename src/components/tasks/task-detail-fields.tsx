@@ -73,7 +73,6 @@ type TextKey =
   | 'progress'
   | 'priority'
   | 'riskStatus'
-  | 'approvalStatus'
   | 'assignedAt'
   | 'dueAt'
   | 'nextAction'
@@ -95,7 +94,6 @@ function toDraft(task: TaskResponse): Draft {
     progress: task.progress === null ? '' : String(task.progress),
     priority: task.priority ?? '',
     riskStatus: task.riskStatus ?? '',
-    approvalStatus: task.approvalStatus ?? '',
     assignedAt: task.assignedAt ?? '',
     dueAt: task.dueAt ?? '',
     nextAction: task.nextAction ?? '',
@@ -108,6 +106,64 @@ function toDraft(task: TaskResponse): Draft {
 
 function sameSet(left: readonly string[], right: readonly string[]): boolean {
   return left.length === right.length && [...left].sort().join() === [...right].sort().join();
+}
+
+/**
+ * 공동 담당 고르기 — **여러 명을 고르는 드롭다운.**
+ *
+ * 예전에는 후보 전원을 체크박스로 옆으로 늘어놓았다. 팀원이 서넛일 때는 괜찮았지만 열이
+ * 넘어가면 표 한 칸이 여러 줄로 부풀어 그 아래 칸들이 멀리 밀려났다.
+ *
+ * `<details>`를 쓴다 — 여는 것은 브라우저가 하고, 이 컴포넌트는 「열려 있는가」를 상태로
+ * 들지 않는다. 안쪽은 **체크박스 그대로**다: `<select multiple>`은 여러 명을 고르려면
+ * Ctrl/Cmd를 누른 채 눌러야 하는데, 그것을 아는 사람만 둘째 사람을 고를 수 있다.
+ */
+function CoOwnerPicker({
+  candidates,
+  selected,
+  onToggle,
+  disabled,
+}: {
+  candidates: readonly OwnerCandidate[];
+  selected: readonly string[];
+  onToggle: (id: string) => void;
+  disabled: boolean;
+}): React.ReactNode {
+  if (candidates.length === 0) {
+    return (
+      <span className="text-ink-muted text-xs">
+        이 팀의 시트 명부가 비어 있어 고를 사람이 없습니다.
+      </span>
+    );
+  }
+
+  /* 접힌 채로도 누가 골렸는지 보여야 한다 — 열어 봐야 아는 요약은 요약이 아니다 */
+  const chosen = candidates.filter((candidate) => selected.includes(candidate.id));
+
+  return (
+    <details className="border-line bg-canvas rounded border">
+      <summary className="text-ink cursor-pointer list-none px-3 py-1.5 text-sm">
+        <span className={chosen.length === 0 ? 'text-ink-faint' : undefined}>
+          {chosen.length === 0
+            ? '선택 안 함'
+            : `${chosen.length}명 — ${chosen.map((item) => item.name).join(', ')}`}
+        </span>
+      </summary>
+      <div className="border-line max-h-52 overflow-y-auto border-t px-3 py-2">
+        {candidates.map((candidate) => (
+          <label key={candidate.id} className="flex items-center gap-2 py-1 text-sm">
+            <input
+              type="checkbox"
+              checked={selected.includes(candidate.id)}
+              onChange={() => onToggle(candidate.id)}
+              disabled={disabled}
+            />
+            <span className="text-ink-body">{candidate.name}</span>
+          </label>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 export function TaskDetailFields({
@@ -217,10 +273,10 @@ export function TaskDetailFields({
       patch.progress = draft.progress.trim() === '' ? null : Number(draft.progress);
     }
 
+    // `approvalStatus`는 여기 없다 — 이 표에서 못 고치므로 실을 값도 없다 (결재 버튼이 쓴다)
     for (const key of [
       'priority',
       'riskStatus',
-      'approvalStatus',
       'assignedAt',
       'dueAt',
       'nextAction',
@@ -342,33 +398,19 @@ export function TaskDetailFields({
 
           <FieldRow label="공동 담당">
             {editing === 'basic' && canAssign ? (
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
-                {/* 주 담당은 목록에서 뺀다 — 한 사람이 두 칸에 설 수 없는 것은 규칙이지 상태가 아니다 */}
-                {ownerCandidates
-                  .filter((candidate) => owner === UNASSIGNED || candidate.id !== owner)
-                  .map((candidate) => (
-                    <label key={candidate.id} className="flex items-center gap-1.5 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={coOwners.includes(candidate.id)}
-                        onChange={() =>
-                          setCoOwners((prev) =>
-                            prev.includes(candidate.id)
-                              ? prev.filter((item) => item !== candidate.id)
-                              : [...prev, candidate.id]
-                          )
-                        }
-                        disabled={busy}
-                      />
-                      <span className="text-ink-body">{candidate.name}</span>
-                    </label>
-                  ))}
-                {ownerCandidates.length === 0 && (
-                  <span className="text-ink-muted text-xs">
-                    이 팀의 시트 명부가 비어 있어 고를 사람이 없습니다.
-                  </span>
+              <CoOwnerPicker
+                /* 주 담당은 목록에서 뺀다 — 한 사람이 두 칸에 설 수 없는 것은 규칙이지 상태가 아니다 */
+                candidates={ownerCandidates.filter(
+                  (candidate) => owner === UNASSIGNED || candidate.id !== owner
                 )}
-              </div>
+                selected={coOwners}
+                onToggle={(id) =>
+                  setCoOwners((prev) =>
+                    prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+                  )
+                }
+                disabled={busy}
+              />
             ) : (
               <Text
                 value={task.coOwnerNames.length === 0 ? null : task.coOwnerNames.join(', ')}
@@ -407,8 +449,25 @@ export function TaskDetailFields({
             )}
           </FieldRow>
 
+          {/*
+            * **「승인」은 손으로 적는 칸이 아니다.** 결재 두 버튼이 채운다
+            * (`APPROVAL_DECISION_APPROVAL`) — 여기서 고칠 수 있으면 승인 절차를 지나지 않고
+            * 「승인 완료」를 적을 수 있고, 그러면 결재라는 것이 없는 것과 같다.
+            *
+            * 부원에게 잠긴 것과는 **다른 축**이다. `lockedTaskFields`는 역할별 권한이라
+            * 서버(`PATCH`)가 같은 목록으로 거부하는데, 이 칸은 팀장·어드민도 **버튼으로는**
+            * 쓴다. 그래서 목록을 늘리지 않고 이 표에서만 읽기로 둔다.
+            */}
           <FieldRow label="승인">
-            {open('approvalStatus') ? textCell('approvalStatus') : <Text value={task.approvalStatus} />}
+            <div>
+              <Text value={task.approvalStatus} />
+              {editing === 'basic' && (
+                <p className="text-ink-muted mt-0.5 text-xs">
+                  결재 결과라 여기서 고치지 않습니다 — 승인 대기 중인 업무의 [승인]·[반려]가
+                  채웁니다.
+                </p>
+              )}
+            </div>
           </FieldRow>
           <FieldRow label="우선순위">
             {open('priority') ? textCell('priority') : <Text value={task.priority} />}

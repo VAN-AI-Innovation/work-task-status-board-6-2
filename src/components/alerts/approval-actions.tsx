@@ -12,6 +12,13 @@
  * **무엇으로 바뀌는지는 도메인이 정한다** (`APPROVAL_DECISION_STATUS`) — 화면이 한글 상태를
  * 적기 시작하면 시트에서 이름이 바뀔 때 조용히 미매핑된다 (`ADR-009`).
  *
+ * ## 진행 상태만이 아니라 **「승인」 칸도 함께** 쓴다
+ *
+ * 예전에는 진행 상태만 바꿨다. 그래서 반려된 업무가 그냥 「수정 중」이 되었고, 담당자
+ * 화면에서 **처음부터 수정 중이던 업무와 구별되지 않았다** — 돌려보낸 쪽은 사유를 적었는데
+ * 받는 쪽은 그런 일이 있었는지도 몰랐다. 이제 `approvalStatus`에 결재 결과를 남기고,
+ * 그것을 근거로 패널 맨 위에 반려 알림이 선다 (`isReworkAfterReject`).
+ *
  * ## 반려에는 사유가 붙는다
  *
  * 사유 없는 반려는 담당자에게 「다시 하라」는 말만 남긴다 (주간 보고의 반려와 같은 규율 ·
@@ -26,7 +33,10 @@
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 
-import { APPROVAL_DECISION_STATUS } from '@/lib/domain/task-semantic';
+import {
+  APPROVAL_DECISION_APPROVAL,
+  APPROVAL_DECISION_STATUS,
+} from '@/lib/domain/task-semantic';
 import type { ApiErrorBody } from '@/types/api';
 
 const UNREACHABLE_MESSAGE = '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
@@ -80,7 +90,12 @@ export function ApprovalActions({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => void decide({ status: APPROVAL_DECISION_STATUS.approved })}
+          onClick={() =>
+            void decide({
+              status: APPROVAL_DECISION_STATUS.approved,
+              approvalStatus: APPROVAL_DECISION_APPROVAL.approved,
+            })
+          }
           disabled={busy}
           className={`rounded px-3 py-1 text-xs ${
             busy ? 'border-line text-ink-faint cursor-not-allowed border' : 'bg-brand text-canvas hover:bg-brand-strong'
@@ -118,6 +133,7 @@ export function ApprovalActions({
             onClick={() =>
               void decide({
                 status: APPROVAL_DECISION_STATUS.rejected,
+                approvalStatus: APPROVAL_DECISION_APPROVAL.rejected,
                 delayReason: rejecting,
               })
             }

@@ -60,6 +60,37 @@ export const APPROVAL_DECISION_STATUS = {
   rejected: '수정 중',
 } as const;
 
+/**
+ * 같은 두 조작이 **「승인」 칸**(`approvalStatus`)에 남기는 값. 시트 `공통_승인 상태`의
+ * 여섯 값 중 둘이다 (미제출 · 검토 대기 · **수정 요청** · 조건부 승인 · **승인 완료** ·
+ * 해당 없음).
+ *
+ * 진행 상태만 바꾸던 때에는 **결재가 지나갔다는 사실이 어디에도 남지 않았다.** 반려된
+ * 업무는 그냥 「수정 중」이 되어, 담당자 화면에서 처음부터 수정 중이던 업무와 구별되지
+ * 않았다 — 돌려보낸 쪽은 사유를 적었는데 받는 쪽은 그런 일이 있었는지도 몰랐다.
+ *
+ * 그래서 「승인」 칸은 **손으로 적는 칸이 아니다.** 결재 버튼만 쓴다 —
+ * `task-detail-fields.tsx`의 기본 표에서 이 칸은 역할과 무관하게 읽기다.
+ */
+export const APPROVAL_DECISION_APPROVAL = {
+  approved: '승인 완료',
+  rejected: '수정 요청',
+} as const;
+
+/**
+ * 이 업무가 **반려된 채로 담당자 손에 있는가.** 패널 맨 위의 반려 알림이 이것으로 뜬다.
+ *
+ * 두 조건을 함께 보는 이유: 「승인」 칸만 보면 담당자가 고쳐서 다시 올린 뒤(`승인 대기`)에도
+ * 반려 알림이 남는다 — 결재가 다시 열려 있는데 화면은 「돌려보내졌습니다」라고 말하게 된다.
+ * 다음 결재가 그 칸을 덮어쓸 때까지의 그 사이를 이 함수가 가른다.
+ */
+export function isReworkAfterReject(
+  approvalStatus: string | null,
+  semantic: TaskSemantic | null
+): boolean {
+  return approvalStatus === APPROVAL_DECISION_APPROVAL.rejected && semantic !== 'approval';
+}
+
 /** 진행형이 아닌 semantic. 완료율 모수·장기 미갱신 판정이 이 셋을 갈라 쓴다 */
 const INACTIVE_SEMANTICS: readonly TaskSemantic[] = ['done', 'hold', 'cancelled'];
 

@@ -48,6 +48,7 @@ import { ApprovalActions } from '@/components/alerts/approval-actions';
 import { TaskDetailFields, type OwnerCandidate } from '@/components/tasks/task-detail-fields';
 import { TaskDeleteButton } from '@/components/tasks/task-delete-button';
 import { TaskStageFields } from '@/components/tasks/task-stage-fields';
+import { isReworkAfterReject } from '@/lib/domain/task-semantic';
 import type { ExtraField } from '@/lib/view/extras-edit';
 import { safeHref, type ExtraCell } from '@/lib/view/extras-render';
 import { EMPTY } from '@/lib/view/kpi-format';
@@ -263,6 +264,35 @@ export function TaskPanel({
            * 승인하는지 먼저 봐야 하기 때문이다 — 목록의 줄 옆에 버튼이 있으면 제목만 보고
            * 누르게 된다. 상태가 「승인 대기」인 업무에만, 고칠 수 있는 사람에게만 뜬다.
            */}
+          {/*
+            * **반려는 맨 위다.** 담당자가 이 패널을 여는 이유는 「무엇을 고쳐야 하나」이고,
+            * 그 답이 아래로 밀리면 사유를 못 보고 고치기 시작한다 (주간 보고의 반려가 같은
+            * 자리에 서는 것과 같은 규율 · `report-submit-panel.tsx`).
+            *
+            * 역할을 가리지 않는다. 반려는 담당자에게 알릴 사실이지 권한이 아니고, 팀장이
+            * 자기가 돌려보낸 것을 다시 보는 것도 맞다. 다시 결재 줄에 서면 사라진다
+            * (`isReworkAfterReject`) — 그때는 아래 결재 상자가 대신 선다.
+            */}
+          {isReworkAfterReject(task.approvalStatus, task.flags.semantic) && (
+            <section className="border-late-line bg-late-bg rounded-md border px-3 py-3">
+              <p className="text-late text-sm font-semibold">반려된 업무입니다</p>
+              {/* 사유는 반려할 때 반드시 적힌다. 그래도 없는 값을 지어내지 않는다 */}
+              <p className="text-ink-body mt-1 text-sm break-words">
+                {task.delayReason === null || task.delayReason.trim() === '' ? (
+                  '사유가 기록되지 않았습니다.'
+                ) : (
+                  <>
+                    <span className="text-ink font-medium">반려 사유: </span>
+                    {task.delayReason}
+                  </>
+                )}
+              </p>
+              <p className="text-ink-muted mt-1.5 text-xs">
+                고친 뒤 상태를 「검토 요청」이나 「승인 대기」로 바꾸면 다시 결재를 받습니다.
+              </p>
+            </section>
+          )}
+
           {task.flags.semantic === 'approval' && canEdit && (
             <section className="border-brand bg-brand-soft rounded-md border px-3 py-3">
               <p className="text-brand text-sm font-semibold">승인 대기 중인 업무입니다</p>

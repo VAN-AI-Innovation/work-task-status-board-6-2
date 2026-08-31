@@ -13,7 +13,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
   STATUS_OPTIONS,
+  APPROVAL_DECISION_APPROVAL,
   APPROVAL_DECISION_STATUS,
+  isReworkAfterReject,
   STATUS_SEMANTIC_MAP,
   buildSemanticIndex,
   collectUnregisteredEnumWarnings,
@@ -317,5 +319,36 @@ describe('APPROVAL_DECISION_STATUS', () => {
   it('승인은 승인 대기의 다음 단계이고, 반려는 수정으로 되돌린다', () => {
     expect(STATUS_SEMANTIC_MAP[APPROVAL_DECISION_STATUS.approved]).toBe('pending_release');
     expect(STATUS_SEMANTIC_MAP[APPROVAL_DECISION_STATUS.rejected]).toBe('rework');
+  });
+});
+
+/**
+ * 결재가 「승인」 칸에 남기는 값. 이것이 있어서 담당자가 반려된 사실을 안다.
+ */
+describe('APPROVAL_DECISION_APPROVAL', () => {
+  it('두 값이 시트 `공통_승인 상태` 목록의 값이다', () => {
+    // 실제 레지스트리: 미제출 | 검토 대기 | 수정 요청 | 조건부 승인 | 승인 완료 | 해당 없음
+    expect(APPROVAL_DECISION_APPROVAL.approved).toBe('승인 완료');
+    expect(APPROVAL_DECISION_APPROVAL.rejected).toBe('수정 요청');
+  });
+});
+
+describe('isReworkAfterReject', () => {
+  const rejected = APPROVAL_DECISION_APPROVAL.rejected;
+
+  it('반려 값이 남아 있고 다시 결재 줄에 서지 않았으면 반려 상태다', () => {
+    expect(isReworkAfterReject(rejected, 'rework')).toBe(true);
+    expect(isReworkAfterReject(rejected, 'in_progress')).toBe(true);
+  });
+
+  it('다시 승인 대기면 반려가 아니다 — 결재가 다시 열려 있다', () => {
+    expect(isReworkAfterReject(rejected, 'approval')).toBe(false);
+  });
+
+  it('승인 칸이 반려가 아니면 어떤 semantic에서도 반려가 아니다', () => {
+    expect(isReworkAfterReject(APPROVAL_DECISION_APPROVAL.approved, 'rework')).toBe(false);
+    expect(isReworkAfterReject('검토 대기', 'rework')).toBe(false);
+    expect(isReworkAfterReject(null, 'rework')).toBe(false);
+    expect(isReworkAfterReject('', 'rework')).toBe(false);
   });
 });
